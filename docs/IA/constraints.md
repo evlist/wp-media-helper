@@ -15,6 +15,8 @@
 - Full REUSE compliance with `GPL-3.0-or-later` is required.
 - Product logic should not assume shell execution at runtime when a PHP
   integration exists.
+- External media support must remain optional and support multiple configured
+  roots, each with its own path pattern and optional filename filter pattern.
 
 ## Repository and environment constraints
 
@@ -22,6 +24,8 @@
   are local override files, cf https://github.com/evlist/codespaces-grafting .
 - Runtime code should stay under the PSR-4 structure rooted at
   `plugin/includes/{{Namespace}}/`.
+- Configuration should live in the plugin settings page rather than in ad hoc
+  runtime constants or shell-dependent setup.
 
 ## Delivery discipline
 

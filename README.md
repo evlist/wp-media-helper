@@ -39,7 +39,7 @@ detail.
 
 1. Open or create a post.
 2. In the **Media** sidebar panel, review or edit the filter string
-   (pre-filled according to the configured slug format, editable).
+   (pre-filled according to the configured filter pattern, editable).
 3. Browse the matching files in the gallery. Files already attached to other
    posts are hidden by default; a toggle reveals them with a red warning icon.
 4. Select the files to attach.
@@ -67,8 +67,13 @@ All settings are managed on the plugin's **Settings** page
 | Setting | Description |
 |---------|-------------|
 | **External media directories** | Optional. One or more absolute server paths to external media roots. Leave empty to use only the standard WordPress media library. |
-| **Filter string format** | Pattern used to pre-fill the filter field in the sidebar panel. Supports placeholders such as `{date:Ymd}`. Defaults to `{date:Ymd}`. |
+| **Path pattern** | Pattern used to derive the directory for a given date and source. Supports placeholders such as `{date:Y}`, `{date:m}`, `{date:d}` and `{source}`. |
+| **Filter pattern** | Optional. Pattern used to further filter filenames after the target directory has been resolved. Supports placeholders such as `{date:Ymd}`. Defaults to an empty filter. |
 | **Thumbnail cache directory** | Optional. Writable path where thumbnails for external media files are stored. Required when external directories are read-only. Thumbnails are generated lazily on first request. |
+
+Each external directory can define its own path pattern and optional filter
+pattern. This makes it possible to target different user trees without scanning
+large directory hierarchies.
 
 ## Replacing Other Plugins
 
@@ -80,6 +85,26 @@ the following plugins unnecessary:
 - [Thumbnails Folder](https://wordpress.org/plugins/fr-thumbnails-folder/) —
   thumbnail generation into a separate writable directory when source files are
   on a read-only filesystem.
+
+## Related Plugins and Scope Notes
+
+The following plugins are relevant references for future slices:
+
+1. [Simple Image Sizes](https://wordpress.org/plugins/simple-image-sizes/)
+   This is directly related to WP Media Helper. A gallery-oriented UI will need
+   multiple thumbnail sizes for performance and visual quality.
+2. [WP Extra File Types](https://wordpress.org/plugins/wp-extra-file-types/)
+   This is optional, but useful for workflows that rely on non-default media
+   extensions such as `.gpx` and `.vtt`.
+3. [Lightbox PhotoSwipe](https://wordpress.org/plugins/lightbox-photoswipe/)
+   This is optional and can be treated as an integration point for front-end
+   media viewing.
+
+Current position:
+
+- Thumbnail size management is in direct scope.
+- Additional MIME type support and lightbox integration are remembered as
+  optional features and should be evaluated after core workflow delivery.
 
 ## License
 
