@@ -75,6 +75,35 @@ Each external directory can define its own path pattern and optional filter
 pattern. This makes it possible to target different user trees without scanning
 large directory hierarchies.
 
+## External Media Indexing
+
+External directories can contain many files, and extracting metadata such as
+EXIF or GPX dates can be expensive. The plugin should therefore maintain a
+local index of discovered external files instead of scanning every source on
+each page load.
+
+When the user requests media for a target date:
+
+1. Display the current indexed results immediately.
+2. Check the modification time of each relevant mapped directory.
+3. Start a targeted refresh only when a directory changed or its index is too
+   old.
+4. Update the gallery asynchronously when the refresh completes.
+
+The directory modification time is an invalidation hint, not an authoritative
+change notification. The plugin must also support forced refreshes and should
+periodically refresh entries even when the directory timestamp appears
+unchanged.
+
+While a relevant refresh is running, the gallery remains visible but media
+selection and confirmation are disabled. This prevents users from working with
+known-stale results. The interface should preserve the current scroll position
+and any existing selection when refreshed results arrive.
+
+A low-load scheduled task may refresh configured sources progressively in the
+background. It reduces the likelihood of a user-facing refresh, but does not
+replace the consistency check performed when the date is requested.
+
 ## Replacing Other Plugins
 
 For date-based external directory workflows, this plugin is designed to make

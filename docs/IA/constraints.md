@@ -17,6 +17,15 @@
   integration exists.
 - External media support must remain optional and support multiple configured
   roots, each with its own path pattern and optional filename filter pattern.
+- External media discovery should use a persistent local index and targeted
+  refreshes rather than scanning every configured root on each page load.
+- Directory modification times may be used as invalidation hints, but must not
+  be treated as authoritative filesystem change notifications.
+- The UI must prevent selection and confirmation while relevant external media
+  data is being refreshed, while preserving visible results and current user
+  selections.
+- A low-load scheduled refresh may maintain the index proactively, but the
+  request-time consistency check remains authoritative.
 
 ## Repository and environment constraints
 
