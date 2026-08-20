@@ -29,7 +29,11 @@ class ExternalSourceSettingsPage {
 			return;
 		}
 
-		$sources = $this->loadSources();
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => get_option( ExternalSourceSettings::optionKey(), [] ),
+			static function ( array $value ): void {}
+		);
+		$sources = $settings->ensureAtLeastOneSource( $this->loadSources() );
 		?>
 		<div class="wrap">
 			<h1>WP Media Helper</h1>
@@ -46,35 +50,35 @@ class ExternalSourceSettingsPage {
 							<p>
 								<label>
 									<strong>Name</strong><br />
-									<input type="text" name="sources[<?php echo esc_attr( $index ); ?>][name]" value="<?php echo esc_attr( (string) ( $source['name'] ?? '' ) ); ?>" style="width:100%; max-width:500px;" />
+									<input type="text" name="sources[<?php echo esc_attr( $index ); ?>][name]" value="<?php echo esc_attr( (string) ( $source['name'] ?? '' ) ); ?>" style="width:100%; max-width:500px;" placeholder="My external source" />
 								</label>
 							</p>
 
 							<p>
 								<label>
 									<strong>Root directory</strong><br />
-									<input type="text" name="sources[<?php echo esc_attr( $index ); ?>][root]" value="<?php echo esc_attr( (string) ( $source['root'] ?? '' ) ); ?>" style="width:100%; max-width:500px;" />
+									<input type="text" name="sources[<?php echo esc_attr( $index ); ?>][root]" value="<?php echo esc_attr( (string) ( $source['root'] ?? '' ) ); ?>" style="width:100%; max-width:500px;" placeholder="/var/www/media" />
 								</label>
 							</p>
 
 							<p>
 								<label>
 									<strong>Path pattern</strong><br />
-									<input type="text" name="sources[<?php echo esc_attr( $index ); ?>][path_pattern]" value="<?php echo esc_attr( (string) ( $source['path_pattern'] ?? '' ) ); ?>" style="width:100%; max-width:500px;" />
+									<input type="text" name="sources[<?php echo esc_attr( $index ); ?>][path_pattern]" value="<?php echo esc_attr( (string) ( $source['path_pattern'] ?? '' ) ); ?>" style="width:100%; max-width:500px;" placeholder="{date:Y}/{date:m}/{date:d}" />
 								</label>
 							</p>
 
 							<p>
 								<label>
 									<strong>Filter pattern</strong><br />
-									<input type="text" name="sources[<?php echo esc_attr( $index ); ?>][filter_pattern]" value="<?php echo esc_attr( (string) ( $source['filter_pattern'] ?? '' ) ); ?>" style="width:100%; max-width:500px;" />
+									<input type="text" name="sources[<?php echo esc_attr( $index ); ?>][filter_pattern]" value="<?php echo esc_attr( (string) ( $source['filter_pattern'] ?? '' ) ); ?>" style="width:100%; max-width:500px;" placeholder="{date:Ymd}" />
 								</label>
 							</p>
 
 							<p>
 								<label>
 									<strong>Thumbnail cache directory</strong><br />
-									<input type="text" name="sources[<?php echo esc_attr( $index ); ?>][thumbnail_cache]" value="<?php echo esc_attr( (string) ( $source['thumbnail_cache'] ?? '' ) ); ?>" style="width:100%; max-width:500px;" />
+									<input type="text" name="sources[<?php echo esc_attr( $index ); ?>][thumbnail_cache]" value="<?php echo esc_attr( (string) ( $source['thumbnail_cache'] ?? '' ) ); ?>" style="width:100%; max-width:500px;" placeholder="/var/www/media-cache" />
 								</label>
 							</p>
 
@@ -89,10 +93,40 @@ class ExternalSourceSettingsPage {
 				</div>
 
 				<p>
+					<button type="button" id="wp-media-helper-add-source" class="button">Add source</button>
 					<button type="submit" class="button button-primary">Save changes</button>
 				</p>
 			</form>
 		</div>
+		<script>
+		(function () {
+			const container = document.getElementById('wp-media-helper-sources');
+			const button = document.getElementById('wp-media-helper-add-source');
+			if (!container || !button) {
+				return;
+			}
+
+			button.addEventListener('click', function () {
+				const current = container.querySelectorAll('.wp-media-helper-source').length;
+				const block = document.createElement('div');
+				block.className = 'wp-media-helper-source';
+				block.style.marginBottom = '1.5rem';
+				block.style.border = '1px solid #d0d0d0';
+				block.style.padding = '1rem';
+				block.style.maxWidth = '900px';
+				block.innerHTML = `
+					<input type="hidden" name="sources[${current}][id]" value="" />
+					<p><label><strong>Name</strong><br /><input type="text" name="sources[${current}][name]" value="" style="width:100%; max-width:500px;" placeholder="My external source" /></label></p>
+					<p><label><strong>Root directory</strong><br /><input type="text" name="sources[${current}][root]" value="" style="width:100%; max-width:500px;" placeholder="/var/www/media" /></label></p>
+					<p><label><strong>Path pattern</strong><br /><input type="text" name="sources[${current}][path_pattern]" value="" style="width:100%; max-width:500px;" placeholder="{date:Y}/{date:m}/{date:d}" /></label></p>
+					<p><label><strong>Filter pattern</strong><br /><input type="text" name="sources[${current}][filter_pattern]" value="" style="width:100%; max-width:500px;" placeholder="{date:Ymd}" /></label></p>
+					<p><label><strong>Thumbnail cache directory</strong><br /><input type="text" name="sources[${current}][thumbnail_cache]" value="" style="width:100%; max-width:500px;" placeholder="/var/www/media-cache" /></label></p>
+					<p><label><input type="checkbox" name="sources[${current}][enabled]" value="1" checked /> Enabled</label></p>
+				`;
+				container.appendChild(block);
+			});
+		})();
+		</script>
 		<?php
 	}
 
