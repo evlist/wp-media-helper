@@ -35,95 +35,175 @@ class ExternalSourceSettingsPage {
 		);
 		$sources = $settings->ensureAtLeastOneSource( $this->loadSources() );
 		?>
-		<div class="wrap">
-			<h1>WP Media Helper</h1>
+		<div class="wrap wp-media-helper-settings">
+			<h1><?php echo esc_html( get_admin_page_title() ?: 'WP Media Helper' ); ?></h1>
+
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<input type="hidden" name="action" value="wp_media_helper_save_external_sources" />
 				<?php wp_nonce_field( 'wp_media_helper_save_external_sources' ); ?>
+
 				<h2>External media sources</h2>
-				<p>Add one or more directories that should be included in the external media workflow.</p>
-				<div id="wp-media-helper-sources">
+				<p class="description">Add one or more directories that should be included in the external media workflow.</p>
+
+				<div id="wp-media-helper-sources" class="wp-media-helper-source-list">
 					<?php foreach ( $sources as $index => $source ) : ?>
-						<div class="wp-media-helper-source" style="margin-bottom:1.5rem; border:1px solid #d0d0d0; padding:1rem; max-width:900px;">
+						<div class="wp-media-helper-source">
 							<input type="hidden" name="sources[<?php echo esc_attr( $index ); ?>][id]" value="<?php echo esc_attr( (string) ( $source['id'] ?? '' ) ); ?>" />
 
-							<p>
-								<label>
-									<strong>Name</strong><br />
-									<input type="text" name="sources[<?php echo esc_attr( $index ); ?>][name]" value="<?php echo esc_attr( (string) ( $source['name'] ?? '' ) ); ?>" style="width:100%; max-width:500px;" placeholder="My external source" />
-								</label>
-							</p>
-
-							<p>
-								<label>
-									<strong>Root directory</strong><br />
-									<input type="text" name="sources[<?php echo esc_attr( $index ); ?>][root]" value="<?php echo esc_attr( (string) ( $source['root'] ?? '' ) ); ?>" style="width:100%; max-width:500px;" placeholder="/var/www/media" />
-								</label>
-							</p>
-
-							<p>
-								<label>
-									<strong>Path pattern</strong><br />
-									<input type="text" name="sources[<?php echo esc_attr( $index ); ?>][path_pattern]" value="<?php echo esc_attr( (string) ( $source['path_pattern'] ?? '' ) ); ?>" style="width:100%; max-width:500px;" placeholder="{date:Y}/{date:m}/{date:d}" />
-								</label>
-							</p>
-
-							<p>
-								<label>
-									<strong>Filter pattern</strong><br />
-									<input type="text" name="sources[<?php echo esc_attr( $index ); ?>][filter_pattern]" value="<?php echo esc_attr( (string) ( $source['filter_pattern'] ?? '' ) ); ?>" style="width:100%; max-width:500px;" placeholder="{date:Ymd}" />
-								</label>
-							</p>
-
-							<p>
-								<label>
-									<strong>Thumbnail cache directory</strong><br />
-									<input type="text" name="sources[<?php echo esc_attr( $index ); ?>][thumbnail_cache]" value="<?php echo esc_attr( (string) ( $source['thumbnail_cache'] ?? '' ) ); ?>" style="width:100%; max-width:500px;" placeholder="/var/www/media-cache" />
-								</label>
-							</p>
-
-							<p>
-								<label>
+							<div class="wp-media-helper-source-header">
+								<strong><?php echo esc_html( (string) ( $source['name'] ?? '' ) ?: 'New source' ); ?></strong>
+								<label class="wp-media-helper-toggle">
 									<input type="checkbox" name="sources[<?php echo esc_attr( $index ); ?>][enabled]" value="1" <?php checked( ! empty( $source['enabled'] ) ); ?> />
 									Enabled
 								</label>
-							</p>
+								<button type="button" class="button-link-delete wp-media-helper-remove-source">Remove</button>
+							</div>
+
+							<table class="form-table" role="presentation">
+								<tbody>
+									<tr>
+										<th scope="row"><label for="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>">Name</label></th>
+										<td>
+											<input id="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text" name="sources[<?php echo esc_attr( $index ); ?>][name]" value="<?php echo esc_attr( (string) ( $source['name'] ?? '' ) ); ?>" placeholder="My external source" />
+										</td>
+									</tr>
+									<tr>
+										<th scope="row"><label for="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>">Root directory</label></th>
+										<td>
+											<input id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text" name="sources[<?php echo esc_attr( $index ); ?>][root]" value="<?php echo esc_attr( (string) ( $source['root'] ?? '' ) ); ?>" placeholder="/var/www/media" />
+										</td>
+									</tr>
+									<tr>
+										<th scope="row"><label for="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>">Path pattern</label></th>
+										<td>
+											<input id="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text" name="sources[<?php echo esc_attr( $index ); ?>][path_pattern]" value="<?php echo esc_attr( (string) ( $source['path_pattern'] ?? '' ) ); ?>" placeholder="{date:Y}/{date:m}/{date:d}" />
+										</td>
+									</tr>
+									<tr>
+										<th scope="row"><label for="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>">Filter pattern</label></th>
+										<td>
+											<input id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text" name="sources[<?php echo esc_attr( $index ); ?>][filter_pattern]" value="<?php echo esc_attr( (string) ( $source['filter_pattern'] ?? '' ) ); ?>" placeholder="{date:Ymd}" />
+										</td>
+									</tr>
+									<tr>
+										<th scope="row"><label for="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>">Thumbnail cache directory</label></th>
+										<td>
+											<input id="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text" name="sources[<?php echo esc_attr( $index ); ?>][thumbnail_cache]" value="<?php echo esc_attr( (string) ( $source['thumbnail_cache'] ?? '' ) ); ?>" placeholder="/var/www/media-cache" />
+										</td>
+									</tr>
+								</tbody>
+							</table>
 						</div>
 					<?php endforeach; ?>
 				</div>
 
-				<p>
+				<p class="submit">
 					<button type="button" id="wp-media-helper-add-source" class="button">Add source</button>
 					<button type="submit" class="button button-primary">Save changes</button>
 				</p>
 			</form>
 		</div>
+
+		<style>
+			.wp-media-helper-source-list {
+				display: flex;
+				flex-direction: column;
+				gap: 1rem;
+				margin-top: 1.5rem;
+			}
+			.wp-media-helper-source {
+				background: #fff;
+				border: 1px solid #dcdcde;
+				border-radius: 8px;
+				padding: 1rem 1.25rem;
+				box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+			}
+			.wp-media-helper-source-header {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				gap: 1rem;
+				margin-bottom: 0.5rem;
+				padding-bottom: 0.75rem;
+				border-bottom: 1px solid #f0f0f1;
+			}
+			.wp-media-helper-toggle {
+				display: inline-flex;
+				align-items: center;
+				gap: 0.4rem;
+				font-weight: 600;
+			}
+			.wp-media-helper-remove-source {
+				margin-left: auto;
+			}
+			.wp-media-helper-source .form-table th {
+				width: 190px;
+			}
+		</style>
+
 		<script>
 		(function () {
 			const container = document.getElementById('wp-media-helper-sources');
-			const button = document.getElementById('wp-media-helper-add-source');
-			if (!container || !button) {
+			const addButton = document.getElementById('wp-media-helper-add-source');
+			if (!container || !addButton) {
 				return;
 			}
 
-			button.addEventListener('click', function () {
-				const current = container.querySelectorAll('.wp-media-helper-source').length;
-				const block = document.createElement('div');
-				block.className = 'wp-media-helper-source';
-				block.style.marginBottom = '1.5rem';
-				block.style.border = '1px solid #d0d0d0';
-				block.style.padding = '1rem';
-				block.style.maxWidth = '900px';
-				block.innerHTML = `
-					<input type="hidden" name="sources[${current}][id]" value="" />
-					<p><label><strong>Name</strong><br /><input type="text" name="sources[${current}][name]" value="" style="width:100%; max-width:500px;" placeholder="My external source" /></label></p>
-					<p><label><strong>Root directory</strong><br /><input type="text" name="sources[${current}][root]" value="" style="width:100%; max-width:500px;" placeholder="/var/www/media" /></label></p>
-					<p><label><strong>Path pattern</strong><br /><input type="text" name="sources[${current}][path_pattern]" value="" style="width:100%; max-width:500px;" placeholder="{date:Y}/{date:m}/{date:d}" /></label></p>
-					<p><label><strong>Filter pattern</strong><br /><input type="text" name="sources[${current}][filter_pattern]" value="" style="width:100%; max-width:500px;" placeholder="{date:Ymd}" /></label></p>
-					<p><label><strong>Thumbnail cache directory</strong><br /><input type="text" name="sources[${current}][thumbnail_cache]" value="" style="width:100%; max-width:500px;" placeholder="/var/www/media-cache" /></label></p>
-					<p><label><input type="checkbox" name="sources[${current}][enabled]" value="1" checked /> Enabled</label></p>
+			const buildSourceMarkup = function (index) {
+				return `
+					<div class="wp-media-helper-source">
+						<input type="hidden" name="sources[${index}][id]" value="" />
+						<div class="wp-media-helper-source-header">
+							<strong>New source</strong>
+							<label class="wp-media-helper-toggle">
+								<input type="checkbox" name="sources[${index}][enabled]" value="1" checked />
+								Enabled
+							</label>
+							<button type="button" class="button-link-delete wp-media-helper-remove-source">Remove</button>
+						</div>
+						<table class="form-table" role="presentation">
+							<tbody>
+								<tr>
+									<th scope="row"><label for="wp-media-helper-source-name-${index}">Name</label></th>
+									<td><input id="wp-media-helper-source-name-${index}" type="text" class="regular-text" name="sources[${index}][name]" value="" placeholder="My external source" /></td>
+								</tr>
+								<tr>
+									<th scope="row"><label for="wp-media-helper-source-root-${index}">Root directory</label></th>
+									<td><input id="wp-media-helper-source-root-${index}" type="text" class="regular-text" name="sources[${index}][root]" value="" placeholder="/var/www/media" /></td>
+								</tr>
+								<tr>
+									<th scope="row"><label for="wp-media-helper-source-path-${index}">Path pattern</label></th>
+									<td><input id="wp-media-helper-source-path-${index}" type="text" class="regular-text" name="sources[${index}][path_pattern]" value="" placeholder="{date:Y}/{date:m}/{date:d}" /></td>
+								</tr>
+								<tr>
+									<th scope="row"><label for="wp-media-helper-source-filter-${index}">Filter pattern</label></th>
+									<td><input id="wp-media-helper-source-filter-${index}" type="text" class="regular-text" name="sources[${index}][filter_pattern]" value="" placeholder="{date:Ymd}" /></td>
+								</tr>
+								<tr>
+									<th scope="row"><label for="wp-media-helper-source-cache-${index}">Thumbnail cache directory</label></th>
+									<td><input id="wp-media-helper-source-cache-${index}" type="text" class="regular-text" name="sources[${index}][thumbnail_cache]" value="" placeholder="/var/www/media-cache" /></td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
 				`;
-				container.appendChild(block);
+			};
+
+			addButton.addEventListener('click', function () {
+				const index = container.querySelectorAll('.wp-media-helper-source').length;
+				const fragment = document.createElement('div');
+				fragment.innerHTML = buildSourceMarkup(index);
+				container.appendChild(fragment.firstElementChild);
+			});
+
+			container.addEventListener('click', function (event) {
+				if (!event.target.classList.contains('wp-media-helper-remove-source')) {
+					return;
+				}
+				const card = event.target.closest('.wp-media-helper-source');
+				if (card) {
+					card.remove();
+				}
 			});
 		})();
 		</script>
