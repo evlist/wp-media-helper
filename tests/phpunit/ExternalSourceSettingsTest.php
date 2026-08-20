@@ -98,4 +98,21 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertStringContainsString( 'required', $errors[0]['root'] );
 		$this->assertStringContainsString( 'required', $errors[0]['path_pattern'] );
 	}
+
+	public function test_page_collects_per_field_errors_for_invalid_sources(): void {
+		$reflection = new ReflectionClass( \WP_Media_Helper\Admin\ExternalSourceSettingsPage::class );
+		$page = $reflection->newInstanceWithoutConstructor();
+		$errors = $page->getValidationErrors( [
+			[
+				'name' => '',
+				'root' => '',
+				'path_pattern' => '',
+			],
+		] );
+
+		$this->assertArrayHasKey( 0, $errors );
+		$this->assertArrayHasKey( 'name', $errors[0] );
+		$this->assertArrayHasKey( 'root', $errors[0] );
+		$this->assertArrayHasKey( 'path_pattern', $errors[0] );
+	}
 }

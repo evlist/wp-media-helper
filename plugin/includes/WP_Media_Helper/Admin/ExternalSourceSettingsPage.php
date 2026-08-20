@@ -34,6 +34,7 @@ class ExternalSourceSettingsPage {
 			static function ( array $value ): void {}
 		);
 		$sources = $settings->ensureAtLeastOneSource( $this->loadSources() );
+		$validationErrors = $this->getValidationErrors( $sources );
 		?>
 		<div class="wrap wp-media-helper-settings">
 			<h1><?php echo esc_html( get_admin_page_title() ?: 'WP Media Helper' ); ?></h1>
@@ -64,19 +65,34 @@ class ExternalSourceSettingsPage {
 									<tr>
 										<th scope="row"><label for="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>">Name</label></th>
 										<td>
-											<input id="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text" name="sources[<?php echo esc_attr( $index ); ?>][name]" value="<?php echo esc_attr( (string) ( $source['name'] ?? '' ) ); ?>" placeholder="My external source" />
+											<input id="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['name'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][name]" value="<?php echo esc_attr( (string) ( $source['name'] ?? '' ) ); ?>" placeholder="My external source" />
+											<?php if ( isset( $validationErrors[ $index ]['name'] ) ) : ?>
+												<p class="description error-message" style="color:#d63638; margin-top:0.5rem; font-weight:600;">
+													<?php echo esc_html( $validationErrors[ $index ]['name'] ); ?>
+												</p>
+											<?php endif; ?>
 										</td>
 									</tr>
 									<tr>
 										<th scope="row"><label for="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>">Root directory</label></th>
 										<td>
-											<input id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text" name="sources[<?php echo esc_attr( $index ); ?>][root]" value="<?php echo esc_attr( (string) ( $source['root'] ?? '' ) ); ?>" placeholder="/var/www/media" />
+											<input id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['root'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][root]" value="<?php echo esc_attr( (string) ( $source['root'] ?? '' ) ); ?>" placeholder="/var/www/media" />
+											<?php if ( isset( $validationErrors[ $index ]['root'] ) ) : ?>
+												<p class="description error-message" style="color:#d63638; margin-top:0.5rem; font-weight:600;">
+													<?php echo esc_html( $validationErrors[ $index ]['root'] ); ?>
+												</p>
+											<?php endif; ?>
 										</td>
 									</tr>
 									<tr>
 										<th scope="row"><label for="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>">Path pattern</label></th>
 										<td>
-											<input id="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text" name="sources[<?php echo esc_attr( $index ); ?>][path_pattern]" value="<?php echo esc_attr( (string) ( $source['path_pattern'] ?? '' ) ); ?>" placeholder="{date:Y}/{date:m}/{date:d}" />
+											<input id="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['path_pattern'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][path_pattern]" value="<?php echo esc_attr( (string) ( $source['path_pattern'] ?? '' ) ); ?>" placeholder="{date:Y}/{date:m}/{date:d}" />
+											<?php if ( isset( $validationErrors[ $index ]['path_pattern'] ) ) : ?>
+												<p class="description error-message" style="color:#d63638; margin-top:0.5rem; font-weight:600;">
+													<?php echo esc_html( $validationErrors[ $index ]['path_pattern'] ); ?>
+												</p>
+											<?php endif; ?>
 										</td>
 									</tr>
 									<tr>
@@ -138,6 +154,10 @@ class ExternalSourceSettingsPage {
 			}
 			.wp-media-helper-source .form-table th {
 				width: 190px;
+			}
+			.is-invalid {
+				border-color: #d63638;
+				box-shadow: 0 0 0 1px #d63638;
 			}
 		</style>
 
@@ -208,6 +228,15 @@ class ExternalSourceSettingsPage {
 		})();
 		</script>
 		<?php
+	}
+
+	public function getValidationErrors( array $sources ): array {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		return $settings->validateSources( $sources );
 	}
 
 	public function save(): void {
