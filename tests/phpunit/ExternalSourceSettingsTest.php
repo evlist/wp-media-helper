@@ -75,4 +75,27 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertSame( '', $withSource[0]['root'] );
 		$this->assertSame( '', $withSource[0]['path_pattern'] );
 	}
+
+	public function test_reports_per_field_validation_errors(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => '',
+				'root' => '',
+				'path_pattern' => '',
+			],
+		] );
+
+		$this->assertArrayHasKey( 0, $errors );
+		$this->assertArrayHasKey( 'name', $errors[0] );
+		$this->assertArrayHasKey( 'root', $errors[0] );
+		$this->assertArrayHasKey( 'path_pattern', $errors[0] );
+		$this->assertStringContainsString( 'required', $errors[0]['name'] );
+		$this->assertStringContainsString( 'required', $errors[0]['root'] );
+		$this->assertStringContainsString( 'required', $errors[0]['path_pattern'] );
+	}
 }

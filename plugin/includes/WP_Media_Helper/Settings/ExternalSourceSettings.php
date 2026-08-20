@@ -60,6 +60,46 @@ class ExternalSourceSettings {
 	}
 
 	/**
+	 * Validates a source collection and returns field-level error messages.
+	 *
+	 * @param array<int, array<string, mixed>> $sources
+	 * @return array<int, array<string, string>>
+	 */
+	public function validateSources( array $sources ): array {
+		$errors = [];
+
+		foreach ( $sources as $index => $source ) {
+			if ( ! is_array( $source ) ) {
+				$errors[ $index ] = [ 'source' => 'Invalid source entry.' ];
+				continue;
+			}
+
+			$entryErrors = [];
+			$name = trim( (string) ( $source['name'] ?? '' ) );
+			$root = trim( (string) ( $source['root'] ?? '' ) );
+			$path = trim( (string) ( $source['path_pattern'] ?? '' ) );
+
+			if ( '' === $name ) {
+				$entryErrors['name'] = 'Name is required.';
+			}
+
+			if ( '' === $root ) {
+				$entryErrors['root'] = 'Root directory is required.';
+			}
+
+			if ( '' === $path ) {
+				$entryErrors['path_pattern'] = 'Path pattern is required.';
+			}
+
+			if ( [] !== $entryErrors ) {
+				$errors[ $index ] = $entryErrors;
+			}
+		}
+
+		return $errors;
+	}
+
+	/**
 	 * Ensures there is always at least one blank source record for the UI.
 	 *
 	 * @param array<int, array<string, mixed>> $sources
