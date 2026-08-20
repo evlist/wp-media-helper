@@ -29,7 +29,8 @@ The path resolver must accept the following inputs:
 - a configured external source object,
 - a target date as a `DateTimeInterface` or equivalent date value,
 - an optional source identifier or context string,
-- an optional filter pattern override.
+- an optional filter pattern override,
+- an optional path pattern override (if omitted, the source root is used directly).
 
 It must return:
 
@@ -51,7 +52,7 @@ The implementation should allow only the supported token set and reject unknown 
 
 ### 3. Directory resolution
 
-The resolver builds the final directory path from the configured source root and the source-specific path pattern.
+The resolver builds the final directory path from the configured source root and the source-specific path pattern. If the source does not depend on the date, the path pattern can be empty and the resolver falls back to the source root itself. In other words, a static source may simply point at its root directory, while a date-based source supplies a pattern such as `{date:Y}/{date:m}/{date:d}`.
 
 Example:
 

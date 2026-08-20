@@ -93,10 +93,26 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertArrayHasKey( 0, $errors );
 		$this->assertArrayHasKey( 'name', $errors[0] );
 		$this->assertArrayHasKey( 'root', $errors[0] );
-		$this->assertArrayHasKey( 'path_pattern', $errors[0] );
+		$this->assertFalse( array_key_exists( 'path_pattern', $errors[0] ) );
 		$this->assertStringContainsString( 'required', $errors[0]['name'] );
 		$this->assertStringContainsString( 'required', $errors[0]['root'] );
-		$this->assertStringContainsString( 'required', $errors[0]['path_pattern'] );
+	}
+
+	public function test_allows_static_sources_without_path_pattern(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Static Media',
+				'root' => '/var/www/media',
+				'path_pattern' => '',
+			],
+		] );
+
+		$this->assertSame( [], $errors );
 	}
 
 	public function test_page_collects_per_field_errors_for_invalid_sources(): void {
@@ -113,6 +129,6 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertArrayHasKey( 0, $errors );
 		$this->assertArrayHasKey( 'name', $errors[0] );
 		$this->assertArrayHasKey( 'root', $errors[0] );
-		$this->assertArrayHasKey( 'path_pattern', $errors[0] );
+		$this->assertFalse( array_key_exists( 'path_pattern', $errors[0] ) );
 	}
 }

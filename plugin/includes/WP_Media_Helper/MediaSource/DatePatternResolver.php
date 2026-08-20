@@ -10,10 +10,30 @@ use InvalidArgumentException;
 class DatePatternResolver {
 
 	/**
+	 * Resolves a fully qualified source path.
+	 *
+	 * When no path pattern is configured, the source root is used directly.
+	 *
+	 * @param string            $root    Absolute root path of the source.
+	 * @param string            $pattern Optional pattern to resolve under the root.
+	 * @param DateTimeInterface $date    Date used to resolve placeholders.
+	 * @return string
+	 */
+	public function resolvePath( string $root, string $pattern, DateTimeInterface $date ): string {
+		$trimmedRoot = rtrim( $root, '/\\' );
+		if ( '' === $pattern || null === $pattern ) {
+			return $trimmedRoot;
+		}
+
+		$resolved = $this->resolve( $pattern, $date );
+		return rtrim( $trimmedRoot, '/\\' ) . '/' . ltrim( $resolved, '/\\' );
+	}
+
+	/**
 	 * Resolves date placeholders using PHP date format characters.
 	 *
-	 * @param string             $pattern Pattern containing {date:...} placeholders.
-	 * @param DateTimeInterface  $date    Date used to resolve placeholders.
+	 * @param string            $pattern Pattern containing {date:...} placeholders.
+	 * @param DateTimeInterface $date    Date used to resolve placeholders.
 	 * @return string
 	 */
 	public function resolve( string $pattern, DateTimeInterface $date ): string {

@@ -85,9 +85,10 @@ class ExternalSourceSettingsPage {
 										</td>
 									</tr>
 									<tr>
-										<th scope="row"><label for="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>">Path pattern</label></th>
+										<th scope="row"><label for="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>">Path pattern <span class="description">(optional)</span></label></th>
 										<td>
 											<input id="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['path_pattern'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][path_pattern]" value="<?php echo esc_attr( (string) ( $source['path_pattern'] ?? '' ) ); ?>" placeholder="{date:Y}/{date:m}/{date:d}" />
+											<p class="description" style="margin-top:0.5rem;">Leave empty to use the source root directly.</p>
 											<?php if ( isset( $validationErrors[ $index ]['path_pattern'] ) ) : ?>
 												<p class="description error-message" style="color:#d63638; margin-top:0.5rem; font-weight:600;">
 													<?php echo esc_html( $validationErrors[ $index ]['path_pattern'] ); ?>

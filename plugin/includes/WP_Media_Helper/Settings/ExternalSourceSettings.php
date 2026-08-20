@@ -87,10 +87,6 @@ class ExternalSourceSettings {
 				$entryErrors['root'] = 'Root directory is required.';
 			}
 
-			if ( '' === $path ) {
-				$entryErrors['path_pattern'] = 'Path pattern is required.';
-			}
-
 			if ( [] !== $entryErrors ) {
 				$errors[ $index ] = $entryErrors;
 			}
@@ -166,9 +162,6 @@ class ExternalSourceSettings {
 			throw new InvalidArgumentException( sprintf( 'External source "%s" must define a root path.', $name ) );
 		}
 
-		if ( '' === $path ) {
-			throw new InvalidArgumentException( sprintf( 'External source "%s" must define a path pattern.', $name ) );
-		}
 
 		$id = strtolower( preg_replace( '/[^a-z0-9]+/i', '-', $name ) ?? $name );
 		$id = trim( (string) $id, '-' );

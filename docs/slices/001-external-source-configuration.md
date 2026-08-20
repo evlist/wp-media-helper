@@ -36,7 +36,7 @@ Each external source configuration includes the following fields:
 
 - Name or label: human-readable identifier used in the admin UI.
 - Root directory: absolute filesystem path to the external media root.
-- Path pattern: pattern used to resolve the source directory for a given date and context. Supports placeholders such as `{date:Y}`, `{date:m}`, `{date:d}`, and `{source}`.
+- Path pattern: optional pattern used to resolve the source directory for a given date and context. Supports placeholders such as `{date:Y}`, `{date:m}`, `{date:d}`, and `{source}`. If omitted, the resolver uses the configured root directory directly, which is valid for static sources that do not depend on the date.
 - Filter pattern: optional pattern used to filter files after the target directory is resolved. Supports placeholders such as `{date:Ymd}`.
 - Thumbnail cache directory: writable path used to store generated thumbnails for read-only sources.
 - Enabled flag: allows the source to be ignored without deleting its configuration.
@@ -97,7 +97,7 @@ Contract rules:
 - `name` is a human-readable label and must be non-empty.
 - `enabled` is a boolean flag.
 - `root` must be an absolute filesystem path and must exist/readable.
-- `path_pattern` is required and must only use supported placeholders.
+- `path_pattern` is optional and, when set, must only use supported placeholders.
 - `filter_pattern` is optional and may be empty.
 - `thumbnail_cache` is optional and, when provided, must be writable or creatable.
 - The option must be read as an array and treated as invalid if the value is malformed.

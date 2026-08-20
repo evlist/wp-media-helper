@@ -49,4 +49,24 @@ class DatePatternResolverTest extends TestCase {
 		$this->expectException( InvalidArgumentException::class );
 		$resolver->resolve( 'root/{date:}', $date );
 	}
+
+	public function test_uses_source_root_when_path_pattern_is_empty(): void {
+		$resolver = new DatePatternResolver();
+		$date     = new DateTimeImmutable( '2026-08-12' );
+
+		$this->assertSame(
+			'/var/www/media',
+			$resolver->resolvePath( '/var/www/media', '', $date )
+		);
+	}
+
+	public function test_joins_root_and_pattern_when_pattern_is_present(): void {
+		$resolver = new DatePatternResolver();
+		$date     = new DateTimeImmutable( '2026-08-12' );
+
+		$this->assertSame(
+			'/var/www/media/2026/08/12',
+			$resolver->resolvePath( '/var/www/media', '{date:Y}/{date:m}/{date:d}', $date )
+		);
+	}
 }
