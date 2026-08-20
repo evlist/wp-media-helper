@@ -22,5 +22,13 @@
     "**/.devcontainer/**"
   ],
   "phpsab.phpExecutablePath": "/usr/bin/php",
-  "phpsab.debug": true
+  "phpsab.debug": true,
+  "chat.tools.terminal.autoApprove": {
+    "phpunit": true,
+    "git add": true,
+    "git commit": true,
+    "git push": true,
+    "./vendor/bin/phpunit": true,
+    "composer": true
+  }
 }

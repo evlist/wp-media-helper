@@ -143,6 +143,11 @@ if [ ! -f "$DOCROOT/wp-config.php" ]; then
   wp config set FS_METHOD direct --type=constant --path="$DOCROOT"
 fi
 
+# Keep the public Codespaces URL authoritative even when the database was
+# initialized earlier with a local URL.
+wp config set WP_HOME "$WP_URL" --type=constant --path="$DOCROOT"
+wp config set WP_SITEURL "$WP_URL" --type=constant --path="$DOCROOT"
+
 if ! wp core is-installed --path="$DOCROOT" >/dev/null 2>&1; then
   log "Installing WordPress..."
   wp core install \

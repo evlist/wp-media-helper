@@ -35,3 +35,7 @@ spl_autoload_register( function ( string $class ): void {
 		require $file;
 	}
 } );
+
+add_action( 'plugins_loaded', function (): void {
+	WP_Media_Helper\Admin\Bootstrap::init();
+} );
