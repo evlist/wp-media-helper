@@ -86,9 +86,10 @@ class ExternalSourceSettingsPage {
 									<tr>
 										<th scope="row"><label for="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>">Name</label></th>
 										<td>
-											<input id="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['name'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][name]" value="<?php echo esc_attr( (string) ( $source['name'] ?? '' ) ); ?>" title="Label used to identify this source in the admin. Example: Nextcloud Main" />
+											<input id="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['name'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][name]" value="<?php echo esc_attr( (string) ( $source['name'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>-description" />
+											<p class="description" id="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>-description">Label used to identify this source in the admin, for example <code>Nextcloud Main</code>.</p>
 											<?php if ( isset( $validationErrors[ $index ]['name'] ) ) : ?>
-												<p class="description error-message" style="color:#d63638; margin-top:0.5rem; font-weight:600;">
+												<p class="description wp-media-helper-field-error">
 													<?php echo esc_html( $validationErrors[ $index ]['name'] ); ?>
 												</p>
 											<?php endif; ?>
@@ -97,9 +98,10 @@ class ExternalSourceSettingsPage {
 									<tr>
 										<th scope="row"><label for="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>">Root directory</label></th>
 										<td>
-											<input id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['root'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][root]" value="<?php echo esc_attr( (string) ( $source['root'] ?? '' ) ); ?>" title="Absolute path to the external media root. Example: /var/www/media" />
+											<input id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['root'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][root]" value="<?php echo esc_attr( (string) ( $source['root'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>-description" />
+											<p class="description" id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>-description">Absolute path to the external media root, for example <code>/var/www/media</code>.</p>
 											<?php if ( isset( $validationErrors[ $index ]['root'] ) ) : ?>
-												<p class="description error-message" style="color:#d63638; margin-top:0.5rem; font-weight:600;">
+												<p class="description wp-media-helper-field-error">
 													<?php echo esc_html( $validationErrors[ $index ]['root'] ); ?>
 												</p>
 											<?php endif; ?>
@@ -108,10 +110,10 @@ class ExternalSourceSettingsPage {
 									<tr>
 										<th scope="row"><label for="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>">Path pattern <span class="description">(optional)</span></label></th>
 										<td>
-											<input id="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['path_pattern'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][path_pattern]" value="<?php echo esc_attr( (string) ( $source['path_pattern'] ?? '' ) ); ?>" title="Subdirectory pattern resolved for the requested date. Example: {date:Y}/{date:m}/{date:d}" />
-											<p class="description" style="margin-top:0.5rem;">Leave empty to use the source root directly.</p>
+											<input id="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['path_pattern'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][path_pattern]" value="<?php echo esc_attr( (string) ( $source['path_pattern'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>-description" />
+											<p class="description" id="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>-description">Subdirectory resolved for the requested date, for example <code>{date:Y}/{date:m}/{date:d}</code>. Leave empty to use the source root directly.</p>
 											<?php if ( isset( $validationErrors[ $index ]['path_pattern'] ) ) : ?>
-												<p class="description error-message" style="color:#d63638; margin-top:0.5rem; font-weight:600;">
+												<p class="description wp-media-helper-field-error">
 													<?php echo esc_html( $validationErrors[ $index ]['path_pattern'] ); ?>
 												</p>
 											<?php endif; ?>
@@ -120,15 +122,15 @@ class ExternalSourceSettingsPage {
 									<tr>
 										<th scope="row"><label for="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>">Filter pattern <span class="description">(optional)</span></label></th>
 										<td>
-											<input id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text" name="sources[<?php echo esc_attr( $index ); ?>][filter_pattern]" value="<?php echo esc_attr( (string) ( $source['filter_pattern'] ?? '' ) ); ?>" title="Filename filter applied once the directory is resolved. Example: {date:Ymd}" />
-											<p class="description" style="margin-top:0.5rem;">Leave empty to keep every file in the resolved directory.</p>
+											<input id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text" name="sources[<?php echo esc_attr( $index ); ?>][filter_pattern]" value="<?php echo esc_attr( (string) ( $source['filter_pattern'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>-description" />
+											<p class="description" id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>-description">Filename filter applied once the directory is resolved, for example <code>{date:Ymd}</code>. Leave empty to keep every file in the resolved directory.</p>
 										</td>
 									</tr>
 									<tr>
 										<th scope="row"><label for="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>">Thumbnail cache directory <span class="description">(optional)</span></label></th>
 										<td>
-											<input id="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text" name="sources[<?php echo esc_attr( $index ); ?>][thumbnail_cache]" value="<?php echo esc_attr( (string) ( $source['thumbnail_cache'] ?? '' ) ); ?>" title="Writable directory storing thumbnails for read-only sources. Example: /var/www/media-cache" />
-											<p class="description" style="margin-top:0.5rem;">Required only when the source directory is read-only.</p>
+											<input id="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text" name="sources[<?php echo esc_attr( $index ); ?>][thumbnail_cache]" value="<?php echo esc_attr( (string) ( $source['thumbnail_cache'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>-description" />
+											<p class="description" id="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>-description">Writable directory storing thumbnails, for example <code>/var/www/media-cache</code>. Required only when the source directory is read-only.</p>
 										</td>
 									</tr>
 								</tbody>
@@ -188,6 +190,10 @@ class ExternalSourceSettingsPage {
 				color: #50575e;
 				font-style: italic;
 			}
+			.wp-media-helper-field-error {
+				color: #d63638;
+				font-weight: 600;
+			}
 		</style>
 
 		<script>
@@ -222,23 +228,23 @@ class ExternalSourceSettingsPage {
 							<tbody>
 								<tr>
 									<th scope="row"><label for="wp-media-helper-source-name-${index}">Name</label></th>
-									<td><input id="wp-media-helper-source-name-${index}" type="text" class="regular-text" name="sources[${index}][name]" value="" title="Label used to identify this source in the admin. Example: Nextcloud Main" /></td>
+									<td><input id="wp-media-helper-source-name-${index}" type="text" class="regular-text" name="sources[${index}][name]" value="" aria-describedby="wp-media-helper-source-name-${index}-description" /><p class="description" id="wp-media-helper-source-name-${index}-description">Label used to identify this source in the admin, for example <code>Nextcloud Main</code>.</p></td>
 								</tr>
 								<tr>
 									<th scope="row"><label for="wp-media-helper-source-root-${index}">Root directory</label></th>
-									<td><input id="wp-media-helper-source-root-${index}" type="text" class="regular-text" name="sources[${index}][root]" value="" title="Absolute path to the external media root. Example: /var/www/media" /></td>
+									<td><input id="wp-media-helper-source-root-${index}" type="text" class="regular-text" name="sources[${index}][root]" value="" aria-describedby="wp-media-helper-source-root-${index}-description" /><p class="description" id="wp-media-helper-source-root-${index}-description">Absolute path to the external media root, for example <code>/var/www/media</code>.</p></td>
 								</tr>
 								<tr>
 									<th scope="row"><label for="wp-media-helper-source-path-${index}">Path pattern <span class="description">(optional)</span></label></th>
-									<td><input id="wp-media-helper-source-path-${index}" type="text" class="regular-text" name="sources[${index}][path_pattern]" value="" title="Subdirectory pattern resolved for the requested date. Example: {date:Y}/{date:m}/{date:d}" /><p class="description" style="margin-top:0.5rem;">Leave empty to use the source root directly.</p></td>
+									<td><input id="wp-media-helper-source-path-${index}" type="text" class="regular-text" name="sources[${index}][path_pattern]" value="" aria-describedby="wp-media-helper-source-path-${index}-description" /><p class="description" id="wp-media-helper-source-path-${index}-description">Subdirectory resolved for the requested date, for example <code>{date:Y}/{date:m}/{date:d}</code>. Leave empty to use the source root directly.</p></td>
 								</tr>
 								<tr>
 									<th scope="row"><label for="wp-media-helper-source-filter-${index}">Filter pattern <span class="description">(optional)</span></label></th>
-									<td><input id="wp-media-helper-source-filter-${index}" type="text" class="regular-text" name="sources[${index}][filter_pattern]" value="" title="Filename filter applied once the directory is resolved. Example: {date:Ymd}" /><p class="description" style="margin-top:0.5rem;">Leave empty to keep every file in the resolved directory.</p></td>
+									<td><input id="wp-media-helper-source-filter-${index}" type="text" class="regular-text" name="sources[${index}][filter_pattern]" value="" aria-describedby="wp-media-helper-source-filter-${index}-description" /><p class="description" id="wp-media-helper-source-filter-${index}-description">Filename filter applied once the directory is resolved, for example <code>{date:Ymd}</code>. Leave empty to keep every file in the resolved directory.</p></td>
 								</tr>
 								<tr>
 									<th scope="row"><label for="wp-media-helper-source-cache-${index}">Thumbnail cache directory <span class="description">(optional)</span></label></th>
-									<td><input id="wp-media-helper-source-cache-${index}" type="text" class="regular-text" name="sources[${index}][thumbnail_cache]" value="" title="Writable directory storing thumbnails for read-only sources. Example: /var/www/media-cache" /><p class="description" style="margin-top:0.5rem;">Required only when the source directory is read-only.</p></td>
+									<td><input id="wp-media-helper-source-cache-${index}" type="text" class="regular-text" name="sources[${index}][thumbnail_cache]" value="" aria-describedby="wp-media-helper-source-cache-${index}-description" /><p class="description" id="wp-media-helper-source-cache-${index}-description">Writable directory storing thumbnails, for example <code>/var/www/media-cache</code>. Required only when the source directory is read-only.</p></td>
 								</tr>
 							</tbody>
 						</table>
