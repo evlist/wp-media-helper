@@ -9,6 +9,21 @@
 - Interation with IA agents may be in any language
 - Comments and documentation must stay in English. 
 
+## Internationalisation
+
+- Every user-facing string must be translatable. No literal user-facing text may
+  reach the browser untranslated.
+- PHP strings must use the WordPress translation functions with the
+  `wp-media-helper` text domain, combined with the matching escaping function
+  (`esc_html__()`, `esc_attr__()`, and so on) rather than escaping a translated
+  value separately.
+- JavaScript strings must be translated with the `@wordpress/i18n` package and
+  shipped as JSON translation files. Scripts therefore must be registered as
+  real asset files declaring the `wp-i18n` dependency and calling
+  `wp_set_script_translations()`; inline scripts cannot be localised this way.
+- Strings assembled from fragments are not acceptable. Use placeholders and
+  `sprintf()` so translators receive complete sentences.
+
 ## Product and code constraints
 
 - Full WordPress standards compliance is required.

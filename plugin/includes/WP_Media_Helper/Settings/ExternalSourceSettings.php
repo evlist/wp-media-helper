@@ -43,7 +43,7 @@ class ExternalSourceSettings {
 		}
 
 		if ( ! is_array( $value ) ) {
-			throw new InvalidArgumentException( 'External source configuration must be stored as an array.' );
+			throw new InvalidArgumentException( __( 'External source configuration must be stored as an array.', 'wp-media-helper' ) );
 		}
 
 		return array_values( $value );
@@ -70,7 +70,7 @@ class ExternalSourceSettings {
 
 		foreach ( $sources as $index => $source ) {
 			if ( ! is_array( $source ) ) {
-				$errors[ $index ] = [ 'source' => 'Invalid source entry.' ];
+				$errors[ $index ] = [ 'source' => __( 'Invalid source entry.', 'wp-media-helper' ) ];
 				continue;
 			}
 
@@ -80,11 +80,11 @@ class ExternalSourceSettings {
 			$path = trim( (string) ( $source['path_pattern'] ?? '' ) );
 
 			if ( '' === $name ) {
-				$entryErrors['name'] = 'Name is required.';
+				$entryErrors['name'] = __( 'Name is required.', 'wp-media-helper' );
 			}
 
 			if ( '' === $root ) {
-				$entryErrors['root'] = 'Root directory is required.';
+				$entryErrors['root'] = __( 'Root directory is required.', 'wp-media-helper' );
 			}
 
 			if ( [] !== $entryErrors ) {
@@ -106,7 +106,7 @@ class ExternalSourceSettings {
 
 		foreach ( $sources as $index => $source ) {
 			if ( ! is_array( $source ) ) {
-				throw new InvalidArgumentException( 'Each external source must be an array.' );
+				throw new InvalidArgumentException( __( 'Each external source must be an array.', 'wp-media-helper' ) );
 			}
 
 			$normalized[] = $this->normalizeSource( $source, $index );
@@ -133,11 +133,23 @@ class ExternalSourceSettings {
 		$path = trim( (string) ( $source['path_pattern'] ?? '' ) );
 
 		if ( '' === $name ) {
-			throw new InvalidArgumentException( sprintf( 'External source #%d must define a valid name.', $index + 1 ) );
+			throw new InvalidArgumentException(
+				sprintf(
+					/* translators: %d: position of the source in the settings form. */
+					__( 'External source #%d must define a valid name.', 'wp-media-helper' ),
+					$index + 1
+				)
+			);
 		}
 
 		if ( '' === $root ) {
-			throw new InvalidArgumentException( sprintf( 'External source "%s" must define a root path.', $name ) );
+			throw new InvalidArgumentException(
+				sprintf(
+					/* translators: %s: source name. */
+					__( 'External source "%s" must define a root path.', 'wp-media-helper' ),
+					$name
+				)
+			);
 		}
 
 
@@ -145,7 +157,13 @@ class ExternalSourceSettings {
 		$id = trim( (string) $id, '-' );
 
 		if ( '' === $id ) {
-			throw new InvalidArgumentException( sprintf( 'External source "%s" could not generate a valid identifier.', $name ) );
+			throw new InvalidArgumentException(
+				sprintf(
+					/* translators: %s: source name. */
+					__( 'External source "%s" could not generate a valid identifier.', 'wp-media-helper' ),
+					$name
+				)
+			);
 		}
 
 		return [

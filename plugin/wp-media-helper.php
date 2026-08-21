@@ -12,6 +12,7 @@
  * License:     GPL-3.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  * Text Domain: wp-media-helper
+ * Domain Path: /languages
  * Requires at least: 6.0
  * Requires PHP: 8.1
  */
@@ -19,6 +20,9 @@
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
+
+define( 'WP_MEDIA_HELPER_FILE', __FILE__ );
+define( 'WP_MEDIA_HELPER_VERSION', '0.1.0' );
 
 spl_autoload_register( function ( string $class ): void {
 	$prefix = 'WP_Media_Helper\\';

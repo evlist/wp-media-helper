@@ -9,18 +9,43 @@ use WP_Media_Helper\Settings\ExternalSourceSettings;
 
 class ExternalSourceSettingsPage {
 
+	private string $hookSuffix = '';
+
 	public function __construct() {
 		add_action( 'admin_menu', [ $this, 'register' ] );
+		add_action( 'admin_enqueue_scripts', [ $this, 'enqueueAssets' ] );
 		add_action( 'admin_post_wp_media_helper_save_external_sources', [ $this, 'save' ] );
 	}
 
 	public function register(): void {
-		add_options_page(
-			'WP Media Helper',
-			'WP Media Helper',
+		$this->hookSuffix = (string) add_options_page(
+			__( 'WP Media Helper', 'wp-media-helper' ),
+			__( 'WP Media Helper', 'wp-media-helper' ),
 			'manage_options',
 			'wp-media-helper',
 			[ $this, 'render' ]
+		);
+	}
+
+	public function enqueueAssets( string $hookSuffix ): void {
+		if ( '' === $this->hookSuffix || $hookSuffix !== $this->hookSuffix ) {
+			return;
+		}
+
+		$handle = 'wp-media-helper-external-sources';
+
+		wp_enqueue_script(
+			$handle,
+			plugins_url( 'assets/js/external-source-settings.js', WP_MEDIA_HELPER_FILE ),
+			[ 'wp-i18n' ],
+			WP_MEDIA_HELPER_VERSION,
+			true
+		);
+
+		wp_set_script_translations(
+			$handle,
+			'wp-media-helper',
+			plugin_dir_path( WP_MEDIA_HELPER_FILE ) . 'languages'
 		);
 	}
 
@@ -39,11 +64,11 @@ class ExternalSourceSettingsPage {
 		}
 		?>
 		<div class="wrap wp-media-helper-settings">
-			<h1><?php echo esc_html( get_admin_page_title() ?: 'WP Media Helper' ); ?></h1>
+			<h1><?php echo esc_html( get_admin_page_title() ?: __( 'WP Media Helper', 'wp-media-helper' ) ); ?></h1>
 
 			<?php if ( [] !== $notices ) : ?>
 				<div class="notice notice-error">
-					<p><strong>Your changes were not saved.</strong> Please fix the following and try again:</p>
+					<p><strong><?php esc_html_e( 'Your changes were not saved.', 'wp-media-helper' ); ?></strong> <?php esc_html_e( 'Please fix the following and try again:', 'wp-media-helper' ); ?></p>
 					<ul class="ul-disc">
 						<?php foreach ( $notices as $notice ) : ?>
 							<li><?php echo esc_html( $notice ); ?></li>
@@ -52,7 +77,7 @@ class ExternalSourceSettingsPage {
 				</div>
 			<?php elseif ( isset( $_GET['updated'] ) ) : ?>
 				<div class="notice notice-success is-dismissible">
-					<p>External media sources saved.</p>
+					<p><?php esc_html_e( 'External media sources saved.', 'wp-media-helper' ); ?></p>
 				</div>
 			<?php endif; ?>
 
@@ -60,11 +85,11 @@ class ExternalSourceSettingsPage {
 				<input type="hidden" name="action" value="wp_media_helper_save_external_sources" />
 				<?php wp_nonce_field( 'wp_media_helper_save_external_sources' ); ?>
 
-				<h2>External media sources</h2>
-				<p class="description">Add one or more directories that should be included in the external media workflow.</p>
+				<h2><?php esc_html_e( 'External media sources', 'wp-media-helper' ); ?></h2>
+				<p class="description"><?php esc_html_e( 'Add one or more directories that should be included in the external media workflow.', 'wp-media-helper' ); ?></p>
 
 				<p id="wp-media-helper-no-source" class="wp-media-helper-empty-state"<?php echo [] === $sources ? '' : ' hidden'; ?>>
-					No external source is configured. The plugin uses the WordPress media library only.
+					<?php esc_html_e( 'No external source is configured. The plugin uses the WordPress media library only.', 'wp-media-helper' ); ?>
 				</p>
 
 				<div id="wp-media-helper-sources" class="wp-media-helper-source-list">
@@ -73,21 +98,29 @@ class ExternalSourceSettingsPage {
 							<input type="hidden" name="sources[<?php echo esc_attr( $index ); ?>][id]" value="<?php echo esc_attr( (string) ( $source['id'] ?? '' ) ); ?>" />
 
 							<div class="wp-media-helper-source-header">
-								<strong><?php echo esc_html( (string) ( $source['name'] ?? '' ) ?: 'New source' ); ?></strong>
+								<strong><?php echo esc_html( (string) ( $source['name'] ?? '' ) ?: __( 'New source', 'wp-media-helper' ) ); ?></strong>
 								<label class="wp-media-helper-toggle">
 									<input type="checkbox" name="sources[<?php echo esc_attr( $index ); ?>][enabled]" value="1" <?php checked( ! empty( $source['enabled'] ) ); ?> />
-									Enabled
+									<?php esc_html_e( 'Enabled', 'wp-media-helper' ); ?>
 								</label>
-								<button type="button" class="button-link-delete wp-media-helper-remove-source">Remove</button>
+								<button type="button" class="button-link-delete wp-media-helper-remove-source"><?php esc_html_e( 'Remove', 'wp-media-helper' ); ?></button>
 							</div>
 
 							<table class="form-table" role="presentation">
 								<tbody>
 									<tr>
-										<th scope="row"><label for="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>">Name</label></th>
+										<th scope="row"><label for="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Name', 'wp-media-helper' ); ?></label></th>
 										<td>
 											<input id="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['name'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][name]" value="<?php echo esc_attr( (string) ( $source['name'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>-description" />
-											<p class="description" id="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>-description">Label used to identify this source in the admin, for example <code>Nextcloud Main</code>.</p>
+											<p class="description" id="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>-description">
+												<?php
+												printf(
+													/* translators: %s: example source name, wrapped in a code element. */
+													esc_html__( 'Label used to identify this source in the admin, for example %s.', 'wp-media-helper' ),
+													'<code>' . esc_html__( 'Nextcloud Main', 'wp-media-helper' ) . '</code>'
+												);
+												?>
+											</p>
 											<?php if ( isset( $validationErrors[ $index ]['name'] ) ) : ?>
 												<p class="description wp-media-helper-field-error">
 													<?php echo esc_html( $validationErrors[ $index ]['name'] ); ?>
@@ -96,10 +129,18 @@ class ExternalSourceSettingsPage {
 										</td>
 									</tr>
 									<tr>
-										<th scope="row"><label for="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>">Root directory</label></th>
+										<th scope="row"><label for="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Root directory', 'wp-media-helper' ); ?></label></th>
 										<td>
 											<input id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['root'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][root]" value="<?php echo esc_attr( (string) ( $source['root'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>-description" />
-											<p class="description" id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>-description">Absolute path to the external media root, for example <code>/var/www/media</code>.</p>
+											<p class="description" id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>-description">
+												<?php
+												printf(
+													/* translators: %s: example directory path, wrapped in a code element. */
+													esc_html__( 'Absolute path to the external media root, for example %s.', 'wp-media-helper' ),
+													'<code>/var/www/media</code>'
+												);
+												?>
+											</p>
 											<?php if ( isset( $validationErrors[ $index ]['root'] ) ) : ?>
 												<p class="description wp-media-helper-field-error">
 													<?php echo esc_html( $validationErrors[ $index ]['root'] ); ?>
@@ -108,10 +149,18 @@ class ExternalSourceSettingsPage {
 										</td>
 									</tr>
 									<tr>
-										<th scope="row"><label for="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>">Path pattern <span class="description">(optional)</span></label></th>
+										<th scope="row"><label for="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Path pattern', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
 										<td>
 											<input id="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['path_pattern'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][path_pattern]" value="<?php echo esc_attr( (string) ( $source['path_pattern'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>-description" />
-											<p class="description" id="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>-description">Subdirectory resolved for the requested date, for example <code>{date:Y}/{date:m}/{date:d}</code>. Leave empty to use the source root directly.</p>
+											<p class="description" id="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>-description">
+												<?php
+												printf(
+													/* translators: %s: example path pattern, wrapped in a code element. */
+													esc_html__( 'Subdirectory resolved for the requested date, for example %s. Leave empty to use the source root directly.', 'wp-media-helper' ),
+													'<code>{date:Y}/{date:m}/{date:d}</code>'
+												);
+												?>
+											</p>
 											<?php if ( isset( $validationErrors[ $index ]['path_pattern'] ) ) : ?>
 												<p class="description wp-media-helper-field-error">
 													<?php echo esc_html( $validationErrors[ $index ]['path_pattern'] ); ?>
@@ -120,17 +169,33 @@ class ExternalSourceSettingsPage {
 										</td>
 									</tr>
 									<tr>
-										<th scope="row"><label for="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>">Filter pattern <span class="description">(optional)</span></label></th>
+										<th scope="row"><label for="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Filter pattern', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
 										<td>
 											<input id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text" name="sources[<?php echo esc_attr( $index ); ?>][filter_pattern]" value="<?php echo esc_attr( (string) ( $source['filter_pattern'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>-description" />
-											<p class="description" id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>-description">Filename filter applied once the directory is resolved, for example <code>{date:Ymd}</code>. Leave empty to keep every file in the resolved directory.</p>
+											<p class="description" id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>-description">
+												<?php
+												printf(
+													/* translators: %s: example filename filter, wrapped in a code element. */
+													esc_html__( 'Filename filter applied once the directory is resolved, for example %s. Leave empty to keep every file in the resolved directory.', 'wp-media-helper' ),
+													'<code>{date:Ymd}</code>'
+												);
+												?>
+											</p>
 										</td>
 									</tr>
 									<tr>
-										<th scope="row"><label for="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>">Thumbnail cache directory <span class="description">(optional)</span></label></th>
+										<th scope="row"><label for="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Thumbnail cache directory', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
 										<td>
 											<input id="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text" name="sources[<?php echo esc_attr( $index ); ?>][thumbnail_cache]" value="<?php echo esc_attr( (string) ( $source['thumbnail_cache'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>-description" />
-											<p class="description" id="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>-description">Writable directory storing thumbnails, for example <code>/var/www/media-cache</code>. Required only when the source directory is read-only.</p>
+											<p class="description" id="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>-description">
+												<?php
+												printf(
+													/* translators: %s: example directory path, wrapped in a code element. */
+													esc_html__( 'Writable directory storing thumbnails, for example %s. Required only when the source directory is read-only.', 'wp-media-helper' ),
+													'<code>/var/www/media-cache</code>'
+												);
+												?>
+											</p>
 										</td>
 									</tr>
 								</tbody>
@@ -140,8 +205,8 @@ class ExternalSourceSettingsPage {
 				</div>
 
 				<p class="submit">
-					<button type="button" id="wp-media-helper-add-source" class="button">Add source</button>
-					<button type="submit" class="button button-primary">Save changes</button>
+					<button type="button" id="wp-media-helper-add-source" class="button"><?php esc_html_e( 'Add source', 'wp-media-helper' ); ?></button>
+					<button type="submit" class="button button-primary"><?php esc_html_e( 'Save changes', 'wp-media-helper' ); ?></button>
 				</p>
 			</form>
 		</div>
@@ -196,88 +261,6 @@ class ExternalSourceSettingsPage {
 			}
 		</style>
 
-		<script>
-		(function () {
-			const container = document.getElementById('wp-media-helper-sources');
-			const addButton = document.getElementById('wp-media-helper-add-source');
-			if (!container || !addButton) {
-				return;
-			}
-			let nextIndex = container.querySelectorAll('.wp-media-helper-source').length;
-			const emptyState = document.getElementById('wp-media-helper-no-source');
-
-			const refreshEmptyState = function () {
-				if (emptyState) {
-					emptyState.hidden = container.querySelectorAll('.wp-media-helper-source').length > 0;
-				}
-			};
-
-			const buildSourceMarkup = function (index) {
-				return `
-					<div class="wp-media-helper-source">
-						<input type="hidden" name="sources[${index}][id]" value="" />
-						<div class="wp-media-helper-source-header">
-							<strong>New source</strong>
-							<label class="wp-media-helper-toggle">
-								<input type="checkbox" name="sources[${index}][enabled]" value="1" checked />
-								Enabled
-							</label>
-							<button type="button" class="button-link-delete wp-media-helper-remove-source">Remove</button>
-						</div>
-						<table class="form-table" role="presentation">
-							<tbody>
-								<tr>
-									<th scope="row"><label for="wp-media-helper-source-name-${index}">Name</label></th>
-									<td><input id="wp-media-helper-source-name-${index}" type="text" class="regular-text" name="sources[${index}][name]" value="" aria-describedby="wp-media-helper-source-name-${index}-description" /><p class="description" id="wp-media-helper-source-name-${index}-description">Label used to identify this source in the admin, for example <code>Nextcloud Main</code>.</p></td>
-								</tr>
-								<tr>
-									<th scope="row"><label for="wp-media-helper-source-root-${index}">Root directory</label></th>
-									<td><input id="wp-media-helper-source-root-${index}" type="text" class="regular-text" name="sources[${index}][root]" value="" aria-describedby="wp-media-helper-source-root-${index}-description" /><p class="description" id="wp-media-helper-source-root-${index}-description">Absolute path to the external media root, for example <code>/var/www/media</code>.</p></td>
-								</tr>
-								<tr>
-									<th scope="row"><label for="wp-media-helper-source-path-${index}">Path pattern <span class="description">(optional)</span></label></th>
-									<td><input id="wp-media-helper-source-path-${index}" type="text" class="regular-text" name="sources[${index}][path_pattern]" value="" aria-describedby="wp-media-helper-source-path-${index}-description" /><p class="description" id="wp-media-helper-source-path-${index}-description">Subdirectory resolved for the requested date, for example <code>{date:Y}/{date:m}/{date:d}</code>. Leave empty to use the source root directly.</p></td>
-								</tr>
-								<tr>
-									<th scope="row"><label for="wp-media-helper-source-filter-${index}">Filter pattern <span class="description">(optional)</span></label></th>
-									<td><input id="wp-media-helper-source-filter-${index}" type="text" class="regular-text" name="sources[${index}][filter_pattern]" value="" aria-describedby="wp-media-helper-source-filter-${index}-description" /><p class="description" id="wp-media-helper-source-filter-${index}-description">Filename filter applied once the directory is resolved, for example <code>{date:Ymd}</code>. Leave empty to keep every file in the resolved directory.</p></td>
-								</tr>
-								<tr>
-									<th scope="row"><label for="wp-media-helper-source-cache-${index}">Thumbnail cache directory <span class="description">(optional)</span></label></th>
-									<td><input id="wp-media-helper-source-cache-${index}" type="text" class="regular-text" name="sources[${index}][thumbnail_cache]" value="" aria-describedby="wp-media-helper-source-cache-${index}-description" /><p class="description" id="wp-media-helper-source-cache-${index}-description">Writable directory storing thumbnails, for example <code>/var/www/media-cache</code>. Required only when the source directory is read-only.</p></td>
-								</tr>
-							</tbody>
-						</table>
-					</div>
-				`;
-			};
-
-			addButton.addEventListener('click', function () {
-				const index = nextIndex++;
-				const fragment = document.createElement('div');
-				fragment.innerHTML = buildSourceMarkup(index);
-				container.appendChild(fragment.firstElementChild);
-				refreshEmptyState();
-			});
-
-			container.addEventListener('click', function (event) {
-				if (!event.target.classList.contains('wp-media-helper-remove-source')) {
-					return;
-				}
-				const card = event.target.closest('.wp-media-helper-source');
-				if (!card) {
-					return;
-				}
-
-				const nameInput = card.querySelector('input[name$="[name]"]');
-				const sourceName = nameInput && nameInput.value.trim() ? nameInput.value.trim() : 'this source';
-				if (window.confirm('Remove ' + sourceName + '? This change will be saved when you click Save changes.')) {
-					card.remove();
-					refreshEmptyState();
-				}
-			});
-		})();
-		</script>
 		<?php
 	}
 
@@ -301,7 +284,12 @@ class ExternalSourceSettingsPage {
 
 		foreach ( $this->getValidationErrors( $sources ) as $index => $fieldErrors ) {
 			foreach ( $fieldErrors as $message ) {
-				$notices[] = sprintf( 'Source #%d: %s', (int) $index + 1, $message );
+				$notices[] = sprintf(
+					/* translators: 1: position of the source in the form, 2: validation message. */
+					__( 'Source #%1$d: %2$s', 'wp-media-helper' ),
+					(int) $index + 1,
+					$message
+				);
 			}
 		}
 
@@ -310,7 +298,7 @@ class ExternalSourceSettingsPage {
 
 	public function save(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( 'Unauthorized', 403 );
+			wp_die( esc_html__( 'Unauthorized', 'wp-media-helper' ), 403 );
 		}
 
 		check_admin_referer( 'wp_media_helper_save_external_sources' );
