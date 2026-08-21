@@ -46,6 +46,20 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertSame( '/tmp/wp-media-helper-cache', $saved[0]['thumbnail_cache'] );
 	}
 
+	public function test_saves_an_empty_collection_when_all_sources_are_removed(): void {
+		$saved = null;
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ) use ( &$saved ): void {
+				$saved = $value;
+			}
+		);
+
+		$settings->saveAll( [] );
+
+		$this->assertSame( [], $saved );
+	}
+
 	public function test_rejects_invalid_source_shape(): void {
 		$settings = new ExternalSourceSettings(
 			static fn(): mixed => [],

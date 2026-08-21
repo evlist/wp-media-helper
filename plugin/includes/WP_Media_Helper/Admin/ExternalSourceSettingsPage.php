@@ -169,6 +169,7 @@ class ExternalSourceSettingsPage {
 			if (!container || !addButton) {
 				return;
 			}
+			let nextIndex = container.querySelectorAll('.wp-media-helper-source').length;
 
 			const buildSourceMarkup = function (index) {
 				return `
@@ -211,7 +212,7 @@ class ExternalSourceSettingsPage {
 			};
 
 			addButton.addEventListener('click', function () {
-				const index = container.querySelectorAll('.wp-media-helper-source').length;
+				const index = nextIndex++;
 				const fragment = document.createElement('div');
 				fragment.innerHTML = buildSourceMarkup(index);
 				container.appendChild(fragment.firstElementChild);
@@ -222,7 +223,13 @@ class ExternalSourceSettingsPage {
 					return;
 				}
 				const card = event.target.closest('.wp-media-helper-source');
-				if (card) {
+				if (!card) {
+					return;
+				}
+
+				const nameInput = card.querySelector('input[name$="[name]"]');
+				const sourceName = nameInput && nameInput.value.trim() ? nameInput.value.trim() : 'this source';
+				if (window.confirm('Remove ' + sourceName + '? This change will be saved when you click Save changes.')) {
 					card.remove();
 				}
 			});
