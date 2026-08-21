@@ -131,4 +131,42 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertArrayHasKey( 'root', $errors[0] );
 		$this->assertFalse( array_key_exists( 'path_pattern', $errors[0] ) );
 	}
+
+	public function test_page_lists_every_error_with_its_source_position(): void {
+		$reflection = new ReflectionClass( \WP_Media_Helper\Admin\ExternalSourceSettingsPage::class );
+		$page = $reflection->newInstanceWithoutConstructor();
+
+		$notices = $page->buildErrorNotices( [
+			[
+				'name' => 'Nextcloud',
+				'root' => '/var/www/media',
+			],
+			[
+				'name' => '',
+				'root' => '',
+			],
+		] );
+
+		$this->assertSame(
+			[
+				'Source #2: Name is required.',
+				'Source #2: Root directory is required.',
+			],
+			$notices
+		);
+	}
+
+	public function test_page_reports_no_notice_for_valid_sources(): void {
+		$reflection = new ReflectionClass( \WP_Media_Helper\Admin\ExternalSourceSettingsPage::class );
+		$page = $reflection->newInstanceWithoutConstructor();
+
+		$notices = $page->buildErrorNotices( [
+			[
+				'name' => 'Nextcloud',
+				'root' => '/var/www/media',
+			],
+		] );
+
+		$this->assertSame( [], $notices );
+	}
 }

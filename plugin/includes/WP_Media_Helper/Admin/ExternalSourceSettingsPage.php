@@ -29,11 +29,32 @@ class ExternalSourceSettingsPage {
 			return;
 		}
 
-		$sources = $this->loadSources();
+		$pending = $this->consumePendingSubmission();
+		$sources = null === $pending ? $this->loadSources() : $pending['sources'];
 		$validationErrors = $this->getValidationErrors( $sources );
+		$notices = $this->buildErrorNotices( $sources );
+
+		if ( null !== $pending && '' !== $pending['message'] ) {
+			array_unshift( $notices, $pending['message'] );
+		}
 		?>
 		<div class="wrap wp-media-helper-settings">
 			<h1><?php echo esc_html( get_admin_page_title() ?: 'WP Media Helper' ); ?></h1>
+
+			<?php if ( [] !== $notices ) : ?>
+				<div class="notice notice-error">
+					<p><strong>Your changes were not saved.</strong> Please fix the following and try again:</p>
+					<ul class="ul-disc">
+						<?php foreach ( $notices as $notice ) : ?>
+							<li><?php echo esc_html( $notice ); ?></li>
+						<?php endforeach; ?>
+					</ul>
+				</div>
+			<?php elseif ( isset( $_GET['updated'] ) ) : ?>
+				<div class="notice notice-success is-dismissible">
+					<p>External media sources saved.</p>
+				</div>
+			<?php endif; ?>
 
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<input type="hidden" name="action" value="wp_media_helper_save_external_sources" />
@@ -261,6 +282,24 @@ class ExternalSourceSettingsPage {
 		return $settings->validateSources( $sources );
 	}
 
+	/**
+	 * Flattens field errors into user-facing messages pointing at their source.
+	 *
+	 * @param array<int, array<string, mixed>> $sources
+	 * @return string[]
+	 */
+	public function buildErrorNotices( array $sources ): array {
+		$notices = [];
+
+		foreach ( $this->getValidationErrors( $sources ) as $index => $fieldErrors ) {
+			foreach ( $fieldErrors as $message ) {
+				$notices[] = sprintf( 'Source #%d: %s', (int) $index + 1, $message );
+			}
+		}
+
+		return $notices;
+	}
+
 	public function save(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( 'Unauthorized', 403 );
@@ -268,9 +307,15 @@ class ExternalSourceSettingsPage {
 
 		check_admin_referer( 'wp_media_helper_save_external_sources' );
 
-		$raw = $_POST['sources'] ?? [];
+		$raw = wp_unslash( $_POST['sources'] ?? [] );
 		if ( ! is_array( $raw ) ) {
 			$raw = [];
+		}
+
+		$submitted = array_values( $raw );
+
+		if ( [] !== $this->getValidationErrors( $submitted ) ) {
+			$this->redirectBackWithSubmission( $submitted );
 		}
 
 		$settings = new ExternalSourceSettings(
@@ -281,13 +326,58 @@ class ExternalSourceSettingsPage {
 		);
 
 		try {
-			$settings->saveAll( $raw );
+			$settings->saveAll( $submitted );
 		} catch ( InvalidArgumentException $exception ) {
-			wp_die( esc_html( $exception->getMessage() ), 'Invalid external source configuration', [ 'back_link' => true ] );
+			$this->redirectBackWithSubmission( $submitted, $exception->getMessage() );
 		}
 
-		wp_safe_redirect( add_query_arg( 'updated', 'true', admin_url( 'options-general.php?page=wp-media-helper' ) ) );
+		wp_safe_redirect( add_query_arg( 'updated', 'true', $this->pageUrl() ) );
 		exit;
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $submitted
+	 */
+	private function redirectBackWithSubmission( array $submitted, string $message = '' ): void {
+		set_transient(
+			$this->pendingSubmissionKey(),
+			[
+				'sources' => $submitted,
+				'message' => $message,
+			],
+			5 * MINUTE_IN_SECONDS
+		);
+
+		wp_safe_redirect( $this->pageUrl() );
+		exit;
+	}
+
+	/**
+	 * Returns the rejected submission so the form can be redisplayed as filled in.
+	 *
+	 * @return array{sources: array<int, array<string, mixed>>, message: string}|null
+	 */
+	private function consumePendingSubmission(): ?array {
+		$pending = get_transient( $this->pendingSubmissionKey() );
+
+		if ( ! is_array( $pending ) || ! isset( $pending['sources'] ) || ! is_array( $pending['sources'] ) ) {
+			return null;
+		}
+
+		delete_transient( $this->pendingSubmissionKey() );
+
+		return [
+			'sources' => array_values( $pending['sources'] ),
+			'message' => (string) ( $pending['message'] ?? '' ),
+		];
+	}
+
+	private function pendingSubmissionKey(): string {
+		return 'wp_media_helper_pending_sources_' . get_current_user_id();
+	}
+
+	private function pageUrl(): string {
+		return admin_url( 'options-general.php?page=wp-media-helper' );
 	}
 
 	/**
