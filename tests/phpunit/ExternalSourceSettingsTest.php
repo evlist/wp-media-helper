@@ -76,20 +76,6 @@ class ExternalSourceSettingsTest extends TestCase {
 		] );
 	}
 
-	public function test_provides_a_blank_source_row_when_no_sources_are_configured(): void {
-		$settings = new ExternalSourceSettings(
-			static fn(): mixed => [],
-			static function ( array $value ): void {}
-		);
-
-		$withSource = $settings->ensureAtLeastOneSource( [] );
-
-		$this->assertCount( 1, $withSource );
-		$this->assertSame( '', $withSource[0]['name'] );
-		$this->assertSame( '', $withSource[0]['root'] );
-		$this->assertSame( '', $withSource[0]['path_pattern'] );
-	}
-
 	public function test_reports_per_field_validation_errors(): void {
 		$settings = new ExternalSourceSettings(
 			static fn(): mixed => [],

@@ -96,28 +96,6 @@ class ExternalSourceSettings {
 	}
 
 	/**
-	 * Ensures there is always at least one blank source record for the UI.
-	 *
-	 * @param array<int, array<string, mixed>> $sources
-	 * @return array<int, array<string, mixed>>
-	 */
-	public function ensureAtLeastOneSource( array $sources ): array {
-		if ( [] !== $sources ) {
-			return $sources;
-		}
-
-		return [[
-			'id' => '',
-			'name' => '',
-			'enabled' => true,
-			'root' => '',
-			'path_pattern' => '',
-			'filter_pattern' => '',
-			'thumbnail_cache' => '',
-		]];
-	}
-
-	/**
 	 * Validates and normalizes a collection of sources without persisting them.
 	 *
 	 * @param array<int, array<string, mixed>> $sources

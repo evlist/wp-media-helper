@@ -29,11 +29,7 @@ class ExternalSourceSettingsPage {
 			return;
 		}
 
-		$settings = new ExternalSourceSettings(
-			static fn(): mixed => get_option( ExternalSourceSettings::optionKey(), [] ),
-			static function ( array $value ): void {}
-		);
-		$sources = $settings->ensureAtLeastOneSource( $this->loadSources() );
+		$sources = $this->loadSources();
 		$validationErrors = $this->getValidationErrors( $sources );
 		?>
 		<div class="wrap wp-media-helper-settings">
@@ -45,6 +41,10 @@ class ExternalSourceSettingsPage {
 
 				<h2>External media sources</h2>
 				<p class="description">Add one or more directories that should be included in the external media workflow.</p>
+
+				<p id="wp-media-helper-no-source" class="wp-media-helper-empty-state"<?php echo [] === $sources ? '' : ' hidden'; ?>>
+					No external source is configured. The plugin uses the WordPress media library only.
+				</p>
 
 				<div id="wp-media-helper-sources" class="wp-media-helper-source-list">
 					<?php foreach ( $sources as $index => $source ) : ?>
@@ -160,6 +160,11 @@ class ExternalSourceSettingsPage {
 				border-color: #d63638;
 				box-shadow: 0 0 0 1px #d63638;
 			}
+			.wp-media-helper-empty-state {
+				margin-top: 1.5rem;
+				color: #50575e;
+				font-style: italic;
+			}
 		</style>
 
 		<script>
@@ -170,6 +175,13 @@ class ExternalSourceSettingsPage {
 				return;
 			}
 			let nextIndex = container.querySelectorAll('.wp-media-helper-source').length;
+			const emptyState = document.getElementById('wp-media-helper-no-source');
+
+			const refreshEmptyState = function () {
+				if (emptyState) {
+					emptyState.hidden = container.querySelectorAll('.wp-media-helper-source').length > 0;
+				}
+			};
 
 			const buildSourceMarkup = function (index) {
 				return `
@@ -216,6 +228,7 @@ class ExternalSourceSettingsPage {
 				const fragment = document.createElement('div');
 				fragment.innerHTML = buildSourceMarkup(index);
 				container.appendChild(fragment.firstElementChild);
+				refreshEmptyState();
 			});
 
 			container.addEventListener('click', function (event) {
@@ -231,6 +244,7 @@ class ExternalSourceSettingsPage {
 				const sourceName = nameInput && nameInput.value.trim() ? nameInput.value.trim() : 'this source';
 				if (window.confirm('Remove ' + sourceName + '? This change will be saved when you click Save changes.')) {
 					card.remove();
+					refreshEmptyState();
 				}
 			});
 		})();
