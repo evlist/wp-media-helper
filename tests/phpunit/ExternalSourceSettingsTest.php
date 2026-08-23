@@ -128,6 +128,93 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertSame( [], $errors );
 	}
 
+	public function test_rejects_unknown_placeholder_in_path_pattern(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Bad pattern',
+				'root' => $this->tmpRoot,
+				'path_pattern' => '{unknown}/{date:Y}',
+			],
+		] );
+
+		$this->assertArrayHasKey( 'path_pattern', $errors[0] );
+		$this->assertStringContainsString( 'unknown', $errors[0]['path_pattern'] );
+	}
+
+	public function test_rejects_empty_date_format_in_path_pattern(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Bad pattern',
+				'root' => $this->tmpRoot,
+				'path_pattern' => '{date:}',
+			],
+		] );
+
+		$this->assertArrayHasKey( 'path_pattern', $errors[0] );
+	}
+
+	public function test_rejects_unmatched_braces_in_path_pattern(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Bad pattern',
+				'root' => $this->tmpRoot,
+				'path_pattern' => '{date:Y}/{date:m',
+			],
+		] );
+
+		$this->assertArrayHasKey( 'path_pattern', $errors[0] );
+	}
+
+	public function test_rejects_unknown_placeholder_in_filter_pattern(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Bad filter',
+				'root' => $this->tmpRoot,
+				'filter_pattern' => '{foo}',
+			],
+		] );
+
+		$this->assertArrayHasKey( 'filter_pattern', $errors[0] );
+	}
+
+	public function test_accepts_valid_path_and_filter_patterns(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Good pattern',
+				'root' => $this->tmpRoot,
+				'path_pattern' => '{date:Y}/{date:m}/{date:d}',
+				'filter_pattern' => '{date:Ymd}',
+			],
+		] );
+
+		$this->assertSame( [], $errors );
+	}
+
 	public function test_rejects_relative_root_directory(): void {
 		$settings = new ExternalSourceSettings(
 			static fn(): mixed => [],

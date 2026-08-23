@@ -105,6 +105,21 @@ class ExternalSourceSettings {
 				$entryErrors['thumbnail_cache'] = __( 'A thumbnail cache directory is required because the root directory is read-only.', 'wp-media-helper' );
 			}
 
+			if ( '' !== $path ) {
+				$pathError = $this->validatePatternSyntax( $path );
+				if ( null !== $pathError ) {
+					$entryErrors['path_pattern'] = $pathError;
+				}
+			}
+
+			$filter = trim( (string) ( $source['filter_pattern'] ?? '' ) );
+			if ( '' !== $filter ) {
+				$filterError = $this->validatePatternSyntax( $filter );
+				if ( null !== $filterError ) {
+					$entryErrors['filter_pattern'] = $filterError;
+				}
+			}
+
 			if ( [] !== $entryErrors ) {
 				$errors[ $index ] = $entryErrors;
 			}
@@ -205,6 +220,26 @@ class ExternalSourceSettings {
 			);
 		}
 
+		$filter = trim( (string) ( $source['filter_pattern'] ?? '' ) );
+
+		foreach ( [ 'path_pattern' => $path, 'filter_pattern' => $filter ] as $field => $value ) {
+			if ( '' === $value ) {
+				continue;
+			}
+
+			$patternError = $this->validatePatternSyntax( $value );
+			if ( null !== $patternError ) {
+				throw new InvalidArgumentException(
+					sprintf(
+						/* translators: 1: source name, 2: validation message. */
+						__( 'External source "%1$s": %2$s', 'wp-media-helper' ),
+						$name,
+						$patternError
+					)
+				);
+			}
+		}
+
 
 		$id = strtolower( preg_replace( '/[^a-z0-9]+/i', '-', $name ) ?? $name );
 		$id = trim( (string) $id, '-' );
@@ -271,6 +306,42 @@ class ExternalSourceSettings {
 
 		if ( ! is_writable( dirname( $cache ) ) ) {
 			return __( 'Thumbnail cache directory is not writable or creatable.', 'wp-media-helper' );
+		}
+
+		return null;
+	}
+
+	/**
+	 * Checks that a path or filter pattern only uses supported, well-formed placeholders.
+	 */
+	private function validatePatternSyntax( string $pattern ): ?string {
+		if ( substr_count( $pattern, '{' ) !== substr_count( $pattern, '}' ) ) {
+			return __( 'Pattern contains unmatched braces.', 'wp-media-helper' );
+		}
+
+		$stripped = preg_replace( '/\{[^{}]*\}/', '', $pattern );
+		if ( null !== $stripped && ( str_contains( $stripped, '{' ) || str_contains( $stripped, '}' ) ) ) {
+			return __( 'Pattern contains unmatched braces.', 'wp-media-helper' );
+		}
+
+		preg_match_all( '/\{([^{}]*)\}/', $pattern, $matches );
+
+		foreach ( $matches[1] as $token ) {
+			if ( '' === $token ) {
+				return __( 'Pattern contains an empty placeholder.', 'wp-media-helper' );
+			}
+
+			if ( ! str_starts_with( $token, 'date:' ) ) {
+				return sprintf(
+					/* translators: %s: unsupported placeholder name. */
+					__( 'Unknown placeholder: {%s}', 'wp-media-helper' ),
+					$token
+				);
+			}
+
+			if ( '' === substr( $token, 5 ) ) {
+				return __( 'Date placeholder requires a format, for example {date:Ymd}.', 'wp-media-helper' );
+			}
 		}
 
 		return null;
