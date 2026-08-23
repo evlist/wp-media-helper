@@ -83,12 +83,15 @@ class ExternalSourceSettings {
 				$entryErrors['name'] = __( 'Name is required.', 'wp-media-helper' );
 			}
 
+			$rootIsWritable = false;
 			if ( '' === $root ) {
 				$entryErrors['root'] = __( 'Root directory is required.', 'wp-media-helper' );
 			} else {
 				$rootError = $this->validateRootDirectory( $root );
 				if ( null !== $rootError ) {
 					$entryErrors['root'] = $rootError;
+				} else {
+					$rootIsWritable = is_writable( $root );
 				}
 			}
 
@@ -98,6 +101,8 @@ class ExternalSourceSettings {
 				if ( null !== $cacheError ) {
 					$entryErrors['thumbnail_cache'] = $cacheError;
 				}
+			} elseif ( ! isset( $entryErrors['root'] ) && ! $rootIsWritable ) {
+				$entryErrors['thumbnail_cache'] = __( 'A thumbnail cache directory is required because the root directory is read-only.', 'wp-media-helper' );
 			}
 
 			if ( [] !== $entryErrors ) {
@@ -190,6 +195,14 @@ class ExternalSourceSettings {
 					)
 				);
 			}
+		} elseif ( ! is_writable( $root ) ) {
+			throw new InvalidArgumentException(
+				sprintf(
+					/* translators: %s: source name. */
+					__( 'External source "%s" is read-only and must define a thumbnail cache directory.', 'wp-media-helper' ),
+					$name
+				)
+			);
 		}
 
 

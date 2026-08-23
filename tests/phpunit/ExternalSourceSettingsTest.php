@@ -209,6 +209,59 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertStringContainsString( 'readable', $errors[0]['root'] );
 	}
 
+	public function test_requires_thumbnail_cache_when_root_is_read_only(): void {
+		chmod( $this->tmpRoot, 0555 );
+
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Read-only source',
+				'root' => $this->tmpRoot,
+			],
+		] );
+
+		chmod( $this->tmpRoot, 0755 );
+
+		if ( 0 === posix_getuid() ) {
+			$this->markTestSkipped( 'Root user bypasses filesystem permissions.' );
+		}
+
+		$this->assertArrayHasKey( 'thumbnail_cache', $errors[0] );
+		$this->assertStringContainsString( 'read-only', $errors[0]['thumbnail_cache'] );
+	}
+
+	public function test_allows_read_only_root_when_thumbnail_cache_is_provided(): void {
+		$cache = sys_get_temp_dir() . '/wpmh_cache_' . uniqid();
+		mkdir( $cache );
+		chmod( $this->tmpRoot, 0555 );
+
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Read-only source',
+				'root' => $this->tmpRoot,
+				'thumbnail_cache' => $cache,
+			],
+		] );
+
+		chmod( $this->tmpRoot, 0755 );
+		rmdir( $cache );
+
+		if ( 0 === posix_getuid() ) {
+			$this->markTestSkipped( 'Root user bypasses filesystem permissions.' );
+		}
+
+		$this->assertSame( [], $errors );
+	}
+
 	public function test_accepts_existing_writable_thumbnail_cache(): void {
 		$cache = $this->tmpRoot . '/cache';
 		mkdir( $cache );
