@@ -146,6 +146,42 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertStringContainsString( 'unknown', $errors[0]['path_pattern'] );
 	}
 
+	public function test_rejects_directory_traversal_in_path_pattern(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Traversal',
+				'root' => $this->tmpRoot,
+				'path_pattern' => '../{date:Y}',
+			],
+		] );
+
+		$this->assertArrayHasKey( 'path_pattern', $errors[0] );
+		$this->assertStringContainsString( 'escape', $errors[0]['path_pattern'] );
+	}
+
+	public function test_rejects_absolute_path_pattern(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Absolute injection',
+				'root' => $this->tmpRoot,
+				'path_pattern' => '/etc/{date:Y}',
+			],
+		] );
+
+		$this->assertArrayHasKey( 'path_pattern', $errors[0] );
+		$this->assertStringContainsString( 'escape', $errors[0]['path_pattern'] );
+	}
+
 	public function test_rejects_empty_date_format_in_path_pattern(): void {
 		$settings = new ExternalSourceSettings(
 			static fn(): mixed => [],
