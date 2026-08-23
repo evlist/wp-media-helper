@@ -47,12 +47,17 @@ The configuration must be validated before it is persisted.
 
 - Root directory must be an absolute path.
 - Root directory must exist and be readable by the web server.
-- Root directory must not point to a path outside the allowed filesystem scope.
 - Path pattern must be valid and may contain supported placeholders only.
 - Filter pattern must be valid and may contain supported placeholders only.
 - Thumbnail cache directory, when provided, must be writable or creatable.
 - Duplicate source names should be rejected or automatically normalized.
 - Empty required values must trigger a validation error.
+
+Deliberate scope note: an earlier draft of this slice required rejecting
+`root` paths outside an "allowed filesystem scope", but no such scope exists
+and it would not be meaningful even if added, since it would be configured
+through the same `manage_options`-only page. See `docs/IA/constraints.md`
+("Security model for external source configuration") for the rationale.
 
 ### 4. Error handling and feedback
 

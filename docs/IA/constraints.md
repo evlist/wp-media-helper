@@ -54,8 +54,12 @@
   cannot be reached by a non-admin (blocked by the capability check and
   nonce). Such a check was tried and removed for giving a false sense of
   security; see the project history for details.
-- If a real filesystem scope restriction for `root` is introduced in the
-  future, revisit whether pattern-escape validation becomes meaningful again.
+- An admin-editable allow-list of permitted roots would not fix this either:
+  it would be stored and modified through the same `manage_options` surface,
+  so it moves the trust boundary nowhere. A scope restriction only becomes
+  meaningful if it is defined outside admin reach (for example a constant or
+  a filter set by the site owner in code), which is a larger architectural
+  feature and is not planned unless explicitly requested.
 
 ## Repository and environment constraints
 
