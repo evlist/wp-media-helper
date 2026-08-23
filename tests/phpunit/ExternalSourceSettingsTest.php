@@ -7,6 +7,19 @@ use WP_Media_Helper\Settings\ExternalSourceSettings;
 
 class ExternalSourceSettingsTest extends TestCase {
 
+	private string $tmpRoot;
+
+	protected function setUp(): void {
+		$this->tmpRoot = sys_get_temp_dir() . '/wpmh_settings_' . uniqid();
+		mkdir( $this->tmpRoot, 0755, true );
+	}
+
+	protected function tearDown(): void {
+		if ( is_dir( $this->tmpRoot ) ) {
+			rmdir( $this->tmpRoot );
+		}
+	}
+
 	public function test_loads_empty_array_when_option_is_missing(): void {
 		$settings = new ExternalSourceSettings(
 			static fn(): mixed => false,
@@ -29,7 +42,7 @@ class ExternalSourceSettingsTest extends TestCase {
 			[
 				'name' => '  Nextcloud Main  ',
 				'enabled' => '1',
-				'root' => '/var/www/media',
+				'root' => $this->tmpRoot,
 				'path_pattern' => '{date:Y}/{date:m}/{date:d}',
 				'filter_pattern' => '  {date:Ymd}  ',
 				'thumbnail_cache' => '/tmp/wp-media-helper-cache',
@@ -40,7 +53,7 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertSame( 'nextcloud-main', $saved[0]['id'] );
 		$this->assertSame( 'Nextcloud Main', $saved[0]['name'] );
 		$this->assertTrue( $saved[0]['enabled'] );
-		$this->assertSame( '/var/www/media', $saved[0]['root'] );
+		$this->assertSame( $this->tmpRoot, $saved[0]['root'] );
 		$this->assertSame( '{date:Y}/{date:m}/{date:d}', $saved[0]['path_pattern'] );
 		$this->assertSame( '{date:Ymd}', $saved[0]['filter_pattern'] );
 		$this->assertSame( '/tmp/wp-media-helper-cache', $saved[0]['thumbnail_cache'] );
@@ -107,12 +120,93 @@ class ExternalSourceSettingsTest extends TestCase {
 		$errors = $settings->validateSources( [
 			[
 				'name' => 'Static Media',
-				'root' => '/var/www/media',
+				'root' => $this->tmpRoot,
 				'path_pattern' => '',
 			],
 		] );
 
 		$this->assertSame( [], $errors );
+	}
+
+	public function test_rejects_relative_root_directory(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Relative',
+				'root' => 'relative/path',
+			],
+		] );
+
+		$this->assertArrayHasKey( 'root', $errors[0] );
+		$this->assertStringContainsString( 'absolute', $errors[0]['root'] );
+	}
+
+	public function test_rejects_missing_root_directory(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Missing',
+				'root' => $this->tmpRoot . '/does-not-exist',
+			],
+		] );
+
+		$this->assertArrayHasKey( 'root', $errors[0] );
+		$this->assertStringContainsString( 'exist', $errors[0]['root'] );
+	}
+
+	public function test_rejects_root_directory_that_is_a_file(): void {
+		$filePath = $this->tmpRoot . '/not-a-directory';
+		touch( $filePath );
+
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Not a directory',
+				'root' => $filePath,
+			],
+		] );
+
+		unlink( $filePath );
+
+		$this->assertArrayHasKey( 'root', $errors[0] );
+		$this->assertStringContainsString( 'directory', $errors[0]['root'] );
+	}
+
+	public function test_rejects_unreadable_root_directory(): void {
+		chmod( $this->tmpRoot, 0000 );
+
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Unreadable',
+				'root' => $this->tmpRoot,
+			],
+		] );
+
+		chmod( $this->tmpRoot, 0755 );
+
+		if ( 0 === posix_getuid() ) {
+			$this->markTestSkipped( 'Root user bypasses filesystem permissions.' );
+		}
+
+		$this->assertArrayHasKey( 'root', $errors[0] );
+		$this->assertStringContainsString( 'readable', $errors[0]['root'] );
 	}
 
 	public function test_page_collects_per_field_errors_for_invalid_sources(): void {
@@ -139,7 +233,7 @@ class ExternalSourceSettingsTest extends TestCase {
 		$notices = $page->buildErrorNotices( [
 			[
 				'name' => 'Nextcloud',
-				'root' => '/var/www/media',
+				'root' => $this->tmpRoot,
 			],
 			[
 				'name' => '',
@@ -163,7 +257,7 @@ class ExternalSourceSettingsTest extends TestCase {
 		$notices = $page->buildErrorNotices( [
 			[
 				'name' => 'Nextcloud',
-				'root' => '/var/www/media',
+				'root' => $this->tmpRoot,
 			],
 		] );
 

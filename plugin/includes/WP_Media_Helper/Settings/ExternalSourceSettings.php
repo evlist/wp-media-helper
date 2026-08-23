@@ -85,6 +85,11 @@ class ExternalSourceSettings {
 
 			if ( '' === $root ) {
 				$entryErrors['root'] = __( 'Root directory is required.', 'wp-media-helper' );
+			} else {
+				$rootError = $this->validateRootDirectory( $root );
+				if ( null !== $rootError ) {
+					$entryErrors['root'] = $rootError;
+				}
 			}
 
 			if ( [] !== $entryErrors ) {
@@ -152,6 +157,18 @@ class ExternalSourceSettings {
 			);
 		}
 
+		$rootError = $this->validateRootDirectory( $root );
+		if ( null !== $rootError ) {
+			throw new InvalidArgumentException(
+				sprintf(
+					/* translators: 1: source name, 2: validation message. */
+					__( 'External source "%1$s": %2$s', 'wp-media-helper' ),
+					$name,
+					$rootError
+				)
+			);
+		}
+
 
 		$id = strtolower( preg_replace( '/[^a-z0-9]+/i', '-', $name ) ?? $name );
 		$id = trim( (string) $id, '-' );
@@ -175,5 +192,28 @@ class ExternalSourceSettings {
 			'filter_pattern' => trim( (string) ( $source['filter_pattern'] ?? '' ) ),
 			'thumbnail_cache' => trim( (string) ( $source['thumbnail_cache'] ?? '' ) ),
 		];
+	}
+
+	/**
+	 * Checks that a root directory is an absolute, existing, readable directory.
+	 */
+	private function validateRootDirectory( string $root ): ?string {
+		if ( ! str_starts_with( $root, '/' ) ) {
+			return __( 'Root directory must be an absolute path.', 'wp-media-helper' );
+		}
+
+		if ( ! file_exists( $root ) ) {
+			return __( 'Root directory does not exist.', 'wp-media-helper' );
+		}
+
+		if ( ! is_dir( $root ) ) {
+			return __( 'Root directory is not a directory.', 'wp-media-helper' );
+		}
+
+		if ( ! is_readable( $root ) ) {
+			return __( 'Root directory is not readable.', 'wp-media-helper' );
+		}
+
+		return null;
 	}
 }
