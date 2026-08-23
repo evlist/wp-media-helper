@@ -209,6 +209,115 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertStringContainsString( 'readable', $errors[0]['root'] );
 	}
 
+	public function test_accepts_existing_writable_thumbnail_cache(): void {
+		$cache = $this->tmpRoot . '/cache';
+		mkdir( $cache );
+
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Cached',
+				'root' => $this->tmpRoot,
+				'thumbnail_cache' => $cache,
+			],
+		] );
+
+		rmdir( $cache );
+
+		$this->assertSame( [], $errors );
+	}
+
+	public function test_accepts_thumbnail_cache_that_can_be_created(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Cached',
+				'root' => $this->tmpRoot,
+				'thumbnail_cache' => $this->tmpRoot . '/not-yet-created',
+			],
+		] );
+
+		$this->assertSame( [], $errors );
+	}
+
+	public function test_rejects_thumbnail_cache_whose_parent_does_not_exist(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Cached',
+				'root' => $this->tmpRoot,
+				'thumbnail_cache' => $this->tmpRoot . '/missing-parent/cache',
+			],
+		] );
+
+		$this->assertArrayHasKey( 'thumbnail_cache', $errors[0] );
+		$this->assertStringContainsString( 'writable or creatable', $errors[0]['thumbnail_cache'] );
+	}
+
+	public function test_rejects_thumbnail_cache_that_is_a_file(): void {
+		$cache = $this->tmpRoot . '/cache-file';
+		touch( $cache );
+
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Cached',
+				'root' => $this->tmpRoot,
+				'thumbnail_cache' => $cache,
+			],
+		] );
+
+		unlink( $cache );
+
+		$this->assertArrayHasKey( 'thumbnail_cache', $errors[0] );
+		$this->assertStringContainsString( 'directory', $errors[0]['thumbnail_cache'] );
+	}
+
+	public function test_rejects_unwritable_existing_thumbnail_cache(): void {
+		$cache = $this->tmpRoot . '/readonly-cache';
+		mkdir( $cache );
+		chmod( $cache, 0555 );
+
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Cached',
+				'root' => $this->tmpRoot,
+				'thumbnail_cache' => $cache,
+			],
+		] );
+
+		chmod( $cache, 0755 );
+		rmdir( $cache );
+
+		if ( 0 === posix_getuid() ) {
+			$this->markTestSkipped( 'Root user bypasses filesystem permissions.' );
+		}
+
+		$this->assertArrayHasKey( 'thumbnail_cache', $errors[0] );
+		$this->assertStringContainsString( 'writable', $errors[0]['thumbnail_cache'] );
+	}
+
 	public function test_page_collects_per_field_errors_for_invalid_sources(): void {
 		$reflection = new ReflectionClass( \WP_Media_Helper\Admin\ExternalSourceSettingsPage::class );
 		$page = $reflection->newInstanceWithoutConstructor();

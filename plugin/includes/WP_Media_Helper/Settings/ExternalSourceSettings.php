@@ -92,6 +92,14 @@ class ExternalSourceSettings {
 				}
 			}
 
+			$thumbnailCache = trim( (string) ( $source['thumbnail_cache'] ?? '' ) );
+			if ( '' !== $thumbnailCache ) {
+				$cacheError = $this->validateThumbnailCache( $thumbnailCache );
+				if ( null !== $cacheError ) {
+					$entryErrors['thumbnail_cache'] = $cacheError;
+				}
+			}
+
 			if ( [] !== $entryErrors ) {
 				$errors[ $index ] = $entryErrors;
 			}
@@ -169,6 +177,21 @@ class ExternalSourceSettings {
 			);
 		}
 
+		$thumbnailCache = trim( (string) ( $source['thumbnail_cache'] ?? '' ) );
+		if ( '' !== $thumbnailCache ) {
+			$cacheError = $this->validateThumbnailCache( $thumbnailCache );
+			if ( null !== $cacheError ) {
+				throw new InvalidArgumentException(
+					sprintf(
+						/* translators: 1: source name, 2: validation message. */
+						__( 'External source "%1$s": %2$s', 'wp-media-helper' ),
+						$name,
+						$cacheError
+					)
+				);
+			}
+		}
+
 
 		$id = strtolower( preg_replace( '/[^a-z0-9]+/i', '-', $name ) ?? $name );
 		$id = trim( (string) $id, '-' );
@@ -212,6 +235,29 @@ class ExternalSourceSettings {
 
 		if ( ! is_readable( $root ) ) {
 			return __( 'Root directory is not readable.', 'wp-media-helper' );
+		}
+
+		return null;
+	}
+
+	/**
+	 * Checks that a thumbnail cache directory is writable, or can be created.
+	 */
+	private function validateThumbnailCache( string $cache ): ?string {
+		if ( file_exists( $cache ) ) {
+			if ( ! is_dir( $cache ) ) {
+				return __( 'Thumbnail cache path is not a directory.', 'wp-media-helper' );
+			}
+
+			if ( ! is_writable( $cache ) ) {
+				return __( 'Thumbnail cache directory is not writable.', 'wp-media-helper' );
+			}
+
+			return null;
+		}
+
+		if ( ! is_writable( dirname( $cache ) ) ) {
+			return __( 'Thumbnail cache directory is not writable or creatable.', 'wp-media-helper' );
 		}
 
 		return null;
