@@ -42,6 +42,21 @@
 - A low-load scheduled refresh may maintain the index proactively, but the
   request-time consistency check remains authoritative.
 
+## Security model for external source configuration
+
+- The external source settings page requires the `manage_options` capability.
+  Anyone who can reach it already has full site control, so it is treated as a
+  trusted-admin surface, not an untrusted-input boundary.
+- `root` is not restricted to an allow-listed filesystem scope: an admin can
+  point it at any absolute, existing, readable directory. Because of this,
+  rejecting `../` or absolute-path injection in `path_pattern` would not stop
+  a malicious admin (who could set `root` itself to a sensitive path) and
+  cannot be reached by a non-admin (blocked by the capability check and
+  nonce). Such a check was tried and removed for giving a false sense of
+  security; see the project history for details.
+- If a real filesystem scope restriction for `root` is introduced in the
+  future, revisit whether pattern-escape validation becomes meaningful again.
+
 ## Repository and environment constraints
 
 - Managed `.devcontainer/` graft files should not be edited directly unless they

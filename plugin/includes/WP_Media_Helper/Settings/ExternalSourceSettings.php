@@ -107,9 +107,6 @@ class ExternalSourceSettings {
 
 			if ( '' !== $path ) {
 				$pathError = $this->validatePatternSyntax( $path );
-				if ( null === $pathError ) {
-					$pathError = $this->validatePathEscape( $path );
-				}
 				if ( null !== $pathError ) {
 					$entryErrors['path_pattern'] = $pathError;
 				}
@@ -270,9 +267,6 @@ class ExternalSourceSettings {
 			}
 
 			$patternError = $this->validatePatternSyntax( $value );
-			if ( null === $patternError && 'path_pattern' === $field ) {
-				$patternError = $this->validatePathEscape( $value );
-			}
 			if ( null !== $patternError ) {
 				throw new InvalidArgumentException(
 					sprintf(
@@ -387,22 +381,6 @@ class ExternalSourceSettings {
 			if ( '' === substr( $token, 5 ) ) {
 				return __( 'Date placeholder requires a format, for example {date:Ymd}.', 'wp-media-helper' );
 			}
-		}
-
-		return null;
-	}
-
-	/**
-	 * Rejects path patterns that could resolve outside the configured root.
-	 */
-	private function validatePathEscape( string $pattern ): ?string {
-		if ( str_starts_with( $pattern, '/' ) ) {
-			return __( 'Path pattern must not be an absolute path; it would escape the configured source root.', 'wp-media-helper' );
-		}
-
-		$segments = explode( '/', str_replace( '\\', '/', $pattern ) );
-		if ( in_array( '..', $segments, true ) ) {
-			return __( 'Path pattern must not contain ".."; it would escape the configured source root.', 'wp-media-helper' );
 		}
 
 		return null;

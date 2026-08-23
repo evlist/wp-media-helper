@@ -96,8 +96,13 @@ Validation rules:
 - malformed tokens must be rejected,
 - empty tokens are invalid,
 - unmatched braces are invalid,
-- unsupported values such as `{foo}` or `{date:Q}` must fail fast,
-- traversal-like patterns such as `../` or absolute path injection must be rejected when resolving a path.
+- unsupported values such as `{foo}` or `{date:Q}` must fail fast.
+
+Deliberate scope note: rejecting `../` or absolute-path injection in
+`path_pattern` was tried and removed. The settings page requires
+`manage_options`, and `root` itself is not restricted to an allow-listed
+scope, so a pattern-escape check only catches admin typos, not a real
+security boundary; see `docs/IA/constraints.md` for the full rationale.
 
 This validation should happen at the resolver boundary, not only at the admin settings page, so runtime callers also benefit from the same safety checks.
 
@@ -105,8 +110,6 @@ This validation should happen at the resolver boundary, not only at the admin se
 
 The path resolution layer must protect against unsafe input.
 
-- It must reject path traversal patterns such as `../` in configured patterns.
-- It must prevent the final directory from escaping the source root.
 - It must treat invalid/malformed configuration as a runtime error rather than silently falling back to an unexpected path.
 
 ### 7. Error handling
@@ -118,7 +121,6 @@ Examples:
 - `Unknown placeholder: {foo}`
 - `Unclosed template token in path pattern`
 - `Date token requires a format, e.g. {date:Ymd}`
-- `Resolved path escapes the configured source root`
 
 These errors should be surfaced to the caller and can be converted into admin-side validation messages when needed.
 
@@ -138,10 +140,9 @@ This slice does not include:
 1. A valid source, target date, and context resolve to the correct directory path.
 2. Supported placeholders are correctly compiled in both path and filter patterns.
 3. Unsupported or malformed placeholders are rejected with a clear error.
-4. A path that escapes the configured source root is rejected.
-5. Filter patterns can be resolved independently from the base directory.
-6. Empty or invalid configuration results in deterministic runtime errors.
-7. The resolver contract is reusable by both the indexer and the media lookup flow.
+4. Filter patterns can be resolved independently from the base directory.
+5. Empty or invalid configuration results in deterministic runtime errors.
+6. The resolver contract is reusable by both the indexer and the media lookup flow.
 
 ## Notes
 
