@@ -128,7 +128,42 @@ class ExternalSourceSettings {
 			}
 		}
 
+		foreach ( $this->findDuplicateNameIndexes( $sources ) as $index ) {
+			$errors[ $index ]['name'] = __( 'This name is already used by another source.', 'wp-media-helper' );
+		}
+
 		return $errors;
+	}
+
+	/**
+	 * Returns the indexes of sources whose normalized name collides with another source.
+	 *
+	 * @param array<int, array<string, mixed>> $sources
+	 * @return int[]
+	 */
+	private function findDuplicateNameIndexes( array $sources ): array {
+		$seen = [];
+		$duplicates = [];
+
+		foreach ( $sources as $index => $source ) {
+			if ( ! is_array( $source ) ) {
+				continue;
+			}
+
+			$name = strtolower( trim( (string) ( $source['name'] ?? '' ) ) );
+			if ( '' === $name ) {
+				continue;
+			}
+
+			if ( isset( $seen[ $name ] ) ) {
+				$duplicates[] = $seen[ $name ][0];
+				$duplicates[] = $index;
+			}
+
+			$seen[ $name ][] = $index;
+		}
+
+		return array_unique( $duplicates );
 	}
 
 	/**
@@ -139,6 +174,10 @@ class ExternalSourceSettings {
 	 */
 	public function normalizeSources( array $sources ): array {
 		$normalized = [];
+
+		if ( [] !== $this->findDuplicateNameIndexes( $sources ) ) {
+			throw new InvalidArgumentException( __( 'Source names must be unique.', 'wp-media-helper' ) );
+		}
 
 		foreach ( $sources as $index => $source ) {
 			if ( ! is_array( $source ) ) {

@@ -111,6 +111,47 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertStringContainsString( 'required', $errors[0]['root'] );
 	}
 
+	public function test_rejects_duplicate_source_names(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[
+				'name' => 'Nextcloud Main',
+				'root' => $this->tmpRoot,
+			],
+			[
+				'name' => '  nextcloud main  ',
+				'root' => $this->tmpRoot,
+			],
+		] );
+
+		$this->assertArrayHasKey( 'name', $errors[0] );
+		$this->assertArrayHasKey( 'name', $errors[1] );
+		$this->assertStringContainsString( 'already used', $errors[0]['name'] );
+	}
+
+	public function test_rejects_duplicate_names_when_saving(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$this->expectException( InvalidArgumentException::class );
+		$settings->saveAll( [
+			[
+				'name' => 'Nextcloud Main',
+				'root' => $this->tmpRoot,
+			],
+			[
+				'name' => 'Nextcloud Main',
+				'root' => $this->tmpRoot,
+			],
+		] );
+	}
+
 	public function test_allows_static_sources_without_path_pattern(): void {
 		$settings = new ExternalSourceSettings(
 			static fn(): mixed => [],
