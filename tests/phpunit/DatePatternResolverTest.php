@@ -50,6 +50,31 @@ class DatePatternResolverTest extends TestCase {
 		$resolver->resolve( 'root/{date:}', $date );
 	}
 
+	public function test_supports_source_placeholder(): void {
+		$resolver = new DatePatternResolver();
+		$date     = new DateTimeImmutable( '2026-08-12' );
+
+		$this->assertSame(
+			'root/2026/08/12/media-main',
+			$resolver->resolve( 'root/{date:Y}/{date:m}/{date:d}/{source}', $date, 'media-main' )
+		);
+	}
+
+	public function test_rejects_unmatched_braces(): void {
+		$resolver = new DatePatternResolver();
+		$date     = new DateTimeImmutable( '2026-08-12' );
+
+		$this->expectException( InvalidArgumentException::class );
+		$resolver->resolve( 'root/{date:Y/{date:m}', $date );
+	}
+
+	public function test_resolves_filter_pattern_independently(): void {
+		$resolver = new DatePatternResolver();
+		$date     = new DateTimeImmutable( '2026-08-12' );
+
+		$this->assertSame( '20260812', $resolver->resolveFilter( '{date:Ymd}', $date ) );
+	}
+
 	public function test_uses_source_root_when_path_pattern_is_empty(): void {
 		$resolver = new DatePatternResolver();
 		$date     = new DateTimeImmutable( '2026-08-12' );
