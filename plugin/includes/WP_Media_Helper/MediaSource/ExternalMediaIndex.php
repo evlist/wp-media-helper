@@ -52,6 +52,32 @@ class ExternalMediaIndex {
 	/**
 	 * @param array<string, mixed> $source
 	 */
+	public function needsRefresh( array $source, DateTimeInterface $date, ?string $context = null ): bool {
+		$sourceId = (string) ( $context ?? $source['id'] ?? '' );
+		if ( '' === $sourceId ) {
+			throw new InvalidArgumentException( 'Source identifier is required for refresh evaluation.' );
+		}
+
+		$directory = ( new DatePatternResolver() )->resolvePath(
+			(string) ( $source['root'] ?? '' ),
+			(string) ( $source['path_pattern'] ?? '' ),
+			$date,
+			$sourceId
+		);
+
+		$cachePath = $this->pathForSource( $source, $sourceId );
+		$cached = $this->readCache( $cachePath );
+
+		if ( null === $cached ) {
+			return true;
+		}
+
+		return ! $this->isFresh( $cached, $directory );
+	}
+
+	/**
+	 * @param array<string, mixed> $source
+	 */
 	public function pathForSource( array $source, ?string $context = null ): string {
 		$sourceId = (string) ( $context ?? $source['id'] ?? '' );
 		if ( '' === $sourceId ) {
@@ -109,7 +135,13 @@ class ExternalMediaIndex {
 			return false;
 		}
 
-		return filemtime( $directory ) <= $cache['mtime'];
+		clearstatcache( true, $directory );
+		$directoryMtime = filemtime( $directory );
+		if ( false === $directoryMtime ) {
+			return false;
+		}
+
+		return $directoryMtime <= $cache['mtime'];
 	}
 
 	/**

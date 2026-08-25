@@ -93,4 +93,40 @@ class ExternalMediaIndexTest extends TestCase {
 		$this->assertCount( 2, $results );
 		$this->assertSame( 'belledonne', $source['id'] );
 	}
+
+	public function test_reports_when_refresh_is_needed_for_stale_directory(): void {
+		$index = new ExternalMediaIndex( $this->storage );
+		$date = new DateTimeImmutable( '2026-08-10' );
+		$source = [
+			'root' => $this->root,
+			'path_pattern' => '{date:Y}/{date:m}',
+			'filter_pattern' => '{date:Ymd}',
+			'id' => 'belledonne',
+		];
+
+		$index->getForSource( $source, $date, 'belledonne' );
+		touch( $this->root . '/2026/08/20260811-autre-rando.jpg' );
+		touch( $this->root . '/2026/08', time() + 2 );
+		clearstatcache( true, $this->root . '/2026/08' );
+
+		$this->assertTrue( $index->needsRefresh( $source, $date, 'belledonne' ) );
+	}
+
+	public function test_force_refresh_returns_latest_files(): void {
+		$index = new ExternalMediaIndex( $this->storage );
+		$date = new DateTimeImmutable( '2026-08-10' );
+		$source = [
+			'root' => $this->root,
+			'path_pattern' => '{date:Y}/{date:m}',
+			'filter_pattern' => '{date:Ymd}',
+			'id' => 'belledonne',
+		];
+
+		$index->getForSource( $source, $date, 'belledonne' );
+		touch( $this->root . '/2026/08/20260811-autre-rando.jpg' );
+
+		$results = $index->getForSource( $source, $date, 'belledonne', true );
+
+		$this->assertCount( 2, $results );
+	}
 }
