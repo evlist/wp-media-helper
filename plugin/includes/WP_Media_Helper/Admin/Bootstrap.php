@@ -8,5 +8,7 @@ class Bootstrap {
 
 	public static function init(): void {
 		new ExternalSourceSettingsPage();
+		new EditorPanel();
+		new EditorMediaController();
 	}
 }
