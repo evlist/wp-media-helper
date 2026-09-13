@@ -36,7 +36,7 @@ class ExternalMediaIndex {
 			$sourceId
 		);
 
-		$cachePath = $this->pathForSource( $source, $sourceId );
+		$cachePath = $this->pathForSource( $source, $sourceId, $date );
 		$cached = $this->readCache( $cachePath );
 
 		if ( ! $forceRefresh && null !== $cached && $this->isFresh( $cached, $directory ) ) {
@@ -65,7 +65,7 @@ class ExternalMediaIndex {
 			$sourceId
 		);
 
-		$cachePath = $this->pathForSource( $source, $sourceId );
+		$cachePath = $this->pathForSource( $source, $sourceId, $date );
 		$cached = $this->readCache( $cachePath );
 
 		if ( null === $cached ) {
@@ -78,7 +78,7 @@ class ExternalMediaIndex {
 	/**
 	 * @param array<string, mixed> $source
 	 */
-	public function pathForSource( array $source, ?string $context = null ): string {
+	public function pathForSource( array $source, ?string $context = null, ?DateTimeInterface $date = null ): string {
 		$sourceId = (string) ( $context ?? $source['id'] ?? '' );
 		if ( '' === $sourceId ) {
 			throw new InvalidArgumentException( 'Source identifier is required for cache path generation.' );
@@ -87,7 +87,9 @@ class ExternalMediaIndex {
 		$clean = preg_replace( '/[^a-z0-9._-]+/i', '-', $sourceId ) ?? $sourceId;
 		$clean = trim( (string) $clean, '-_.' );
 
-		return rtrim( $this->storageDir, '/\\' ) . '/' . ( '' === $clean ? 'source' : $clean ) . '.json';
+		$datePart = null === $date ? '' : '-' . $date->format( 'Ymd' );
+
+		return rtrim( $this->storageDir, '/\\' ) . '/' . ( '' === $clean ? 'source' : $clean ) . $datePart . '.json';
 	}
 
 	/**

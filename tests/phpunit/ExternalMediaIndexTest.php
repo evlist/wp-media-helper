@@ -129,4 +129,23 @@ class ExternalMediaIndexTest extends TestCase {
 
 		$this->assertCount( 2, $results );
 	}
+
+	public function test_keeps_separate_cache_entries_for_different_dates_in_the_same_directory(): void {
+		$index = new ExternalMediaIndex( $this->storage );
+		$source = [
+			'root' => $this->root,
+			'path_pattern' => '{date:Y}/{date:m}',
+			'filter_pattern' => '{date:Ymd}',
+			'id' => 'belledonne',
+		];
+
+		touch( $this->root . '/2026/08/20260811-autre-rando.jpg' );
+
+		$first = $index->getForSource( $source, new DateTimeImmutable( '2026-08-10' ), 'belledonne' );
+		$second = $index->getForSource( $source, new DateTimeImmutable( '2026-08-11' ), 'belledonne' );
+
+		$this->assertCount( 2, $first );
+		$this->assertCount( 1, $second );
+		$this->assertStringContainsString( '20260811', $second[0] );
+	}
 }
