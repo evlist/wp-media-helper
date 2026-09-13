@@ -35,8 +35,8 @@ class TargetedRefreshCoordinator {
 		if ( $forceRefresh ) {
 			$files = $this->index->getForSource( $source, $date, $sourceId, true );
 			return [
-				'refresh_required' => true,
-				'stale' => true,
+				'refresh_required' => false,
+				'stale' => false,
 				'reason' => 'forced-refresh',
 				'files' => $files,
 				'directory' => $directory,
@@ -57,8 +57,8 @@ class TargetedRefreshCoordinator {
 
 		$files = $this->index->getForSource( $source, $date, $sourceId, true );
 		return [
-			'refresh_required' => true,
-			'stale' => true,
+			'refresh_required' => false,
+			'stale' => false,
 			'reason' => 'stale-directory',
 			'files' => $files,
 			'directory' => $directory,

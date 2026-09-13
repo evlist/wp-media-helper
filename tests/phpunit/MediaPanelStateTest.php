@@ -63,7 +63,7 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertSame( 'belledonne', $state['source_id'] );
 	}
 
-	public function test_request_refresh_sets_an_explicit_stale_state_and_reason(): void {
+	public function test_request_refresh_returns_fresh_state_with_refresh_reason(): void {
 		$source = [
 			'root' => $this->root,
 			'path_pattern' => '{date:Y}/{date:m}',
@@ -77,8 +77,8 @@ class MediaPanelStateTest extends TestCase {
 		$index->getForSource( $source, $date, 'belledonne' );
 		$state = $panel->requestRefresh( $source, $date, 'belledonne' );
 
-		$this->assertSame( 'stale', $state['status'] );
-		$this->assertTrue( $state['refresh_required'] );
+		$this->assertSame( 'fresh', $state['status'] );
+		$this->assertFalse( $state['refresh_required'] );
 		$this->assertSame( 'forced-refresh', $state['reason'] );
 		$this->assertNotEmpty( $state['files'] );
 	}

@@ -61,7 +61,7 @@ class TargetedRefreshCoordinatorTest extends TestCase {
 		$this->assertCount( 2, $result['files'] );
 	}
 
-	public function test_marks_result_as_stale_and_refreshes_when_directory_changes(): void {
+	public function test_refreshes_stale_directory_and_returns_fresh_state(): void {
 		$index = new ExternalMediaIndex( $this->storage );
 		$coordinator = new TargetedRefreshCoordinator( $index );
 		$date = new DateTimeImmutable( '2026-08-10' );
@@ -79,8 +79,8 @@ class TargetedRefreshCoordinatorTest extends TestCase {
 
 		$result = $coordinator->resolve( $source, $date, 'belledonne' );
 
-		$this->assertTrue( $result['refresh_required'] );
-		$this->assertTrue( $result['stale'] );
+		$this->assertFalse( $result['refresh_required'] );
+		$this->assertFalse( $result['stale'] );
 		$this->assertSame( 'stale-directory', $result['reason'] );
 	}
 
@@ -98,8 +98,8 @@ class TargetedRefreshCoordinatorTest extends TestCase {
 		$index->getForSource( $source, $date, 'belledonne' );
 		$result = $coordinator->resolve( $source, $date, 'belledonne', true );
 
-		$this->assertTrue( $result['refresh_required'] );
-		$this->assertTrue( $result['stale'] );
+		$this->assertFalse( $result['refresh_required'] );
+		$this->assertFalse( $result['stale'] );
 		$this->assertSame( 'forced-refresh', $result['reason'] );
 	}
 }
