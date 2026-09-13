@@ -5,7 +5,7 @@
 	const { registerPlugin } = wp.plugins;
 	const { PluginSidebar } = wp.editPost;
 	const { PanelBody, PanelRow, Button, TextControl, Notice } = wp.components;
-	const { useState, useEffect } = wp.element;
+	const { useState, useEffect, useRef } = wp.element;
 
 	const endpoint = wpMediaHelperEditorPanel.ajaxUrl;
 	const nonce = wpMediaHelperEditorPanel.nonce;
@@ -34,19 +34,48 @@
 		const [ reason, setReason ] = useState( null );
 		const [ files, setFiles ] = useState( [] );
 		const [ loading, setLoading ] = useState( false );
+		const [ freshNoticeVisible, setFreshNoticeVisible ] = useState( false );
+		const freshNoticeTimer = useRef( null );
+
+		const applyPayload = function ( payload ) {
+			const nextStatus = payload.data.status || 'fresh';
+
+			setStatus( nextStatus );
+			setReason( payload.data.reason || null );
+			setFiles( payload.data.files || [] );
+			setFreshNoticeVisible( nextStatus === 'fresh' );
+		};
+
+		useEffect( function () {
+			if ( freshNoticeTimer.current ) {
+				window.clearTimeout( freshNoticeTimer.current );
+			}
+
+			if ( ! freshNoticeVisible ) {
+				return undefined;
+			}
+
+			freshNoticeTimer.current = window.setTimeout( function () {
+				setFreshNoticeVisible( false );
+			}, 3500 );
+
+			return function () {
+				window.clearTimeout( freshNoticeTimer.current );
+			};
+		}, [ freshNoticeVisible, files ] );
 
 		useEffect( function () {
 			setLoading( true );
+			setFreshNoticeVisible( false );
 			fetchState( date, false )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
-						setStatus( payload.data.status || 'fresh' );
-						setReason( payload.data.reason || null );
-						setFiles( payload.data.files || [] );
+						applyPayload( payload );
 					} else {
 						setStatus( 'fresh' );
 						setReason( null );
 						setFiles( [] );
+						setFreshNoticeVisible( false );
 					}
 				})
 				.finally( function () {
@@ -56,12 +85,11 @@
 
 		const handleRefresh = function () {
 			setLoading( true );
+			setFreshNoticeVisible( false );
 			fetchState( date, true )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
-						setStatus( payload.data.status || 'fresh' );
-						setReason( payload.data.reason || null );
-						setFiles( payload.data.files || [] );
+						applyPayload( payload );
 					}
 				})
 				.finally( function () {
@@ -104,7 +132,7 @@
 					status === 'stale'
 						? wp.element.createElement( Notice, { status: 'warning', isDismissible: false },
 							reason ? __( 'Refresh required: ', 'wp-media-helper' ) + reason : __( 'Refresh required.', 'wp-media-helper' ) )
-						: wp.element.createElement( Notice, { status: 'success', isDismissible: false }, __( 'Media is up to date.', 'wp-media-helper' ) )
+						: freshNoticeVisible && wp.element.createElement( Notice, { status: 'success', isDismissible: false }, __( 'Media is up to date.', 'wp-media-helper' ) )
 				),
 				wp.element.createElement(
 					PanelRow,
