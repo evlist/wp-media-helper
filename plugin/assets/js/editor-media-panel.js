@@ -1,15 +1,46 @@
 ( function ( wp ) {
 	'use strict';
 
-	const { __ } = wp.i18n;
+	const { __, sprintf, _n } = wp.i18n;
 	const { registerPlugin } = wp.plugins;
 	const { PluginSidebar } = wp.editPost;
 	const { PanelBody, PanelRow, Button, TextControl, Notice } = wp.components;
-	const { useState, useEffect, useRef } = wp.element;
+	const { useState, useEffect } = wp.element;
 
 	const endpoint = wpMediaHelperEditorPanel.ajaxUrl;
 	const nonce = wpMediaHelperEditorPanel.nonce;
 	const defaultDate = wpMediaHelperEditorPanel.date;
+
+	// Background poll interval; the manual Refresh button always forces an immediate check.
+	const AUTO_REFRESH_INTERVAL_MS = 30000;
+
+	const formatElapsed = function ( lastRefreshedAt ) {
+		if ( ! lastRefreshedAt ) {
+			return __( 'never refreshed', 'wp-media-helper' );
+		}
+
+		const seconds = Math.max( 0, Math.round( ( Date.now() - lastRefreshedAt ) / 1000 ) );
+
+		if ( seconds < 5 ) {
+			return __( 'refreshed just now', 'wp-media-helper' );
+		}
+
+		if ( seconds < 60 ) {
+			return sprintf(
+				/* translators: %d: number of seconds. */
+				_n( 'refreshed %d second ago', 'refreshed %d seconds ago', seconds, 'wp-media-helper' ),
+				seconds
+			);
+		}
+
+		const minutes = Math.round( seconds / 60 );
+
+		return sprintf(
+			/* translators: %d: number of minutes. */
+			_n( 'refreshed %d minute ago', 'refreshed %d minutes ago', minutes, 'wp-media-helper' ),
+			minutes
+		);
+	};
 
 	const fetchState = function ( dateValue, forceRefresh ) {
 		const formData = new window.FormData();
@@ -34,67 +65,62 @@
 		const [ reason, setReason ] = useState( null );
 		const [ files, setFiles ] = useState( [] );
 		const [ loading, setLoading ] = useState( false );
-		const [ freshNoticeVisible, setFreshNoticeVisible ] = useState( false );
-		const freshNoticeTimer = useRef( null );
+		const [ lastRefreshedAt, setLastRefreshedAt ] = useState( null );
+		const [ , setTick ] = useState( 0 );
 
 		const applyPayload = function ( payload ) {
-			const nextStatus = payload.data.status || 'fresh';
-
-			setStatus( nextStatus );
+			setStatus( payload.data.status || 'fresh' );
 			setReason( payload.data.reason || null );
 			setFiles( payload.data.files || [] );
-			setFreshNoticeVisible( nextStatus === 'fresh' );
+			setLastRefreshedAt( Date.now() );
 		};
 
+		// Re-render every second so the "refreshed Xs ago" label stays current.
 		useEffect( function () {
-			if ( freshNoticeTimer.current ) {
-				window.clearTimeout( freshNoticeTimer.current );
-			}
-
-			if ( ! freshNoticeVisible ) {
-				return undefined;
-			}
-
-			freshNoticeTimer.current = window.setTimeout( function () {
-				setFreshNoticeVisible( false );
-			}, 3500 );
+			const timer = window.setInterval( function () {
+				setTick( function ( value ) {
+					return value + 1;
+				} );
+			}, 1000 );
 
 			return function () {
-				window.clearTimeout( freshNoticeTimer.current );
+				window.clearInterval( timer );
 			};
-		}, [ freshNoticeVisible, files ] );
+		}, [] );
 
-		useEffect( function () {
+		const runFetch = function ( forceRefresh ) {
 			setLoading( true );
-			setFreshNoticeVisible( false );
-			fetchState( date, false )
+			return fetchState( date, forceRefresh )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
 						applyPayload( payload );
-					} else {
+					} else if ( ! forceRefresh ) {
 						setStatus( 'fresh' );
 						setReason( null );
 						setFiles( [] );
-						setFreshNoticeVisible( false );
 					}
-				})
+				} )
 				.finally( function () {
 					setLoading( false );
-				});
+				} );
+		};
+
+		useEffect( function () {
+			runFetch( false );
+
+			// Periodically re-check freshness in the background, like a live status feed.
+			const poller = window.setInterval( function () {
+				runFetch( false );
+			}, AUTO_REFRESH_INTERVAL_MS );
+
+			return function () {
+				window.clearInterval( poller );
+			};
+			// eslint-disable-next-line react-hooks/exhaustive-deps
 		}, [ date ] );
 
 		const handleRefresh = function () {
-			setLoading( true );
-			setFreshNoticeVisible( false );
-			fetchState( date, true )
-				.then( function ( payload ) {
-					if ( payload && payload.success ) {
-						applyPayload( payload );
-					}
-				})
-				.finally( function () {
-					setLoading( false );
-				});
+			runFetch( true );
 		};
 
 		return wp.element.createElement(
@@ -132,7 +158,12 @@
 					status === 'stale'
 						? wp.element.createElement( Notice, { status: 'warning', isDismissible: false },
 							reason ? __( 'Refresh required: ', 'wp-media-helper' ) + reason : __( 'Refresh required.', 'wp-media-helper' ) )
-						: freshNoticeVisible && wp.element.createElement( Notice, { status: 'success', isDismissible: false }, __( 'Media is up to date.', 'wp-media-helper' ) )
+						: null
+				),
+				wp.element.createElement(
+					PanelRow,
+					null,
+					wp.element.createElement( 'span', { style: { color: '#757575', fontSize: '12px' } }, formatElapsed( lastRefreshedAt ) )
 				),
 				wp.element.createElement(
 					PanelRow,
