@@ -113,8 +113,17 @@
 				runFetch( false );
 			}, AUTO_REFRESH_INTERVAL_MS );
 
+			// Also re-check whenever the browser tab regains visibility.
+			const handleVisibilityChange = function () {
+				if ( 'visible' === document.visibilityState ) {
+					runFetch( false );
+				}
+			};
+			document.addEventListener( 'visibilitychange', handleVisibilityChange );
+
 			return function () {
 				window.clearInterval( poller );
+				document.removeEventListener( 'visibilitychange', handleVisibilityChange );
 			};
 			// eslint-disable-next-line react-hooks/exhaustive-deps
 		}, [ date ] );
