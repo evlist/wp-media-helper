@@ -27,16 +27,39 @@ log "Installing wp-admin slash redirect guard for ${PUBLIC_URL}..."
 sudo a2enmod rewrite >/dev/null 2>&1 || true
 sudo a2disconf wp-admin-slash-redirect >/dev/null 2>&1 || true
 
-if [ -f "$HTACCESS" ] && ! grep -q 'BEGIN wp-admin Codespaces guard' "$HTACCESS"; then
-  cp "$HTACCESS" "${HTACCESS}.bak.$(date +%Y%m%d%H%M%S)"
+# Ensure WordPress's own rewrite block exists; wp-cli cannot regenerate it
+# outside an HTTP request context, so seed it here if the file is missing.
+if [ ! -f "$HTACCESS" ] || ! grep -q 'BEGIN WordPress' "$HTACCESS"; then
+  log "Seeding default WordPress rewrite block in ${HTACCESS}..."
+  {
+    printf '%s\n' '# BEGIN WordPress'
+    printf '%s\n' '<IfModule mod_rewrite.c>'
+    printf '%s\n' 'RewriteEngine On'
+    printf '%s\n' 'RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]'
+    printf '%s\n' 'RewriteBase /'
+    printf '%s\n' 'RewriteRule ^index\.php$ - [L]'
+    printf '%s\n' 'RewriteCond %{REQUEST_FILENAME} !-f'
+    printf '%s\n' 'RewriteCond %{REQUEST_FILENAME} !-d'
+    printf '%s\n' 'RewriteRule . /index.php [L]'
+    printf '%s\n' '</IfModule>'
+    printf '%s\n' '# END WordPress'
+  } >> "$HTACCESS"
 fi
 
-cat > "$HTACCESS" <<HTACCESS
+# Merge our guard block in place instead of overwriting the rest of the file.
+GUARD_BLOCK="$(cat <<GUARD
 # BEGIN wp-admin Codespaces guard
 RewriteEngine On
 RewriteRule ^wp-admin$ ${PUBLIC_URL}/wp-admin/ [R=302,L,NE]
 # END wp-admin Codespaces guard
-HTACCESS
+GUARD
+)"
+
+if grep -q 'BEGIN wp-admin Codespaces guard' "$HTACCESS"; then
+  sed -i '/# BEGIN wp-admin Codespaces guard/,/# END wp-admin Codespaces guard/d' "$HTACCESS"
+fi
+
+printf '%s\n\n%s' "$GUARD_BLOCK" "$(cat "$HTACCESS")" > "${HTACCESS}.tmp" && mv "${HTACCESS}.tmp" "$HTACCESS"
 
 sudo apache2ctl -t >/dev/null 2>&1 && sudo service apache2 reload >/dev/null 2>&1 || true
 
