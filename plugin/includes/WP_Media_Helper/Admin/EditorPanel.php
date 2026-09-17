@@ -14,7 +14,7 @@ class EditorPanel {
 		wp_enqueue_script(
 			'wp-media-helper-editor-panel',
 			plugins_url( 'assets/js/editor-media-panel.js', WP_MEDIA_HELPER_FILE ),
-			[ 'wp-components', 'wp-data', 'wp-edit-post', 'wp-element', 'wp-i18n', 'wp-plugins' ],
+			[ 'wp-components', 'wp-data', 'wp-edit-post', 'wp-editor', 'wp-element', 'wp-i18n', 'wp-plugins' ],
 			WP_MEDIA_HELPER_VERSION,
 			true
 		);

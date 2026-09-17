@@ -10,5 +10,6 @@ class Bootstrap {
 		new ExternalSourceSettingsPage();
 		new EditorPanel();
 		new EditorMediaController();
+		new PostDateMeta();
 	}
 }

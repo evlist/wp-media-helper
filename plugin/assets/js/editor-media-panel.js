@@ -10,6 +10,7 @@
 	const endpoint = wpMediaHelperEditorPanel.ajaxUrl;
 	const nonce = wpMediaHelperEditorPanel.nonce;
 	const defaultDate = wpMediaHelperEditorPanel.date;
+	const dateMetaKey = 'wp_media_helper_date';
 
 	// Background poll interval; the manual Refresh button always forces an immediate check.
 	const AUTO_REFRESH_INTERVAL_MS = 30000;
@@ -59,14 +60,28 @@
 		} );
 	};
 
+	const getStoredDate = function () {
+		const meta = wp.data.select( 'core/editor' ).getEditedPostAttribute( 'meta' ) || {};
+
+		return meta[ dateMetaKey ] || defaultDate;
+	};
+
 	const MediaPanel = function () {
-		const [ date, setDate ] = useState( defaultDate );
+		const [ date, setDateState ] = useState( getStoredDate );
 		const [ status, setStatus ] = useState( 'fresh' );
 		const [ reason, setReason ] = useState( null );
 		const [ files, setFiles ] = useState( [] );
 		const [ loading, setLoading ] = useState( false );
 		const [ lastRefreshedAt, setLastRefreshedAt ] = useState( null );
 		const [ , setTick ] = useState( 0 );
+
+		const setDate = function ( value ) {
+			setDateState( value );
+
+			const metaUpdate = {};
+			metaUpdate[ dateMetaKey ] = value;
+			wp.data.dispatch( 'core/editor' ).editPost( { meta: metaUpdate } );
+		};
 
 		const applyPayload = function ( payload ) {
 			setStatus( payload.data.status || 'fresh' );
