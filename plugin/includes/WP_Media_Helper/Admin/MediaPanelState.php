@@ -104,6 +104,36 @@ class MediaPanelState {
 		return array_values( array_unique( $candidates ) );
 	}
 
+	/**
+	 * @return bool True when two paths refer to the same media item, even if WordPress renamed the uploaded file.
+	 */
+	public static function pathMatches( string $leftPath, string $rightPath ): bool {
+		$leftPath = trim( $leftPath );
+		$rightPath = trim( $rightPath );
+		if ( '' === $leftPath || '' === $rightPath ) {
+			return false;
+		}
+
+		if ( $leftPath === $rightPath ) {
+			return true;
+		}
+
+		$leftCandidates = self::pathSignatureCandidates( $leftPath );
+		$rightCandidates = self::pathSignatureCandidates( $rightPath );
+		$known = [];
+		foreach ( $rightCandidates as $candidate ) {
+			$known[ $candidate ] = true;
+		}
+
+		foreach ( $leftCandidates as $candidate ) {
+			if ( isset( $known[ $candidate ] ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	public static function setImportState( array $items, array $importedPaths ): array {
 		$known = [];
 		foreach ( $importedPaths as $path ) {

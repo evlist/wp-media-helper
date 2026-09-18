@@ -36,6 +36,36 @@ class EditorMediaController {
 	public function __construct() {
 		add_action( 'wp_ajax_wp_media_helper_media_panel_state', [ $this, 'handle' ] );
 		add_action( 'wp_ajax_wp_media_helper_import_media', [ $this, 'handleImport' ] );
+		add_action( 'wp_ajax_wp_media_helper_remove_media', [ $this, 'handleRemove' ] );
+	}
+
+	public function handleRemove(): void {
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
+		}
+
+		check_ajax_referer( 'wp_media_helper_media_panel', 'nonce' );
+
+		$sourceId = sanitize_text_field( wp_unslash( $_POST['source_id'] ?? '' ) );
+		$path = sanitize_text_field( wp_unslash( $_POST['path'] ?? '' ) );
+
+		if ( '' === $path ) {
+			wp_send_json_error( [ 'message' => 'The selected media file path is required.' ], 400 );
+		}
+
+		$removed = $this->removeVirtualAttachment( $sourceId, $path );
+		if ( is_wp_error( $removed ) ) {
+			wp_send_json_error( [ 'message' => $removed->get_error_message() ], 400 );
+		}
+
+		$removedIds = array_values( array_unique( array_map( 'intval', $removed ) ) );
+		wp_send_json_success( [
+			'attachment_id' => $removedIds[0] ?? 0,
+			'source_id' => $sourceId,
+			'path' => $path,
+			'is_imported' => false,
+			'removed_ids' => $removedIds,
+		] );
 	}
 
 	public function handleImport(): void {
@@ -100,6 +130,62 @@ class EditorMediaController {
 		update_post_meta( (int) $attachmentId, '_wp_attached_file', $path );
 
 		return (int) $attachmentId;
+	}
+
+	/**
+	 * Removes the WordPress-side attachment record without deleting the original source file.
+	 *
+	 * @return int[]|\WP_Error
+	 */
+	public function removeVirtualAttachment( string $sourceId, string $path ) {
+		$attachments = get_posts( [
+			'post_type' => 'attachment',
+			'post_status' => 'inherit',
+			'posts_per_page' => -1,
+			'post_parent' => 0,
+			'fields' => 'ids',
+		] );
+
+		if ( empty( $attachments ) || is_wp_error( $attachments ) ) {
+			return new \WP_Error( 'attachment_not_found', 'The selected media file is not currently imported into WordPress.' );
+		}
+
+		$matches = [];
+		foreach ( $attachments as $attachmentId ) {
+			$attachmentId = (int) $attachmentId;
+			$attachedFile = get_attached_file( $attachmentId, true );
+			$sourcePath = get_post_meta( $attachmentId, '_wp_media_helper_source_path', true );
+			$metaSourceId = get_post_meta( $attachmentId, '_wp_media_helper_source_id', true );
+
+			if ( '' !== $sourceId && '' !== (string) $metaSourceId && (string) $metaSourceId !== $sourceId ) {
+				continue;
+			}
+
+			$checks = [];
+			if ( is_string( $attachedFile ) && '' !== $attachedFile ) {
+				$checks[] = $attachedFile;
+			}
+			if ( is_string( $sourcePath ) && '' !== $sourcePath ) {
+				$checks[] = $sourcePath;
+			}
+
+			foreach ( $checks as $candidatePath ) {
+				if ( MediaPanelState::pathMatches( $path, $candidatePath ) ) {
+					$matches[] = $attachmentId;
+					break;
+				}
+			}
+		}
+
+		if ( [] === $matches ) {
+			return new \WP_Error( 'attachment_not_found', 'The selected media file is not currently imported into WordPress.' );
+		}
+
+		foreach ( array_values( array_unique( $matches ) ) as $attachmentId ) {
+			wp_delete_post( (int) $attachmentId, true );
+		}
+
+		return array_values( array_unique( $matches ) );
 	}
 
 	public function handle(): void {

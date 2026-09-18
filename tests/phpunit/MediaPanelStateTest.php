@@ -168,4 +168,9 @@ class MediaPanelStateTest extends TestCase {
 
 		$this->assertTrue( $items[0]['is_imported'] );
 	}
+
+	public function test_path_matches_handles_wordpress_renamed_uploads(): void {
+		$this->assertTrue( MediaPanelState::pathMatches( '/tmp/source/20260810-morning.png', '/wp-content/uploads/2026/08/20260810-morning_1.png' ) );
+		$this->assertFalse( MediaPanelState::pathMatches( '/tmp/source/20260810-morning.png', '/tmp/source/20260811-morning.png' ) );
+	}
 }

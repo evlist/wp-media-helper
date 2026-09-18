@@ -120,6 +120,22 @@
 		} );
 	};
 
+	const removeMediaItem = function ( item ) {
+		const formData = new window.FormData();
+		formData.append( 'action', 'wp_media_helper_remove_media' );
+		formData.append( 'nonce', nonce );
+		formData.append( 'source_id', wpMediaHelperEditorPanel.sourceId || '' );
+		formData.append( 'path', item && item.path ? item.path : ( item && item.name ? item.name : '' ) );
+
+		return window.fetch( endpoint, {
+			method: 'POST',
+			credentials: 'same-origin',
+			body: formData,
+		} ).then( function ( response ) {
+			return response.json();
+		} );
+	};
+
 	const MediaPanel = function () {
 		const [ date, setDateState ] = useState( getStoredDate );
 		const [ status, setStatus ] = useState( 'fresh' );
@@ -221,6 +237,34 @@
 				} );
 		};
 
+		const handleRemove = function ( item ) {
+			const removedPath = item && item.path ? item.path : ( item && item.name ? item.name : '' );
+			if ( '' === removedPath ) {
+				return;
+			}
+
+			setLoading( true );
+			removeMediaItem( item )
+				.then( function ( payload ) {
+					if ( payload && payload.success ) {
+						setFiles( function ( currentFiles ) {
+							return currentFiles.map( function ( currentItem ) {
+								const normalized = normalizeMediaItem( currentItem );
+								const currentPath = normalized.path || normalized.name || '';
+								if ( currentPath === removedPath ) {
+									return Object.assign( {}, normalized, { is_imported: false } );
+								}
+
+								return currentItem;
+							} );
+						} );
+					}
+				} )
+				.finally( function () {
+					setLoading( false );
+				} );
+		};
+
 		return wp.element.createElement(
 			PluginSidebar,
 			{
@@ -291,11 +335,16 @@
 									wp.element.createElement( Button, {
 										isSecondary: true,
 										size: 'small',
-										disabled: loading || item.is_imported,
+													disabled: loading,
 										onClick: function () {
-											handleImport( item );
+														if ( item.is_imported ) {
+															handleRemove( item );
+															return;
+														}
+
+														handleImport( item );
 										},
-										text: item.is_imported ? __( 'Imported', 'wp-media-helper' ) : __( 'Import', 'wp-media-helper' )
+													text: item.is_imported ? __( 'Remove', 'wp-media-helper' ) : __( 'Import', 'wp-media-helper' )
 									} )
 								)
 							);
