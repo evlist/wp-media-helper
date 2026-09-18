@@ -173,4 +173,20 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertTrue( MediaPanelState::pathMatches( '/tmp/source/20260810-morning.png', '/wp-content/uploads/2026/08/20260810-morning_1.png' ) );
 		$this->assertFalse( MediaPanelState::pathMatches( '/tmp/source/20260810-morning.png', '/tmp/source/20260811-morning.png' ) );
 	}
+
+	public function test_normalize_bulk_items_discards_invalid_items_and_duplicates(): void {
+		$items = \WP_Media_Helper\Admin\EditorMediaController::normalizeBulkItems( [
+			[ 'id' => 'a', 'path' => '/tmp/source/a.jpg' ],
+			[ 'id' => 'a', 'path' => '/tmp/source/a.jpg' ],
+			[ 'path' => '/tmp/source/b.gpx' ],
+			'',
+			[ 'id' => 'invalid', 'path' => '  ' ],
+			new stdClass(),
+		] );
+
+		$this->assertSame( [
+			[ 'id' => 'a', 'path' => '/tmp/source/a.jpg' ],
+			[ 'id' => '/tmp/source/b.gpx', 'path' => '/tmp/source/b.gpx' ],
+		], $items );
+	}
 }

@@ -33,10 +33,76 @@ class EditorMediaController {
 		return $matches;
 	}
 
+	/**
+	 * @param array<int, mixed> $items
+	 * @return array<int, array{id:string, path:string}>
+	 */
+	public static function normalizeBulkItems( array $items ): array {
+		$normalized = [];
+		foreach ( $items as $item ) {
+			if ( is_string( $item ) ) {
+				$item = [ 'path' => $item ];
+			}
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+
+			$path = trim( (string) ( $item['path'] ?? '' ) );
+			if ( '' === $path ) {
+				continue;
+			}
+
+			$id = trim( (string) ( $item['id'] ?? $path ) );
+			$key = $id . "\0" . $path;
+			if ( isset( $normalized[ $key ] ) ) {
+				continue;
+			}
+
+			$normalized[ $key ] = [
+				'id' => $id,
+				'path' => $path,
+			];
+		}
+
+		return array_values( $normalized );
+	}
+
 	public function __construct() {
 		add_action( 'wp_ajax_wp_media_helper_media_panel_state', [ $this, 'handle' ] );
 		add_action( 'wp_ajax_wp_media_helper_import_media', [ $this, 'handleImport' ] );
 		add_action( 'wp_ajax_wp_media_helper_remove_media', [ $this, 'handleRemove' ] );
+		add_action( 'wp_ajax_wp_media_helper_bulk_media', [ $this, 'handleBulk' ] );
+	}
+
+	public function handleBulk(): void {
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
+		}
+
+		check_ajax_referer( 'wp_media_helper_media_panel', 'nonce' );
+
+		$sourceId = sanitize_text_field( wp_unslash( $_POST['source_id'] ?? '' ) );
+		$action = sanitize_key( wp_unslash( $_POST['bulk_action'] ?? '' ) );
+		$encodedItems = wp_unslash( $_POST['items'] ?? '' );
+		$items = is_string( $encodedItems ) ? json_decode( $encodedItems, true ) : [];
+
+		if ( ! in_array( $action, [ 'import', 'remove' ], true ) ) {
+			wp_send_json_error( [ 'message' => 'The requested bulk action is not supported.' ], 400 );
+		}
+
+		if ( ! is_array( $items ) ) {
+			wp_send_json_error( [ 'message' => 'The selected media items are invalid.' ], 400 );
+		}
+
+		$items = self::normalizeBulkItems( $items );
+		if ( [] === $items ) {
+			wp_send_json_error( [ 'message' => 'At least one media item must be selected.' ], 400 );
+		}
+
+		wp_send_json_success( [
+			'action' => $action,
+			'results' => $this->processBulkItems( $sourceId, $action, $items ),
+		] );
 	}
 
 	public function handleRemove(): void {
@@ -82,7 +148,8 @@ class EditorMediaController {
 			wp_send_json_error( [ 'message' => 'The selected media file is not readable.' ], 400 );
 		}
 
-		$attachmentId = $this->registerVirtualAttachment( $sourceId, $path );
+		$existing = $this->findVirtualAttachments( $sourceId, $path );
+		$attachmentId = $existing[0] ?? $this->registerVirtualAttachment( $sourceId, $path );
 		if ( is_wp_error( $attachmentId ) ) {
 			wp_send_json_error( [ 'message' => $attachmentId->get_error_message() ], 400 );
 		}
@@ -133,11 +200,79 @@ class EditorMediaController {
 	}
 
 	/**
+	 * @param array<int, array{id:string, path:string}> $items
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function processBulkItems( string $sourceId, string $action, array $items ): array {
+		$results = [];
+		foreach ( $items as $item ) {
+			$result = [
+				'id' => $item['id'],
+				'path' => $item['path'],
+				'success' => false,
+				'is_imported' => false,
+			];
+
+			if ( 'import' === $action ) {
+				if ( ! is_file( $item['path'] ) ) {
+					$result['message'] = 'The selected media file is not readable.';
+					$results[] = $result;
+					continue;
+				}
+
+				$existing = $this->findVirtualAttachments( $sourceId, $item['path'] );
+				$attachmentId = $existing[0] ?? $this->registerVirtualAttachment( $sourceId, $item['path'] );
+				if ( is_wp_error( $attachmentId ) ) {
+					$result['message'] = $attachmentId->get_error_message();
+					$results[] = $result;
+					continue;
+				}
+
+				$result['success'] = true;
+				$result['is_imported'] = true;
+				$result['attachment_id'] = (int) $attachmentId;
+				$results[] = $result;
+				continue;
+			}
+
+			$removed = $this->removeVirtualAttachment( $sourceId, $item['path'] );
+			if ( is_wp_error( $removed ) ) {
+				$result['message'] = $removed->get_error_message();
+				$results[] = $result;
+				continue;
+			}
+
+			$result['success'] = true;
+			$result['removed_ids'] = array_values( array_unique( array_map( 'intval', $removed ) ) );
+			$results[] = $result;
+		}
+
+		return $results;
+	}
+
+	/**
 	 * Removes the WordPress-side attachment record without deleting the original source file.
 	 *
 	 * @return int[]|\WP_Error
 	 */
 	public function removeVirtualAttachment( string $sourceId, string $path ) {
+		$matches = $this->findVirtualAttachments( $sourceId, $path );
+		if ( [] === $matches ) {
+			return [];
+		}
+
+		foreach ( $matches as $attachmentId ) {
+			delete_post_meta( (int) $attachmentId, '_wp_attached_file' );
+			wp_delete_post( (int) $attachmentId, true );
+		}
+
+		return $matches;
+	}
+
+	/**
+	 * @return int[]
+	 */
+	private function findVirtualAttachments( string $sourceId, string $path ): array {
 		$attachments = get_posts( [
 			'post_type' => 'attachment',
 			'post_status' => 'inherit',
@@ -147,7 +282,7 @@ class EditorMediaController {
 		] );
 
 		if ( empty( $attachments ) || is_wp_error( $attachments ) ) {
-			return new \WP_Error( 'attachment_not_found', 'The selected media file is not currently imported into WordPress.' );
+			return [];
 		}
 
 		$matches = [];
@@ -157,7 +292,11 @@ class EditorMediaController {
 			$sourcePath = get_post_meta( $attachmentId, '_wp_media_helper_source_path', true );
 			$metaSourceId = get_post_meta( $attachmentId, '_wp_media_helper_source_id', true );
 
-			if ( '' !== $sourceId && '' !== (string) $metaSourceId && (string) $metaSourceId !== $sourceId ) {
+			if ( ! is_string( $sourcePath ) || '' === $sourcePath ) {
+				continue;
+			}
+
+			if ( '' !== $sourceId && (string) $metaSourceId !== $sourceId ) {
 				continue;
 			}
 
@@ -175,14 +314,6 @@ class EditorMediaController {
 					break;
 				}
 			}
-		}
-
-		if ( [] === $matches ) {
-			return new \WP_Error( 'attachment_not_found', 'The selected media file is not currently imported into WordPress.' );
-		}
-
-		foreach ( array_values( array_unique( $matches ) ) as $attachmentId ) {
-			wp_delete_post( (int) $attachmentId, true );
 		}
 
 		return array_values( array_unique( $matches ) );
