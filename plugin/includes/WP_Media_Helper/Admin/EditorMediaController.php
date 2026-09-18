@@ -97,7 +97,7 @@ class EditorMediaController {
 			if ( null === $merged['reason'] && null !== $result['reason'] ) {
 				$merged['reason'] = $result['reason'];
 			}
-			$merged['files'] = array_values( array_unique( array_merge( $merged['files'], $result['files'] ) ) );
+			$merged['files'] = MediaPanelState::mergeFiles( $merged['files'], $result['files'] );
 			if ( '' === $merged['directory'] ) {
 				$merged['directory'] = $result['directory'];
 			}

@@ -110,4 +110,44 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertSame( $configured, \WP_Media_Helper\Admin\EditorMediaController::resolveRequestedSources( $configured, '' ) );
 		$this->assertSame( [ $configured[1] ], \WP_Media_Helper\Admin\EditorMediaController::resolveRequestedSources( $configured, 'alpes' ) );
 	}
+
+	public function test_enrich_files_creates_a_user_facing_metadata_contract(): void {
+		$entries = MediaPanelState::enrichFiles( [
+			'/tmp/source/2026/08/10/photo-1.jpg',
+			'/tmp/source/2026/08/10/report.pdf',
+			'/tmp/source/2026/08/10/archive.tar.gz',
+		] );
+
+		$this->assertCount( 3, $entries );
+		$this->assertSame( 'photo-1.jpg', $entries[0]['name'] );
+		$this->assertSame( 'jpg', $entries[0]['type'] );
+		$this->assertFalse( $entries[0]['is_imported'] );
+		$this->assertSame( 'report.pdf', $entries[1]['name'] );
+		$this->assertSame( 'pdf', $entries[1]['type'] );
+		$this->assertFalse( $entries[1]['is_imported'] );
+		$this->assertSame( 'archive.tar.gz', $entries[2]['name'] );
+		$this->assertSame( 'gz', $entries[2]['type'] );
+		$this->assertFalse( $entries[2]['is_imported'] );
+	}
+
+	public function test_enrich_files_handles_an_empty_array(): void {
+		$this->assertSame( [], MediaPanelState::enrichFiles( [] ) );
+	}
+
+	public function test_merge_files_keeps_all_distinct_entries_when_items_are_enriched(): void {
+		$current = [
+			[ 'id' => 'a', 'path' => '/tmp/20260810-morning.png', 'name' => '20260810-morning.png', 'type' => 'png', 'is_imported' => false ],
+			[ 'id' => 'b', 'path' => '/tmp/20260810-route.gpx', 'name' => '20260810-route.gpx', 'type' => 'gpx', 'is_imported' => false ],
+		];
+		$incoming = [
+			[ 'id' => 'c', 'path' => '/tmp/20260810-summit.png', 'name' => '20260810-summit.png', 'type' => 'png', 'is_imported' => false ],
+			[ 'id' => 'd', 'path' => '/tmp/20260810-not-an-image.txt', 'name' => '20260810-not-an-image.txt', 'type' => 'txt', 'is_imported' => false ],
+		];
+
+		$merged = MediaPanelState::mergeFiles( $current, $incoming );
+
+		$this->assertCount( 4, $merged );
+		$this->assertSame( '20260810-morning.png', $merged[0]['name'] );
+		$this->assertSame( '20260810-not-an-image.txt', $merged[3]['name'] );
+	}
 }

@@ -66,6 +66,26 @@
 		return meta[ dateMetaKey ] || defaultDate;
 	};
 
+	const normalizeMediaItem = function ( item ) {
+		if ( 'string' === typeof item ) {
+			return {
+				id: item,
+				name: item.split( '/' ).pop() || item,
+				path: item,
+				type: 'other',
+				is_imported: false,
+			};
+		}
+
+		return {
+			id: item && item.id ? item.id : ( item && item.path ? item.path : item && item.name ? item.name : '' ),
+			name: item && item.name ? item.name : ( item && item.path ? item.path.split( '/' ).pop() : __( 'Media item', 'wp-media-helper' ) ),
+			path: item && item.path ? item.path : ( item && item.name ? item.name : '' ),
+			type: item && item.type ? item.type : 'other',
+			is_imported: !! ( item && item.is_imported ),
+		};
+	};
+
 	const MediaPanel = function () {
 		const [ date, setDateState ] = useState( getStoredDate );
 		const [ status, setStatus ] = useState( 'fresh' );
@@ -192,9 +212,28 @@
 				wp.element.createElement(
 					PanelRow,
 					null,
-					wp.element.createElement( 'ul', { style: { listStyle: 'disc', paddingLeft: '1.25rem', marginTop: 0 } },
+					wp.element.createElement( 'ul', { style: { listStyle: 'none', paddingLeft: 0, marginTop: 0, display: 'grid', gap: '0.5rem' } },
 						files.map( function ( file ) {
-							return wp.element.createElement( 'li', { key: file }, file );
+							const item = normalizeMediaItem( file );
+							return wp.element.createElement(
+								'li',
+								{
+									key: item.id || item.name,
+									style: {
+										border: '1px solid #d0d5dd',
+										borderRadius: '6px',
+										padding: '0.5rem 0.625rem',
+										background: '#fff'
+									}
+								},
+								wp.element.createElement( 'div', { style: { display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'center' } },
+									wp.element.createElement( 'strong', { style: { fontSize: '13px', overflowWrap: 'anywhere' } }, item.name ),
+									wp.element.createElement( 'span', { style: { fontSize: '11px', color: '#6b7280', textTransform: 'uppercase' } }, item.type )
+								),
+								wp.element.createElement( 'div', { style: { fontSize: '11px', color: item.is_imported ? '#0a7d45' : '#6b7280', marginTop: '0.25rem' } },
+									item.is_imported ? __( 'Already in WordPress media library', 'wp-media-helper' ) : __( 'Not in WordPress media library', 'wp-media-helper' )
+								)
+							);
 						} )
 					)
 				)
