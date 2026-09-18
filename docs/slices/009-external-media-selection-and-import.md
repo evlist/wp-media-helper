@@ -43,7 +43,9 @@ The user can select an item from the media list rendered by the panel. The item 
 
 ### 2. Import into the standard WP media library
 
-When the user triggers import, the plugin creates a standard WordPress media attachment for the selected external file, using the same WordPress media lifecycle as any other upload or attachment.
+When the user triggers import, the plugin creates a standard WordPress media attachment record for the selected external file, without copying the original file into the WordPress uploads directory.
+
+The file remains in its original external location, while WordPress receives enough attachment metadata to treat it as a library item. The source file stays authoritative; the WordPress record is a local media-library registration, not a physical file move or duplicate.
 
 ### 3. Import status tracking
 

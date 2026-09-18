@@ -73,6 +73,66 @@ class MediaPanelState {
 		return array_values( $merged );
 	}
 
+	/**
+	 * @param array<int, array<string, mixed>> $items
+	 * @param array<int, string> $importedPaths
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function pathSignatureCandidates( string $path ): array {
+		$trimmed = trim( $path );
+		if ( '' === $trimmed ) {
+			return [];
+		}
+
+		$basename = basename( $trimmed );
+		$signature = preg_replace( '/_[0-9]+(?=\.[^.]+$)/', '', $basename );
+		$withoutSuffix = is_string( $signature ) ? $signature : $basename;
+		$originalWithoutSuffix = preg_replace( '/_[0-9]+(?=\.[^.]+$)/', '', $trimmed );
+		$withoutSuffixPath = is_string( $originalWithoutSuffix ) ? $originalWithoutSuffix : $trimmed;
+
+		$candidates = array_values( array_filter( [
+			$trimmed,
+			md5( $trimmed ),
+			$basename,
+			md5( $basename ),
+			$withoutSuffix,
+			md5( $withoutSuffix ),
+			$withoutSuffixPath,
+			md5( $withoutSuffixPath ),
+		], static fn ( $value ) => is_string( $value ) && '' !== $value ) );
+
+		return array_values( array_unique( $candidates ) );
+	}
+
+	public static function setImportState( array $items, array $importedPaths ): array {
+		$known = [];
+		foreach ( $importedPaths as $path ) {
+			if ( ! is_string( $path ) ) {
+				continue;
+			}
+			foreach ( self::pathSignatureCandidates( $path ) as $candidate ) {
+				$known[ $candidate ] = true;
+			}
+		}
+
+		foreach ( $items as $index => $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+
+			$path = (string) ( $item['path'] ?? $item['name'] ?? '' );
+			$items[ $index ]['is_imported'] = false;
+			foreach ( self::pathSignatureCandidates( $path ) as $candidate ) {
+				if ( isset( $known[ $candidate ] ) ) {
+					$items[ $index ]['is_imported'] = true;
+					break;
+				}
+			}
+		}
+
+		return $items;
+	}
+
 	public function __construct( ?TargetedRefreshCoordinator $coordinator = null ) {
 		$this->coordinator = $coordinator ?? new TargetedRefreshCoordinator();
 	}

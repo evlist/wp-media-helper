@@ -150,4 +150,22 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertSame( '20260810-morning.png', $merged[0]['name'] );
 		$this->assertSame( '20260810-not-an-image.txt', $merged[3]['name'] );
 	}
+
+	public function test_set_import_state_marks_matching_files_as_imported(): void {
+		$items = MediaPanelState::setImportState( [
+			[ 'id' => 'a', 'path' => '/tmp/20260810-morning.png', 'name' => '20260810-morning.png', 'type' => 'png', 'is_imported' => false ],
+			[ 'id' => 'b', 'path' => '/tmp/20260810-route.gpx', 'name' => '20260810-route.gpx', 'type' => 'gpx', 'is_imported' => false ],
+		], [ '/tmp/20260810-morning.png' ] );
+
+		$this->assertTrue( $items[0]['is_imported'] );
+		$this->assertFalse( $items[1]['is_imported'] );
+	}
+
+	public function test_set_import_state_matches_wordpress_renamed_uploads(): void {
+		$items = MediaPanelState::setImportState( [
+			[ 'id' => 'a', 'path' => '/tmp/source/20260810-morning.png', 'name' => '20260810-morning.png', 'type' => 'png', 'is_imported' => false ],
+		], [ '/wp-content/uploads/2026/08/20260810-morning_1.png' ] );
+
+		$this->assertTrue( $items[0]['is_imported'] );
+	}
 }

@@ -86,6 +86,40 @@
 		};
 	};
 
+	const markImportedItems = function ( items, importedPaths ) {
+		const importedSet = new window.Set( ( importedPaths || [] ).filter( Boolean ) );
+		( items || [] ).forEach( function ( item ) {
+			const normalized = normalizeMediaItem( item );
+			if ( normalized.is_imported ) {
+				importedSet.add( normalized.path || normalized.name || '' );
+			}
+		} );
+
+		return ( items || [] ).map( function ( item ) {
+			const normalized = normalizeMediaItem( item );
+			const path = normalized.path || normalized.name || '';
+			return Object.assign( {}, normalized, {
+				is_imported: Boolean( normalized.is_imported ) || importedSet.has( path )
+			} );
+		} );
+	};
+
+	const importMediaItem = function ( item ) {
+		const formData = new window.FormData();
+		formData.append( 'action', 'wp_media_helper_import_media' );
+		formData.append( 'nonce', nonce );
+		formData.append( 'source_id', wpMediaHelperEditorPanel.sourceId || '' );
+		formData.append( 'path', item && item.path ? item.path : ( item && item.name ? item.name : '' ) );
+
+		return window.fetch( endpoint, {
+			method: 'POST',
+			credentials: 'same-origin',
+			body: formData,
+		} ).then( function ( response ) {
+			return response.json();
+		} );
+	};
+
 	const MediaPanel = function () {
 		const [ date, setDateState ] = useState( getStoredDate );
 		const [ status, setStatus ] = useState( 'fresh' );
@@ -167,6 +201,26 @@
 			runFetch( true );
 		};
 
+		const handleImport = function ( item ) {
+			const importedPath = item && item.path ? item.path : ( item && item.name ? item.name : '' );
+			if ( '' === importedPath ) {
+				return;
+			}
+
+			setLoading( true );
+			importMediaItem( item )
+				.then( function ( payload ) {
+					if ( payload && payload.success ) {
+						setFiles( function ( currentFiles ) {
+							return markImportedItems( currentFiles, [ importedPath ] );
+						} );
+					}
+				} )
+				.finally( function () {
+					setLoading( false );
+				} );
+		};
+
 		return wp.element.createElement(
 			PluginSidebar,
 			{
@@ -231,7 +285,18 @@
 									wp.element.createElement( 'span', { style: { fontSize: '11px', color: '#6b7280', textTransform: 'uppercase' } }, item.type )
 								),
 								wp.element.createElement( 'div', { style: { fontSize: '11px', color: item.is_imported ? '#0a7d45' : '#6b7280', marginTop: '0.25rem' } },
-									item.is_imported ? __( 'Already in WordPress media library', 'wp-media-helper' ) : __( 'Not in WordPress media library', 'wp-media-helper' )
+									item.is_imported ? __( 'In WP media library', 'wp-media-helper' ) : __( 'Not in WP media library', 'wp-media-helper' )
+								),
+								wp.element.createElement( 'div', { style: { marginTop: '0.5rem', display: 'flex', justifyContent: 'flex-end' } },
+									wp.element.createElement( Button, {
+										isSecondary: true,
+										size: 'small',
+										disabled: loading || item.is_imported,
+										onClick: function () {
+											handleImport( item );
+										},
+										text: item.is_imported ? __( 'Imported', 'wp-media-helper' ) : __( 'Import', 'wp-media-helper' )
+									} )
 								)
 							);
 						} )

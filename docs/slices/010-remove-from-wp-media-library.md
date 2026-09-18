@@ -32,7 +32,7 @@ The action should be clearly named and positioned as a management action, not as
 
 ### 2. External source remains untouched
 
-Removing the WordPress attachment must not delete or modify the file in the external source directory. It only removes the WordPress-side record of the imported media item.
+Removing the WordPress attachment must not delete or modify the file in the external source directory. It only removes the WordPress-side record of the imported media item. The original external file remains where it was, and no copy is created in the WordPress uploads folder during the import process.
 
 ### 3. UI state is recalculated immediately
 
