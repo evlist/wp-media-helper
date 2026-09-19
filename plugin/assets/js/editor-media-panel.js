@@ -92,56 +92,6 @@
 		};
 	};
 
-	const markImportedItems = function ( items, importedPaths ) {
-		const importedSet = new window.Set( ( importedPaths || [] ).filter( Boolean ) );
-		( items || [] ).forEach( function ( item ) {
-			const normalized = normalizeMediaItem( item );
-			if ( normalized.is_imported ) {
-				importedSet.add( normalized.path || normalized.name || '' );
-			}
-		} );
-
-		return ( items || [] ).map( function ( item ) {
-			const normalized = normalizeMediaItem( item );
-			const path = normalized.path || normalized.name || '';
-			return Object.assign( {}, normalized, {
-				is_imported: Boolean( normalized.is_imported ) || importedSet.has( path )
-			} );
-		} );
-	};
-
-	const importMediaItem = function ( item ) {
-		const formData = new window.FormData();
-		formData.append( 'action', 'wp_media_helper_import_media' );
-		formData.append( 'nonce', nonce );
-		formData.append( 'source_id', wpMediaHelperEditorPanel.sourceId || '' );
-		formData.append( 'path', item && item.path ? item.path : ( item && item.name ? item.name : '' ) );
-
-		return window.fetch( endpoint, {
-			method: 'POST',
-			credentials: 'same-origin',
-			body: formData,
-		} ).then( function ( response ) {
-			return response.json();
-		} );
-	};
-
-	const removeMediaItem = function ( item ) {
-		const formData = new window.FormData();
-		formData.append( 'action', 'wp_media_helper_remove_media' );
-		formData.append( 'nonce', nonce );
-		formData.append( 'source_id', wpMediaHelperEditorPanel.sourceId || '' );
-		formData.append( 'path', item && item.path ? item.path : ( item && item.name ? item.name : '' ) );
-
-		return window.fetch( endpoint, {
-			method: 'POST',
-			credentials: 'same-origin',
-			body: formData,
-		} ).then( function ( response ) {
-			return response.json();
-		} );
-	};
-
 	const bulkMediaItems = function ( action, items ) {
 		const formData = new window.FormData();
 		formData.append( 'action', 'wp_media_helper_bulk_media' );
@@ -335,49 +285,19 @@
 				} );
 		};
 
-		const handleImport = function ( item ) {
-			const importedPath = item && item.path ? item.path : ( item && item.name ? item.name : '' );
-			if ( '' === importedPath ) {
+		const handleItemAction = function ( action, item ) {
+			if ( ! item || ! item.path ) {
 				return;
 			}
 
 			setLoading( true );
 			setOperationNotice( null );
-			importMediaItem( item )
+			bulkMediaItems( action, [ item ] )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
-						setFiles( function ( currentFiles ) {
-							return markImportedItems( currentFiles, [ importedPath ] );
-						} );
-					}
-				} )
-				.finally( function () {
-					setLoading( false );
-				} );
-		};
-
-		const handleRemove = function ( item ) {
-			const removedPath = item && item.path ? item.path : ( item && item.name ? item.name : '' );
-			if ( '' === removedPath ) {
-				return;
-			}
-
-			setLoading( true );
-			setOperationNotice( null );
-			removeMediaItem( item )
-				.then( function ( payload ) {
-					if ( payload && payload.success ) {
-						setFiles( function ( currentFiles ) {
-							return currentFiles.map( function ( currentItem ) {
-								const normalized = normalizeMediaItem( currentItem );
-								const currentPath = normalized.path || normalized.name || '';
-								if ( currentPath === removedPath ) {
-									return Object.assign( {}, normalized, { is_imported: false } );
-								}
-
-								return currentItem;
-							} );
-						} );
+						applyBulkResults( payload );
+					} else {
+						setOperationNotice( payload && payload.data && payload.data.message ? payload.data.message : __( 'The action failed.', 'wp-media-helper' ) );
 					}
 				} )
 				.finally( function () {
@@ -527,7 +447,7 @@
 												wp.element.createElement( Button, {
 													isLink: true,
 													disabled: loading,
-													onClick: function () { item.is_imported ? handleRemove( item ) : handleImport( item ); },
+													onClick: function () { handleItemAction( item.is_imported ? 'remove' : 'import', item ); },
 													text: item.is_imported ? __( 'Remove', 'wp-media-helper' ) : __( 'Import', 'wp-media-helper' )
 												} )
 											)

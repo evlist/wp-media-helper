@@ -148,9 +148,11 @@ After a successful operation, only the affected rows should change status. The c
 
 The client must not rebuild the list from the response in a way that loses unrelated rows or imported states.
 
-### 6. Compatibility with existing endpoints
+### 6. Unified action contract
 
-The existing single-item import and removal behavior may remain available for row actions. Bulk actions may use a new endpoint, provided they share the same validation and attachment lifecycle rules.
+Row actions and bulk actions must use the same endpoint and the same per-item result contract. A row action is a bulk request containing exactly one item.
+
+This prevents the attachment lifecycle rules from diverging between the two interaction modes and makes every future bulk action automatically available to an individual row.
 
 In particular:
 

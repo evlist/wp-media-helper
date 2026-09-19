@@ -69,8 +69,6 @@ class EditorMediaController {
 
 	public function __construct() {
 		add_action( 'wp_ajax_wp_media_helper_media_panel_state', [ $this, 'handle' ] );
-		add_action( 'wp_ajax_wp_media_helper_import_media', [ $this, 'handleImport' ] );
-		add_action( 'wp_ajax_wp_media_helper_remove_media', [ $this, 'handleRemove' ] );
 		add_action( 'wp_ajax_wp_media_helper_bulk_media', [ $this, 'handleBulk' ] );
 	}
 
@@ -102,64 +100,6 @@ class EditorMediaController {
 		wp_send_json_success( [
 			'action' => $action,
 			'results' => $this->processBulkItems( $sourceId, $action, $items ),
-		] );
-	}
-
-	public function handleRemove(): void {
-		if ( ! current_user_can( 'edit_posts' ) ) {
-			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
-		}
-
-		check_ajax_referer( 'wp_media_helper_media_panel', 'nonce' );
-
-		$sourceId = sanitize_text_field( wp_unslash( $_POST['source_id'] ?? '' ) );
-		$path = sanitize_text_field( wp_unslash( $_POST['path'] ?? '' ) );
-
-		if ( '' === $path ) {
-			wp_send_json_error( [ 'message' => 'The selected media file path is required.' ], 400 );
-		}
-
-		$removed = $this->removeVirtualAttachment( $sourceId, $path );
-		if ( is_wp_error( $removed ) ) {
-			wp_send_json_error( [ 'message' => $removed->get_error_message() ], 400 );
-		}
-
-		$removedIds = array_values( array_unique( array_map( 'intval', $removed ) ) );
-		wp_send_json_success( [
-			'attachment_id' => $removedIds[0] ?? 0,
-			'source_id' => $sourceId,
-			'path' => $path,
-			'is_imported' => false,
-			'removed_ids' => $removedIds,
-		] );
-	}
-
-	public function handleImport(): void {
-		if ( ! current_user_can( 'edit_posts' ) ) {
-			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
-		}
-
-		check_ajax_referer( 'wp_media_helper_media_panel', 'nonce' );
-
-		$sourceId = sanitize_text_field( wp_unslash( $_POST['source_id'] ?? '' ) );
-		$path = sanitize_text_field( wp_unslash( $_POST['path'] ?? '' ) );
-
-		if ( '' === $path || ! is_file( $path ) ) {
-			wp_send_json_error( [ 'message' => 'The selected media file is not readable.' ], 400 );
-		}
-
-		$existing = $this->findVirtualAttachments( $sourceId, $path );
-		$attachmentId = $existing[0] ?? $this->registerVirtualAttachment( $sourceId, $path );
-		if ( is_wp_error( $attachmentId ) ) {
-			wp_send_json_error( [ 'message' => $attachmentId->get_error_message() ], 400 );
-		}
-
-		$attachmentId = (int) $attachmentId;
-		wp_send_json_success( [
-			'attachment_id' => $attachmentId,
-			'source_id' => $sourceId,
-			'path' => $path,
-			'is_imported' => true,
 		] );
 	}
 
