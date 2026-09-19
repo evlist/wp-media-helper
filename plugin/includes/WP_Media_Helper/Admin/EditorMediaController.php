@@ -9,6 +9,12 @@ use WP_Media_Helper\Settings\ExternalSourceSettings;
 
 class EditorMediaController {
 
+	public const panelModeMetaKey = '_wp_media_helper_panel_mode';
+
+	public static function normalizePanelMode( mixed $mode ): string {
+		return 'advanced' === $mode ? 'advanced' : 'simple';
+	}
+
 	/**
 	 * @param array<int, array<string, mixed>> $configuredSources
 	 * @param string $requestedSourceId
@@ -70,6 +76,19 @@ class EditorMediaController {
 	public function __construct() {
 		add_action( 'wp_ajax_wp_media_helper_media_panel_state', [ $this, 'handle' ] );
 		add_action( 'wp_ajax_wp_media_helper_bulk_media', [ $this, 'handleBulk' ] );
+		add_action( 'wp_ajax_wp_media_helper_panel_mode', [ $this, 'handlePanelMode' ] );
+	}
+
+	public function handlePanelMode(): void {
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
+		}
+
+		check_ajax_referer( 'wp_media_helper_media_panel', 'nonce' );
+
+		$mode = self::normalizePanelMode( sanitize_key( wp_unslash( $_POST['mode'] ?? '' ) ) );
+		update_user_meta( get_current_user_id(), self::panelModeMetaKey, $mode );
+		wp_send_json_success( [ 'mode' => $mode ] );
 	}
 
 	public function handleBulk(): void {

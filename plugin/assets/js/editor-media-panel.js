@@ -12,6 +12,7 @@
 	const endpoint = wpMediaHelperEditorPanel.ajaxUrl;
 	const nonce = wpMediaHelperEditorPanel.nonce;
 	const defaultDate = wpMediaHelperEditorPanel.date;
+	const defaultPanelMode = 'advanced' === wpMediaHelperEditorPanel.panelMode ? 'advanced' : 'simple';
 	const dateMetaKey = 'wp_media_helper_date';
 
 	// Background poll interval; the manual Refresh button always forces an immediate check.
@@ -21,6 +22,10 @@
 		{ value: 'remove', label: __( 'Remove', 'wp-media-helper' ) },
 		{ value: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) },
 		{ value: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) },
+	];
+	const PANEL_MODES = [
+		{ value: 'simple', label: __( 'Simple', 'wp-media-helper' ) },
+		{ value: 'advanced', label: __( 'Advanced', 'wp-media-helper' ) },
 	];
 
 	const formatElapsed = function ( lastRefreshedAt ) {
@@ -120,6 +125,21 @@
 		} );
 	};
 
+	const savePanelMode = function ( mode ) {
+		const formData = new window.FormData();
+		formData.append( 'action', 'wp_media_helper_panel_mode' );
+		formData.append( 'nonce', nonce );
+		formData.append( 'mode', mode );
+
+		return window.fetch( endpoint, {
+			method: 'POST',
+			credentials: 'same-origin',
+			body: formData,
+		} ).then( function ( response ) {
+			return response.json();
+		} );
+	};
+
 	const itemKey = function ( item ) {
 		return item.id || item.path || item.name;
 	};
@@ -132,6 +152,7 @@
 		const [ loading, setLoading ] = useState( false );
 		const [ selectedIds, setSelectedIds ] = useState( [] );
 		const [ bulkAction, setBulkAction ] = useState( 'none' );
+		const [ panelMode, setPanelMode ] = useState( defaultPanelMode );
 		const [ operationNotice, setOperationNotice ] = useState( null );
 		const [ lastRefreshedAt, setLastRefreshedAt ] = useState( null );
 		const [ , setTick ] = useState( 0 );
@@ -216,6 +237,12 @@
 			runFetch( true );
 		};
 
+		const handlePanelMode = function ( mode ) {
+			setPanelMode( mode );
+			setBulkAction( 'none' );
+			savePanelMode( mode );
+		};
+
 		const toggleSelected = function ( item ) {
 			const key = itemKey( item );
 			setSelectedIds( function ( currentIds ) {
@@ -277,11 +304,20 @@
 				return;
 			}
 
-			const selectedItems = files.map( function ( file ) {
+			let selectedItems = files.map( function ( file ) {
 				return normalizeMediaItem( file );
 			} ).filter( function ( item ) {
 				return selectedIds.includes( itemKey( item ) );
 			} );
+			if ( 'simple' === panelMode && 'attach' === bulkAction ) {
+				selectedItems = selectedItems.filter( function ( item ) { return ! item.is_attached_to_current_post; } );
+			}
+			if ( 'simple' === panelMode && 'remove' === bulkAction ) {
+				selectedItems = selectedItems.filter( function ( item ) { return item.is_attached_to_current_post; } );
+			}
+			if ( 0 === selectedItems.length ) {
+				return;
+			}
 			const postId = getCurrentPostId();
 			if ( [ 'attach', 'detach', 'remove' ].includes( bulkAction ) && 0 === postId ) {
 				setOperationNotice( __( 'Save the post before changing media attachments.', 'wp-media-helper' ) );
@@ -332,6 +368,9 @@
 		const visibleItems = files.map( function ( file ) {
 			return normalizeMediaItem( file );
 		} );
+		const visibleBulkActions = BULK_ACTIONS.filter( function ( action ) {
+			return 'advanced' === panelMode || [ 'attach', 'remove' ].includes( action.value );
+		} );
 		const visibleIds = visibleItems.map( itemKey );
 		const selectedVisibleCount = visibleIds.filter( function ( id ) {
 			return selectedIds.includes( id );
@@ -361,6 +400,24 @@
 				wp.element.createElement(
 					PanelRow,
 					null,
+					wp.element.createElement( 'div', { role: 'group', 'aria-label': __( 'Panel mode', 'wp-media-helper' ), style: { display: 'inline-flex', border: '1px solid #949494', borderRadius: '3px', overflow: 'hidden' } },
+						PANEL_MODES.map( function ( mode, index ) {
+							return wp.element.createElement( Button, {
+								key: mode.value,
+								isSecondary: panelMode !== mode.value,
+								isPrimary: panelMode === mode.value,
+								disabled: loading,
+								onClick: function () { handlePanelMode( mode.value ); },
+								'aria-pressed': panelMode === mode.value,
+								style: { border: 0, borderLeft: 0 === index ? 0 : '1px solid #949494', borderRadius: 0, minWidth: '5.25rem' },
+								text: mode.label
+							} );
+						} )
+					)
+				),
+				wp.element.createElement(
+					PanelRow,
+					null,
 					wp.element.createElement( Button, {
 						isPrimary: true,
 						onClick: handleRefresh,
@@ -385,7 +442,7 @@
 					PanelRow,
 					null,
 					wp.element.createElement( 'div', { style: { width: '100%' } },
-						wp.element.createElement( 'div', { style: { display: 'flex', gap: '0.5rem', alignItems: 'flex-end', marginBottom: '0.75rem' } },
+						wp.element.createElement( 'div', { style: { display: 'flex', gap: '0.5rem', alignItems: 'flex-end', marginBottom: '0.75rem', flexWrap: 'wrap' } },
 							wp.element.createElement( Dropdown, {
 								className: 'wp-media-helper-bulk-actions',
 								disabled: loading,
@@ -404,7 +461,7 @@
 									} );
 								},
 								renderContent: function ( { onClose } ) {
-									return BULK_ACTIONS.map( function ( action ) {
+									return visibleBulkActions.map( function ( action ) {
 										return wp.element.createElement( MenuItem, {
 											key: action.value,
 											onClick: function () {
@@ -451,10 +508,13 @@
 								wp.element.createElement( 'tbody', null,
 									visibleItems.map( function ( item ) {
 										const key = itemKey( item );
-										const primaryAction = item.is_imported ? 'remove' : 'import';
+										const primaryAction = 'simple' === panelMode
+											? ( item.is_attached_to_current_post ? 'remove' : 'attach' )
+											: ( item.is_imported ? 'remove' : 'import' );
 										const primaryLabel = {
 											import: __( 'Import', 'wp-media-helper' ),
 											remove: __( 'Remove', 'wp-media-helper' ),
+											attach: __( 'Attach', 'wp-media-helper' ),
 										}[ primaryAction ];
 										return wp.element.createElement( 'tr', { key: key, style: { borderTop: '1px solid #dcdcde' } },
 											wp.element.createElement( 'td', { style: { padding: '0.4rem' } },
@@ -471,12 +531,18 @@
 												wp.element.createElement( 'div', { style: { marginTop: '0.15rem', textTransform: 'uppercase', color: '#50575e', fontSize: '10px' } }, item.type )
 											),
 											wp.element.createElement( 'td', { style: { padding: '0.4rem', verticalAlign: 'top', overflowWrap: 'anywhere' } },
-												wp.element.createElement( 'div', { style: { color: item.is_imported ? '#0a7d45' : '#50575e' } },
-													item.is_imported ? __( 'In WP media library', 'wp-media-helper' ) : __( 'Not in WP media library', 'wp-media-helper' )
-												),
-												wp.element.createElement( 'div', { style: { marginTop: '0.25rem', color: item.is_attached_to_current_post ? '#0a7d45' : '#50575e' } },
-													item.is_attached_to_current_post ? __( 'Attached to current post', 'wp-media-helper' ) : __( 'Not attached to current post', 'wp-media-helper' )
-												)
+												'simple' === panelMode
+													? wp.element.createElement( 'div', { style: { color: item.is_attached_to_current_post ? '#0a7d45' : '#50575e' } },
+														item.is_attached_to_current_post ? __( 'Attached to current post', 'wp-media-helper' ) : __( 'Not attached to current post', 'wp-media-helper' )
+													)
+													: [
+														wp.element.createElement( 'div', { key: 'library', style: { color: item.is_imported ? '#0a7d45' : '#50575e' } },
+															item.is_imported ? __( 'In WP media library', 'wp-media-helper' ) : __( 'Not in WP media library', 'wp-media-helper' )
+														),
+														wp.element.createElement( 'div', { key: 'post', style: { marginTop: '0.25rem', color: item.is_attached_to_current_post ? '#0a7d45' : '#50575e' } },
+															item.is_attached_to_current_post ? __( 'Attached to current post', 'wp-media-helper' ) : __( 'Not attached to current post', 'wp-media-helper' )
+														),
+													]
 											),
 											wp.element.createElement( 'td', { style: { padding: '0.4rem', textAlign: 'right' } },
 												wp.element.createElement( 'div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' } },
@@ -486,19 +552,21 @@
 														onClick: function () { handleItemAction( primaryAction, item ); },
 														text: primaryLabel
 													} ),
-													item.is_attached_to_current_post
+													'advanced' === panelMode && item.is_attached_to_current_post
 														? wp.element.createElement( Button, {
 															isLink: true,
 															disabled: loading,
 															onClick: function () { handleItemAction( 'detach', item ); },
 															text: __( 'Detach', 'wp-media-helper' )
 														} )
-														: wp.element.createElement( Button, {
+														: 'advanced' === panelMode
+															? wp.element.createElement( Button, {
 															isLink: true,
 															disabled: loading,
 															onClick: function () { handleItemAction( 'attach', item ); },
 															text: __( 'Attach', 'wp-media-helper' )
 														} )
+															: null
 												)
 											)
 										);

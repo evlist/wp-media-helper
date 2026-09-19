@@ -200,4 +200,10 @@ class MediaPanelStateTest extends TestCase {
 			[ 'id' => '/tmp/source/b.gpx', 'path' => '/tmp/source/b.gpx' ],
 		], $items );
 	}
+
+	public function test_normalize_panel_mode_defaults_to_simple(): void {
+		$this->assertSame( 'simple', \WP_Media_Helper\Admin\EditorMediaController::normalizePanelMode( null ) );
+		$this->assertSame( 'simple', \WP_Media_Helper\Admin\EditorMediaController::normalizePanelMode( 'unexpected' ) );
+		$this->assertSame( 'advanced', \WP_Media_Helper\Admin\EditorMediaController::normalizePanelMode( 'advanced' ) );
+	}
 }
