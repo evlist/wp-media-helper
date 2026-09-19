@@ -85,12 +85,12 @@ class EditorMediaController {
 		$encodedItems = wp_unslash( $_POST['items'] ?? '' );
 		$items = is_string( $encodedItems ) ? json_decode( $encodedItems, true ) : [];
 
-		if ( ! in_array( $action, [ 'import', 'remove', 'attach' ], true ) ) {
+		if ( ! in_array( $action, [ 'import', 'remove', 'attach', 'detach' ], true ) ) {
 			wp_send_json_error( [ 'message' => 'The requested bulk action is not supported.' ], 400 );
 		}
 
-		if ( 'attach' === $action && ( 0 === $postId || ! get_post( $postId ) || ! current_user_can( 'edit_post', $postId ) ) ) {
-			wp_send_json_error( [ 'message' => 'The current post must be saved before media can be attached.' ], 400 );
+		if ( in_array( $action, [ 'attach', 'detach', 'remove' ], true ) && ( 0 === $postId || ! get_post( $postId ) || ! current_user_can( 'edit_post', $postId ) ) ) {
+			wp_send_json_error( [ 'message' => 'The current post must be saved before media can be changed.' ], 400 );
 		}
 
 		if ( ! is_array( $items ) ) {
@@ -157,6 +157,7 @@ class EditorMediaController {
 				'success' => false,
 				'is_imported' => false,
 				'is_attached_to_current_post' => false,
+				'operation' => 'no_change',
 			];
 
 			if ( in_array( $action, [ 'import', 'attach' ], true ) ) {
@@ -177,8 +178,17 @@ class EditorMediaController {
 				$result['success'] = true;
 				$result['is_imported'] = true;
 				$result['attachment_id'] = (int) $attachmentId;
+				$result['operation'] = 'imported';
 
 				if ( 'attach' === $action ) {
+					$currentParent = (int) get_post_field( 'post_parent', (int) $attachmentId );
+					if ( 0 !== $currentParent && $postId !== $currentParent ) {
+						$result['success'] = false;
+						$result['message'] = 'The selected media is already attached to another post.';
+						$results[] = $result;
+						continue;
+					}
+
 					$updated = wp_update_post( [
 						'ID' => (int) $attachmentId,
 						'post_parent' => $postId,
@@ -191,8 +201,32 @@ class EditorMediaController {
 					}
 
 					$result['is_attached_to_current_post'] = true;
+					$result['operation'] = 'attached';
 				}
 
+				$results[] = $result;
+				continue;
+			}
+
+			if ( 'detach' === $action ) {
+				$detached = $this->detachVirtualAttachments( $sourceId, $item['path'], $postId );
+				if ( is_wp_error( $detached ) ) {
+					$result['message'] = $detached->get_error_message();
+					$results[] = $result;
+					continue;
+				}
+
+				$result['success'] = true;
+				$result['is_imported'] = [] !== $this->findVirtualAttachments( $sourceId, $item['path'] );
+				$result['detached_ids'] = $detached;
+				$result['operation'] = [] === $detached ? 'no_change' : 'detached';
+				$results[] = $result;
+				continue;
+			}
+
+			$detached = $this->detachVirtualAttachments( $sourceId, $item['path'], $postId );
+			if ( is_wp_error( $detached ) ) {
+				$result['message'] = $detached->get_error_message();
 				$results[] = $result;
 				continue;
 			}
@@ -205,7 +239,10 @@ class EditorMediaController {
 			}
 
 			$result['success'] = true;
+			$result['is_imported'] = [] !== $this->findVirtualAttachments( $sourceId, $item['path'] );
+			$result['detached_ids'] = $detached;
 			$result['removed_ids'] = array_values( array_unique( array_map( 'intval', $removed ) ) );
+			$result['operation'] = [] !== $detached ? 'detached_and_removed' : ( [] === $removed ? 'no_change' : 'removed_from_library' );
 			$results[] = $result;
 		}
 
@@ -223,12 +260,44 @@ class EditorMediaController {
 			return [];
 		}
 
+		$removed = [];
 		foreach ( $matches as $attachmentId ) {
+			if ( 0 !== (int) get_post_field( 'post_parent', $attachmentId ) ) {
+				continue;
+			}
+
 			delete_post_meta( (int) $attachmentId, '_wp_attached_file' );
 			wp_delete_post( (int) $attachmentId, true );
+			$removed[] = $attachmentId;
 		}
 
-		return $matches;
+		return $removed;
+	}
+
+	/**
+	 * Removes the association between matching attachments and the current post.
+	 *
+	 * @return int[]|\WP_Error
+	 */
+	public function detachVirtualAttachments( string $sourceId, string $path, int $postId ) {
+		$detached = [];
+		foreach ( $this->findVirtualAttachments( $sourceId, $path ) as $attachmentId ) {
+			if ( $postId !== (int) get_post_field( 'post_parent', $attachmentId ) ) {
+				continue;
+			}
+
+			$updated = wp_update_post( [
+				'ID' => $attachmentId,
+				'post_parent' => 0,
+			], true );
+			if ( is_wp_error( $updated ) || empty( $updated ) ) {
+				return is_wp_error( $updated ) ? $updated : new \WP_Error( 'detach_attachment_failed', 'Unable to detach the media from the current post.' );
+			}
+
+			$detached[] = $attachmentId;
+		}
+
+		return $detached;
 	}
 
 	/**

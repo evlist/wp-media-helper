@@ -20,6 +20,7 @@
 		{ value: 'import', label: __( 'Import', 'wp-media-helper' ) },
 		{ value: 'remove', label: __( 'Remove', 'wp-media-helper' ) },
 		{ value: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) },
+		{ value: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) },
 	];
 
 	const formatElapsed = function ( lastRefreshedAt ) {
@@ -282,8 +283,8 @@
 				return selectedIds.includes( itemKey( item ) );
 			} );
 			const postId = getCurrentPostId();
-			if ( 'attach' === bulkAction && 0 === postId ) {
-				setOperationNotice( __( 'Save the post before attaching media.', 'wp-media-helper' ) );
+			if ( [ 'attach', 'detach', 'remove' ].includes( bulkAction ) && 0 === postId ) {
+				setOperationNotice( __( 'Save the post before changing media attachments.', 'wp-media-helper' ) );
 				return;
 			}
 
@@ -307,10 +308,15 @@
 			if ( ! item || ! item.path ) {
 				return;
 			}
+			const postId = getCurrentPostId();
+			if ( [ 'attach', 'detach', 'remove' ].includes( action ) && 0 === postId ) {
+				setOperationNotice( __( 'Save the post before changing media attachments.', 'wp-media-helper' ) );
+				return;
+			}
 
 			setLoading( true );
 			setOperationNotice( null );
-			bulkMediaItems( action, [ item ], getCurrentPostId() )
+			bulkMediaItems( action, [ item ], postId )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
 						applyBulkResults( payload );
@@ -445,6 +451,11 @@
 								wp.element.createElement( 'tbody', null,
 									visibleItems.map( function ( item ) {
 										const key = itemKey( item );
+										const primaryAction = item.is_imported ? 'remove' : 'import';
+										const primaryLabel = {
+											import: __( 'Import', 'wp-media-helper' ),
+											remove: __( 'Remove', 'wp-media-helper' ),
+										}[ primaryAction ];
 										return wp.element.createElement( 'tr', { key: key, style: { borderTop: '1px solid #dcdcde' } },
 											wp.element.createElement( 'td', { style: { padding: '0.4rem' } },
 												wp.element.createElement( 'input', {
@@ -472,17 +483,22 @@
 													wp.element.createElement( Button, {
 														isLink: true,
 														disabled: loading,
-														onClick: function () { handleItemAction( item.is_imported ? 'remove' : 'import', item ); },
-														text: item.is_imported ? __( 'Remove', 'wp-media-helper' ) : __( 'Import', 'wp-media-helper' )
+														onClick: function () { handleItemAction( primaryAction, item ); },
+														text: primaryLabel
 													} ),
-													! item.is_attached_to_current_post
+													item.is_attached_to_current_post
 														? wp.element.createElement( Button, {
+															isLink: true,
+															disabled: loading,
+															onClick: function () { handleItemAction( 'detach', item ); },
+															text: __( 'Detach', 'wp-media-helper' )
+														} )
+														: wp.element.createElement( Button, {
 															isLink: true,
 															disabled: loading,
 															onClick: function () { handleItemAction( 'attach', item ); },
 															text: __( 'Attach', 'wp-media-helper' )
 														} )
-														: null
 												)
 											)
 										);
