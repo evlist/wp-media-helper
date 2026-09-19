@@ -419,11 +419,11 @@
 						operationNotice
 							? wp.element.createElement( Notice, { status: 'warning', isDismissible: true, onRemove: function () { setOperationNotice( null ); } }, operationNotice )
 							: null,
-						wp.element.createElement( 'div', { style: { overflowX: 'auto' } },
-							wp.element.createElement( 'table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: '12px' } },
+						wp.element.createElement( 'div', null,
+							wp.element.createElement( 'table', { style: { width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '12px' } },
 								wp.element.createElement( 'thead', null,
 									wp.element.createElement( 'tr', null,
-										wp.element.createElement( 'th', { scope: 'col', style: { padding: '0.35rem', textAlign: 'left', width: '2rem' } },
+										wp.element.createElement( 'th', { scope: 'col', style: { padding: '0.35rem', textAlign: 'left', width: '1.75rem' } },
 											wp.element.createElement( 'input', {
 												type: 'checkbox',
 												checked: allVisibleSelected,
@@ -437,11 +437,9 @@
 												'aria-label': __( 'Select all media', 'wp-media-helper' )
 											} )
 										),
-										wp.element.createElement( 'th', { scope: 'col', style: { padding: '0.35rem', textAlign: 'left' } }, __( 'Name', 'wp-media-helper' ) ),
-										wp.element.createElement( 'th', { scope: 'col', style: { padding: '0.35rem', textAlign: 'left' } }, __( 'Type', 'wp-media-helper' ) ),
-										wp.element.createElement( 'th', { scope: 'col', style: { padding: '0.35rem', textAlign: 'left' } }, __( 'Status', 'wp-media-helper' ) ),
-										wp.element.createElement( 'th', { scope: 'col', style: { padding: '0.35rem', textAlign: 'left' } }, __( 'Current post', 'wp-media-helper' ) ),
-										wp.element.createElement( 'th', { scope: 'col', style: { padding: '0.35rem', textAlign: 'right' } }, __( 'Actions', 'wp-media-helper' ) )
+										wp.element.createElement( 'th', { scope: 'col', style: { padding: '0.35rem', textAlign: 'left', width: '40%' } }, __( 'Media', 'wp-media-helper' ) ),
+										wp.element.createElement( 'th', { scope: 'col', style: { padding: '0.35rem', textAlign: 'left', width: '35%' } }, __( 'Status', 'wp-media-helper' ) ),
+										wp.element.createElement( 'th', { scope: 'col', style: { padding: '0.35rem', textAlign: 'right', width: '4.75rem' } }, __( 'Actions', 'wp-media-helper' ) )
 									)
 								),
 								wp.element.createElement( 'tbody', null,
@@ -457,16 +455,20 @@
 													'aria-label': sprintf( __( 'Select %s', 'wp-media-helper' ), item.name )
 												} )
 											),
-											wp.element.createElement( 'td', { style: { padding: '0.4rem', overflowWrap: 'anywhere' } }, item.name ),
-											wp.element.createElement( 'td', { style: { padding: '0.4rem', textTransform: 'uppercase', color: '#50575e' } }, item.type ),
-											wp.element.createElement( 'td', { style: { padding: '0.4rem', color: item.is_imported ? '#0a7d45' : '#50575e' } },
-												item.is_imported ? __( 'In WP media library', 'wp-media-helper' ) : __( 'Not in WP media library', 'wp-media-helper' )
+											wp.element.createElement( 'td', { style: { padding: '0.4rem', overflowWrap: 'anywhere', verticalAlign: 'top' } },
+												wp.element.createElement( 'strong', { style: { fontSize: '12px' } }, item.name ),
+												wp.element.createElement( 'div', { style: { marginTop: '0.15rem', textTransform: 'uppercase', color: '#50575e', fontSize: '10px' } }, item.type )
 											),
-											wp.element.createElement( 'td', { style: { padding: '0.4rem', color: item.is_attached_to_current_post ? '#0a7d45' : '#50575e' } },
-												item.is_attached_to_current_post ? __( 'Attached to current post', 'wp-media-helper' ) : __( 'Not attached to current post', 'wp-media-helper' )
+											wp.element.createElement( 'td', { style: { padding: '0.4rem', verticalAlign: 'top', overflowWrap: 'anywhere' } },
+												wp.element.createElement( 'div', { style: { color: item.is_imported ? '#0a7d45' : '#50575e' } },
+													item.is_imported ? __( 'In WP media library', 'wp-media-helper' ) : __( 'Not in WP media library', 'wp-media-helper' )
+												),
+												wp.element.createElement( 'div', { style: { marginTop: '0.25rem', color: item.is_attached_to_current_post ? '#0a7d45' : '#50575e' } },
+													item.is_attached_to_current_post ? __( 'Attached to current post', 'wp-media-helper' ) : __( 'Not attached to current post', 'wp-media-helper' )
+												)
 											),
 											wp.element.createElement( 'td', { style: { padding: '0.4rem', textAlign: 'right' } },
-												wp.element.createElement( 'div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' } },
+												wp.element.createElement( 'div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' } },
 													wp.element.createElement( Button, {
 														isLink: true,
 														disabled: loading,
