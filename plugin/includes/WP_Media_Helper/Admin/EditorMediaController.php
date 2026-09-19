@@ -81,11 +81,16 @@ class EditorMediaController {
 
 		$sourceId = sanitize_text_field( wp_unslash( $_POST['source_id'] ?? '' ) );
 		$action = sanitize_key( wp_unslash( $_POST['bulk_action'] ?? '' ) );
+		$postId = absint( $_POST['post_id'] ?? 0 );
 		$encodedItems = wp_unslash( $_POST['items'] ?? '' );
 		$items = is_string( $encodedItems ) ? json_decode( $encodedItems, true ) : [];
 
-		if ( ! in_array( $action, [ 'import', 'remove' ], true ) ) {
+		if ( ! in_array( $action, [ 'import', 'remove', 'attach' ], true ) ) {
 			wp_send_json_error( [ 'message' => 'The requested bulk action is not supported.' ], 400 );
+		}
+
+		if ( 'attach' === $action && ( 0 === $postId || ! get_post( $postId ) || ! current_user_can( 'edit_post', $postId ) ) ) {
+			wp_send_json_error( [ 'message' => 'The current post must be saved before media can be attached.' ], 400 );
 		}
 
 		if ( ! is_array( $items ) ) {
@@ -99,7 +104,7 @@ class EditorMediaController {
 
 		wp_send_json_success( [
 			'action' => $action,
-			'results' => $this->processBulkItems( $sourceId, $action, $items ),
+			'results' => $this->processBulkItems( $sourceId, $action, $items, $postId ),
 		] );
 	}
 
@@ -143,7 +148,7 @@ class EditorMediaController {
 	 * @param array<int, array{id:string, path:string}> $items
 	 * @return array<int, array<string, mixed>>
 	 */
-	private function processBulkItems( string $sourceId, string $action, array $items ): array {
+	private function processBulkItems( string $sourceId, string $action, array $items, int $postId = 0 ): array {
 		$results = [];
 		foreach ( $items as $item ) {
 			$result = [
@@ -151,9 +156,10 @@ class EditorMediaController {
 				'path' => $item['path'],
 				'success' => false,
 				'is_imported' => false,
+				'is_attached_to_current_post' => false,
 			];
 
-			if ( 'import' === $action ) {
+			if ( in_array( $action, [ 'import', 'attach' ], true ) ) {
 				if ( ! is_file( $item['path'] ) ) {
 					$result['message'] = 'The selected media file is not readable.';
 					$results[] = $result;
@@ -171,6 +177,22 @@ class EditorMediaController {
 				$result['success'] = true;
 				$result['is_imported'] = true;
 				$result['attachment_id'] = (int) $attachmentId;
+
+				if ( 'attach' === $action ) {
+					$updated = wp_update_post( [
+						'ID' => (int) $attachmentId,
+						'post_parent' => $postId,
+					], true );
+					if ( is_wp_error( $updated ) || empty( $updated ) ) {
+						$result['success'] = false;
+						$result['message'] = is_wp_error( $updated ) ? $updated->get_error_message() : 'Unable to attach the media to the current post.';
+						$results[] = $result;
+						continue;
+					}
+
+					$result['is_attached_to_current_post'] = true;
+				}
+
 				$results[] = $result;
 				continue;
 			}
@@ -217,7 +239,6 @@ class EditorMediaController {
 			'post_type' => 'attachment',
 			'post_status' => 'inherit',
 			'posts_per_page' => -1,
-			'post_parent' => 0,
 			'fields' => 'ids',
 		] );
 
@@ -267,6 +288,7 @@ class EditorMediaController {
 		check_ajax_referer( 'wp_media_helper_media_panel', 'nonce' );
 
 		$sourceId = sanitize_text_field( wp_unslash( $_POST['source_id'] ?? '' ) );
+		$postId = absint( $_POST['post_id'] ?? 0 );
 		$dateValue = sanitize_text_field( wp_unslash( $_POST['date'] ?? current_time( 'Y-m-d' ) ) );
 		$forceRefresh = ! empty( $_POST['force_refresh'] );
 
@@ -332,17 +354,18 @@ class EditorMediaController {
 				$importedPaths[] = $path;
 			}
 		}
-		$importedPaths = $this->resolveImportedPaths( $importedPaths );
-		$merged['files'] = MediaPanelState::setImportState( $merged['files'], $importedPaths );
+		$attachmentStates = $this->resolveAttachmentStates( $importedPaths, $postId );
+		$merged['files'] = MediaPanelState::setImportState( $merged['files'], $attachmentStates['imported_paths'] );
+		$merged['files'] = MediaPanelState::setAttachmentState( $merged['files'], $attachmentStates['attached_paths'] );
 		$merged['status'] = $merged['refresh_required'] ? 'stale' : 'fresh';
 		wp_send_json_success( $merged );
 	}
 
 	/**
 	 * @param string[] $candidatePaths
-	 * @return string[]
+	 * @return array{imported_paths:string[], attached_paths:string[]}
 	 */
-	private function resolveImportedPaths( array $candidatePaths ): array {
+	private function resolveAttachmentStates( array $candidatePaths, int $postId ): array {
 		$known = [];
 		foreach ( $candidatePaths as $path ) {
 			if ( ! is_string( $path ) || '' === trim( $path ) ) {
@@ -354,24 +377,29 @@ class EditorMediaController {
 		}
 
 		if ( [] === $known ) {
-			return [];
+			return [ 'imported_paths' => [], 'attached_paths' => [] ];
 		}
 
 		$attachments = get_posts( [
 			'post_type' => 'attachment',
 			'post_status' => 'inherit',
 			'posts_per_page' => -1,
-			'post_parent' => 0,
 			'fields' => 'ids',
 		] );
 		if ( empty( $attachments ) || is_wp_error( $attachments ) ) {
-			return [];
+			return [ 'imported_paths' => [], 'attached_paths' => [] ];
 		}
 
 		$imported = [];
+		$attached = [];
 		foreach ( $attachments as $attachmentId ) {
-			$path = get_attached_file( (int) $attachmentId, true );
-			$sourcePath = get_post_meta( (int) $attachmentId, '_wp_media_helper_source_path', true );
+			$attachmentId = (int) $attachmentId;
+			$path = get_attached_file( $attachmentId, true );
+			$sourcePath = get_post_meta( $attachmentId, '_wp_media_helper_source_path', true );
+			if ( ! is_string( $sourcePath ) || '' === $sourcePath ) {
+				continue;
+			}
+
 			$checks = [];
 			if ( is_string( $path ) && '' !== $path ) {
 				$checks[] = $path;
@@ -380,16 +408,32 @@ class EditorMediaController {
 				$checks[] = $sourcePath;
 			}
 
+			$matches = false;
 			foreach ( $checks as $candidatePath ) {
 				foreach ( MediaPanelState::pathSignatureCandidates( $candidatePath ) as $candidate ) {
 					if ( isset( $known[ $candidate ] ) ) {
-						$imported[] = $path;
-						break 2;
+						$matches = true;
+						break;
 					}
 				}
+				if ( $matches ) {
+					break;
+				}
+			}
+
+			if ( ! $matches ) {
+				continue;
+			}
+
+			$imported[] = $sourcePath;
+			if ( 0 !== $postId && $postId === (int) get_post_field( 'post_parent', $attachmentId ) ) {
+				$attached[] = $sourcePath;
 			}
 		}
 
-		return array_values( array_unique( $imported ) );
+		return [
+			'imported_paths' => array_values( array_unique( $imported ) ),
+			'attached_paths' => array_values( array_unique( $attached ) ),
+		];
 	}
 }

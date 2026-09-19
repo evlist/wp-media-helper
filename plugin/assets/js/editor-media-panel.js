@@ -19,6 +19,7 @@
 	const BULK_ACTIONS = [
 		{ value: 'import', label: __( 'Import', 'wp-media-helper' ) },
 		{ value: 'remove', label: __( 'Remove', 'wp-media-helper' ) },
+		{ value: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) },
 	];
 
 	const formatElapsed = function ( lastRefreshedAt ) {
@@ -49,6 +50,10 @@
 		);
 	};
 
+	const getCurrentPostId = function () {
+		return Number( wp.data.select( 'core/editor' ).getCurrentPostId() || 0 );
+	};
+
 	const fetchState = function ( dateValue, forceRefresh ) {
 		const formData = new window.FormData();
 		formData.append( 'action', 'wp_media_helper_media_panel_state' );
@@ -56,6 +61,7 @@
 		formData.append( 'date', dateValue );
 		formData.append( 'force_refresh', forceRefresh ? '1' : '0' );
 		formData.append( 'source_id', wpMediaHelperEditorPanel.sourceId || '' );
+		formData.append( 'post_id', String( getCurrentPostId() ) );
 
 		return window.fetch( endpoint, {
 			method: 'POST',
@@ -89,15 +95,17 @@
 			path: item && item.path ? item.path : ( item && item.name ? item.name : '' ),
 			type: item && item.type ? item.type : 'other',
 			is_imported: !! ( item && item.is_imported ),
+			is_attached_to_current_post: !! ( item && item.is_attached_to_current_post ),
 		};
 	};
 
-	const bulkMediaItems = function ( action, items ) {
+	const bulkMediaItems = function ( action, items, postId ) {
 		const formData = new window.FormData();
 		formData.append( 'action', 'wp_media_helper_bulk_media' );
 		formData.append( 'nonce', nonce );
 		formData.append( 'source_id', wpMediaHelperEditorPanel.sourceId || '' );
 		formData.append( 'bulk_action', action );
+		formData.append( 'post_id', String( postId || 0 ) );
 		formData.append( 'items', JSON.stringify( items.map( function ( item ) {
 			return { id: item.id, path: item.path };
 		} ) ) );
@@ -248,7 +256,12 @@
 						return currentFile;
 					}
 
-					return Object.assign( {}, item, { is_imported: !! result.is_imported } );
+					const nextItem = Object.assign( {}, item, { is_imported: !! result.is_imported } );
+					if ( Object.prototype.hasOwnProperty.call( result, 'is_attached_to_current_post' ) ) {
+						nextItem.is_attached_to_current_post = !! result.is_attached_to_current_post;
+					}
+
+					return nextItem;
 				} );
 			} );
 
@@ -268,10 +281,15 @@
 			} ).filter( function ( item ) {
 				return selectedIds.includes( itemKey( item ) );
 			} );
+			const postId = getCurrentPostId();
+			if ( 'attach' === bulkAction && 0 === postId ) {
+				setOperationNotice( __( 'Save the post before attaching media.', 'wp-media-helper' ) );
+				return;
+			}
 
 			setLoading( true );
 			setOperationNotice( null );
-			bulkMediaItems( bulkAction, selectedItems )
+			bulkMediaItems( bulkAction, selectedItems, postId )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
 						applyBulkResults( payload );
@@ -292,7 +310,7 @@
 
 			setLoading( true );
 			setOperationNotice( null );
-			bulkMediaItems( action, [ item ] )
+			bulkMediaItems( action, [ item ], getCurrentPostId() )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
 						applyBulkResults( payload );
@@ -422,6 +440,7 @@
 										wp.element.createElement( 'th', { scope: 'col', style: { padding: '0.35rem', textAlign: 'left' } }, __( 'Name', 'wp-media-helper' ) ),
 										wp.element.createElement( 'th', { scope: 'col', style: { padding: '0.35rem', textAlign: 'left' } }, __( 'Type', 'wp-media-helper' ) ),
 										wp.element.createElement( 'th', { scope: 'col', style: { padding: '0.35rem', textAlign: 'left' } }, __( 'Status', 'wp-media-helper' ) ),
+										wp.element.createElement( 'th', { scope: 'col', style: { padding: '0.35rem', textAlign: 'left' } }, __( 'Current post', 'wp-media-helper' ) ),
 										wp.element.createElement( 'th', { scope: 'col', style: { padding: '0.35rem', textAlign: 'right' } }, __( 'Actions', 'wp-media-helper' ) )
 									)
 								),
@@ -443,13 +462,26 @@
 											wp.element.createElement( 'td', { style: { padding: '0.4rem', color: item.is_imported ? '#0a7d45' : '#50575e' } },
 												item.is_imported ? __( 'In WP media library', 'wp-media-helper' ) : __( 'Not in WP media library', 'wp-media-helper' )
 											),
+											wp.element.createElement( 'td', { style: { padding: '0.4rem', color: item.is_attached_to_current_post ? '#0a7d45' : '#50575e' } },
+												item.is_attached_to_current_post ? __( 'Attached to current post', 'wp-media-helper' ) : __( 'Not attached to current post', 'wp-media-helper' )
+											),
 											wp.element.createElement( 'td', { style: { padding: '0.4rem', textAlign: 'right' } },
-												wp.element.createElement( Button, {
-													isLink: true,
-													disabled: loading,
-													onClick: function () { handleItemAction( item.is_imported ? 'remove' : 'import', item ); },
-													text: item.is_imported ? __( 'Remove', 'wp-media-helper' ) : __( 'Import', 'wp-media-helper' )
-												} )
+												wp.element.createElement( 'div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' } },
+													wp.element.createElement( Button, {
+														isLink: true,
+														disabled: loading,
+														onClick: function () { handleItemAction( item.is_imported ? 'remove' : 'import', item ); },
+														text: item.is_imported ? __( 'Remove', 'wp-media-helper' ) : __( 'Import', 'wp-media-helper' )
+													} ),
+													! item.is_attached_to_current_post
+														? wp.element.createElement( Button, {
+															isLink: true,
+															disabled: loading,
+															onClick: function () { handleItemAction( 'attach', item ); },
+															text: __( 'Attach', 'wp-media-helper' )
+														} )
+														: null
+												)
 											)
 										);
 									} )

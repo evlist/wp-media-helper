@@ -35,6 +35,7 @@ class MediaPanelState {
 				'source_id' => $sourceId,
 				'date' => $date,
 				'is_imported' => false,
+				'is_attached_to_current_post' => false,
 			];
 		}
 
@@ -155,6 +156,40 @@ class MediaPanelState {
 			foreach ( self::pathSignatureCandidates( $path ) as $candidate ) {
 				if ( isset( $known[ $candidate ] ) ) {
 					$items[ $index ]['is_imported'] = true;
+					break;
+				}
+			}
+		}
+
+		return $items;
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $items
+	 * @param array<int, string> $attachedPaths
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function setAttachmentState( array $items, array $attachedPaths ): array {
+		$known = [];
+		foreach ( $attachedPaths as $path ) {
+			if ( ! is_string( $path ) ) {
+				continue;
+			}
+			foreach ( self::pathSignatureCandidates( $path ) as $candidate ) {
+				$known[ $candidate ] = true;
+			}
+		}
+
+		foreach ( $items as $index => $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+
+			$path = (string) ( $item['path'] ?? $item['name'] ?? '' );
+			$items[ $index ]['is_attached_to_current_post'] = false;
+			foreach ( self::pathSignatureCandidates( $path ) as $candidate ) {
+				if ( isset( $known[ $candidate ] ) ) {
+					$items[ $index ]['is_attached_to_current_post'] = true;
 					break;
 				}
 			}

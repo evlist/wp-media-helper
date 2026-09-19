@@ -122,6 +122,7 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertSame( 'photo-1.jpg', $entries[0]['name'] );
 		$this->assertSame( 'jpg', $entries[0]['type'] );
 		$this->assertFalse( $entries[0]['is_imported'] );
+		$this->assertFalse( $entries[0]['is_attached_to_current_post'] );
 		$this->assertSame( 'report.pdf', $entries[1]['name'] );
 		$this->assertSame( 'pdf', $entries[1]['type'] );
 		$this->assertFalse( $entries[1]['is_imported'] );
@@ -167,6 +168,16 @@ class MediaPanelStateTest extends TestCase {
 		], [ '/wp-content/uploads/2026/08/20260810-morning_1.png' ] );
 
 		$this->assertTrue( $items[0]['is_imported'] );
+	}
+
+	public function test_set_attachment_state_marks_items_attached_to_the_current_post(): void {
+		$items = MediaPanelState::setAttachmentState( [
+			[ 'id' => 'a', 'path' => '/tmp/source/morning.png', 'is_attached_to_current_post' => false ],
+			[ 'id' => 'b', 'path' => '/tmp/source/route.gpx', 'is_attached_to_current_post' => false ],
+		], [ '/tmp/source/morning.png' ] );
+
+		$this->assertTrue( $items[0]['is_attached_to_current_post'] );
+		$this->assertFalse( $items[1]['is_attached_to_current_post'] );
 	}
 
 	public function test_path_matches_handles_wordpress_renamed_uploads(): void {
