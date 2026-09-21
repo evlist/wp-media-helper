@@ -29,6 +29,10 @@
     "git commit": true,
     "git push": true,
     "./vendor/bin/phpunit": true,
-    "composer": true
+    "composer": true,
+    "/^php -l plugin/includes/WP_Media_Helper/Admin/EditorMediaController\\.php$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
   }
 }
