@@ -116,9 +116,9 @@ The filter is rendered in the common filter area introduced by slice 015, as thr
 
 Each checkbox toggles membership of its state in the selected set. This reads directly as "include this category or not" and avoids asking the editor to recognize a named combination.
 
-The UI must prevent unchecking the last remaining state, since an empty set has no defined meaning. Simple mode may still show only two checkboxes (`Unattached` implied together with `Attached to this post`, and `Attached to another post`) if the current-post/unattached distinction is not meaningful in that mode; this simplification does not change the underlying three-state model, only which checkboxes are exposed.
+The UI must prevent unchecking the last remaining state, since an empty set has no defined meaning. The three checkboxes are shown identically in both Simple and Advanced panel modes: the panel mode only controls whether WP media-library presence is exposed, and is unrelated to which attachment states the editor wants to see. Reducing the checkboxes in Simple mode would make a selection made in one mode unexplainable after switching to the other.
 
-The control should remain understandable in both Simple and Advanced panel modes. It filters the result set independently of presentation mode.
+The control filters the result set independently of presentation mode.
 
 Changing any checkbox triggers a media-state request and preserves selected IDs that remain in the result set. Items hidden by the new set are removed from the active selection.
 

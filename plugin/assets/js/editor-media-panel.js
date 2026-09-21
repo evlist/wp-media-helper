@@ -200,7 +200,13 @@
 			setFiles( payload.data.files || [] );
 			if ( payload.data.filters && Array.isArray( payload.data.filters.attachment_scope ) ) {
 				setFiltersState( function ( currentFilters ) {
-					return Object.assign( {}, currentFilters, { attachment_scope: payload.data.filters.attachment_scope } );
+					const nextScope = payload.data.filters.attachment_scope;
+					const currentScope = currentFilters.attachment_scope || [];
+					// Bail out on an identical scope so the effect below does not re-fire on every response.
+					const isSameScope = nextScope.length === currentScope.length
+						&& nextScope.every( function ( value, index ) { return value === currentScope[ index ]; } );
+
+					return isSameScope ? currentFilters : Object.assign( {}, currentFilters, { attachment_scope: nextScope } );
 				} );
 			}
 			const nextIds = new window.Set( ( payload.data.files || [] ).map( function ( file ) {
@@ -265,7 +271,7 @@
 				document.removeEventListener( 'visibilitychange', handleVisibilityChange );
 			};
 			// eslint-disable-next-line react-hooks/exhaustive-deps
-		}, [ filters.date, filters.attachment_scope ] );
+		}, [ filters.date, ( filters.attachment_scope || [] ).join( ',' ) ] );
 
 		const handleRefresh = function () {
 			runFetch( true );
@@ -469,30 +475,20 @@
 				wp.element.createElement(
 					PanelRow,
 					null,
-					'advanced' === panelMode
-						? wp.element.createElement( 'div', { role: 'group', 'aria-label': __( 'Attachment scope', 'wp-media-helper' ), style: { display: 'flex', flexDirection: 'column', gap: '0.25rem' } },
-							ATTACHMENT_SCOPE_STATES.map( function ( state ) {
-								const checked = currentAttachmentScope.includes( state.value );
-								return wp.element.createElement( 'label', { key: state.value, style: { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '12px' } },
-									wp.element.createElement( 'input', {
-										type: 'checkbox',
-										checked: checked,
-										disabled: loading || ( checked && 1 === currentAttachmentScope.length ),
-										onChange: function () { toggleAttachmentScope( state.value ); }
-									} ),
-									state.label
-								);
-							} )
-						)
-						: wp.element.createElement( 'label', { style: { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '12px' } },
-							wp.element.createElement( 'input', {
-								type: 'checkbox',
-								checked: currentAttachmentScope.includes( 'other' ),
-								disabled: loading,
-								onChange: function () { toggleAttachmentScope( 'other' ); }
-							} ),
-							__( 'Show media attached to other posts', 'wp-media-helper' )
-						)
+					wp.element.createElement( 'div', { role: 'group', 'aria-label': __( 'Attachment scope', 'wp-media-helper' ), style: { display: 'flex', flexDirection: 'column', gap: '0.25rem' } },
+						ATTACHMENT_SCOPE_STATES.map( function ( state ) {
+							const checked = currentAttachmentScope.includes( state.value );
+							return wp.element.createElement( 'label', { key: state.value, style: { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '12px' } },
+								wp.element.createElement( 'input', {
+									type: 'checkbox',
+									checked: checked,
+									disabled: loading || ( checked && 1 === currentAttachmentScope.length ),
+									onChange: function () { toggleAttachmentScope( state.value ); }
+								} ),
+								state.label
+							);
+						} )
+					)
 				),
 				wp.element.createElement(
 					PanelRow,
