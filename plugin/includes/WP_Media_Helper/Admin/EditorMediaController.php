@@ -74,12 +74,30 @@ class EditorMediaController {
 	}
 
 	/**
+	 * Normalizes an attachment_scope filter value to a non-empty set of
+	 * `unattached`, `current`, and `other` states.
+	 *
+	 * @return array<int, string>
+	 */
+	public static function normalizeAttachmentScope( mixed $rawScope ): array {
+		$allowed = [ 'unattached', 'current', 'other' ];
+		$values = is_array( $rawScope ) ? array_map( 'strval', $rawScope ) : [];
+		$normalized = array_values( array_intersect( $allowed, $values ) );
+
+		return [] === $normalized ? [ 'unattached', 'current' ] : $normalized;
+	}
+
+	/**
 	 * Normalizes the structured `filters` request payload, falling back to the
 	 * legacy top-level `date`/`source_id` parameters during migration.
 	 *
-	 * @return array{date:string, source:string}
+	 * The attachment_scope value is taken from the payload when present;
+	 * otherwise `$resolveStoredAttachmentScope` is called to look up the
+	 * user's persisted preference.
+	 *
+	 * @return array{date:string, source:string, attachment_scope:array<int, string>}
 	 */
-	public static function normalizeFilters( mixed $rawFilters, string $legacyDate, string $legacySource ): array {
+	public static function normalizeFilters( mixed $rawFilters, string $legacyDate, string $legacySource, ?callable $resolveStoredAttachmentScope = null ): array {
 		$decoded = is_string( $rawFilters ) ? json_decode( $rawFilters, true ) : null;
 		$decoded = is_array( $decoded ) ? $decoded : [];
 
@@ -88,9 +106,17 @@ class EditorMediaController {
 
 		$source = isset( $decoded['source'] ) ? trim( (string) $decoded['source'] ) : $legacySource;
 
+		if ( isset( $decoded['attachment_scope'] ) ) {
+			$attachmentScope = self::normalizeAttachmentScope( $decoded['attachment_scope'] );
+		} else {
+			$stored = null === $resolveStoredAttachmentScope ? null : $resolveStoredAttachmentScope();
+			$attachmentScope = self::normalizeAttachmentScope( $stored );
+		}
+
 		return [
 			'date' => $date,
 			'source' => $source,
+			'attachment_scope' => $attachmentScope,
 		];
 	}
 
@@ -98,6 +124,37 @@ class EditorMediaController {
 		add_action( 'wp_ajax_wp_media_helper_media_panel_state', [ $this, 'handle' ] );
 		add_action( 'wp_ajax_wp_media_helper_bulk_media', [ $this, 'handleBulk' ] );
 		add_action( 'wp_ajax_wp_media_helper_panel_mode', [ $this, 'handlePanelMode' ] );
+		add_action( 'wp_ajax_wp_media_helper_save_filter', [ $this, 'handleSaveFilter' ] );
+	}
+
+	private function makeMediaFilters(): MediaFilters {
+		return new MediaFilters(
+			static fn ( string $key ) => get_user_meta( get_current_user_id(), $key, true ),
+			static function ( string $key, $value ): void {
+				update_user_meta( get_current_user_id(), $key, $value );
+			}
+		);
+	}
+
+	public function handleSaveFilter(): void {
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
+		}
+
+		check_ajax_referer( 'wp_media_helper_media_panel', 'nonce' );
+
+		$key = sanitize_key( wp_unslash( $_POST['key'] ?? '' ) );
+		$postId = absint( $_POST['post_id'] ?? 0 );
+		$rawValue = wp_unslash( $_POST['value'] ?? '' );
+		$decodedValue = is_string( $rawValue ) ? json_decode( $rawValue, true ) : null;
+
+		if ( 'attachment_scope' !== $key ) {
+			wp_send_json_error( [ 'message' => 'The requested filter is not supported.' ], 400 );
+		}
+
+		$value = self::normalizeAttachmentScope( $decodedValue );
+		$this->makeMediaFilters()->persistUserPostThenUser( $postId, $key, $value );
+		wp_send_json_success( [ 'key' => $key, 'value' => $value ] );
 	}
 
 	public function handlePanelMode(): void {
@@ -200,6 +257,16 @@ class EditorMediaController {
 				'operation' => 'no_change',
 			];
 
+			if ( in_array( $action, [ 'attach', 'detach', 'remove' ], true ) ) {
+				$otherPostId = $this->findOtherPostAttachment( $sourceId, $item['path'], $postId );
+				if ( 0 !== $otherPostId ) {
+					$result['message'] = 'This media is attached to another post.';
+					$result['operation'] = 'protected_other_post';
+					$results[] = $result;
+					continue;
+				}
+			}
+
 			if ( in_array( $action, [ 'import', 'attach' ], true ) ) {
 				if ( ! is_file( $item['path'] ) ) {
 					$result['message'] = 'The selected media file is not readable.';
@@ -221,14 +288,6 @@ class EditorMediaController {
 				$result['operation'] = 'imported';
 
 				if ( 'attach' === $action ) {
-					$currentParent = (int) get_post_field( 'post_parent', (int) $attachmentId );
-					if ( 0 !== $currentParent && $postId !== $currentParent ) {
-						$result['success'] = false;
-						$result['message'] = 'The selected media is already attached to another post.';
-						$results[] = $result;
-						continue;
-					}
-
 					$updated = wp_update_post( [
 						'ID' => (int) $attachmentId,
 						'post_parent' => $postId,
@@ -341,6 +400,21 @@ class EditorMediaController {
 	}
 
 	/**
+	 * Returns the ID of the post a matching attachment is protected by, or 0
+	 * when no matching attachment is attached to a post other than $postId.
+	 */
+	private function findOtherPostAttachment( string $sourceId, string $path, int $postId ): int {
+		foreach ( $this->findVirtualAttachments( $sourceId, $path ) as $attachmentId ) {
+			$parent = (int) get_post_field( 'post_parent', $attachmentId );
+			if ( 0 !== $parent && $parent !== $postId ) {
+				return $parent;
+			}
+		}
+
+		return 0;
+	}
+
+	/**
 	 * @return int[]
 	 */
 	private function findVirtualAttachments( string $sourceId, string $path ): array {
@@ -400,7 +474,12 @@ class EditorMediaController {
 		$postId = absint( $_POST['post_id'] ?? 0 );
 		$legacyDate = sanitize_text_field( wp_unslash( $_POST['date'] ?? current_time( 'Y-m-d' ) ) );
 		$rawFilters = wp_unslash( $_POST['filters'] ?? '' );
-		$filters = self::normalizeFilters( $rawFilters, $legacyDate, $sourceId );
+		$filters = self::normalizeFilters(
+			$rawFilters,
+			$legacyDate,
+			$sourceId,
+			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'attachment_scope', null )
+		);
 		$dateValue = $filters['date'];
 		$sourceId = $filters['source'];
 		$forceRefresh = ! empty( $_POST['force_refresh'] );
@@ -471,14 +550,47 @@ class EditorMediaController {
 		$attachmentStates = $this->resolveAttachmentStates( $importedPaths, $postId );
 		$merged['files'] = MediaPanelState::setImportState( $merged['files'], $attachmentStates['imported_paths'] );
 		$merged['files'] = MediaPanelState::setAttachmentState( $merged['files'], $attachmentStates['attached_paths'] );
+		$merged['files'] = MediaPanelState::setOtherPostState( $merged['files'], $attachmentStates['other_post_by_path'] );
+		$merged['files'] = MediaPanelState::filterByAttachmentScope( $merged['files'], $filters['attachment_scope'] );
+		$merged['files'] = $this->enrichOtherPostInfo( $merged['files'] );
 		$merged['status'] = $merged['refresh_required'] ? 'stale' : 'fresh';
 		$merged['filters'] = $filters;
 		wp_send_json_success( $merged );
 	}
 
 	/**
+	 * Resolves parent post title and edit URL only for items the current user
+	 * is allowed to see, and only after scope filtering has narrowed the list.
+	 *
+	 * @param array<int, array<string, mixed>> $files
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function enrichOtherPostInfo( array $files ): array {
+		foreach ( $files as $index => $file ) {
+			if ( empty( $file['is_attached_to_other_post'] ) ) {
+				continue;
+			}
+
+			$otherPostId = (int) ( $file['other_post_id'] ?? 0 );
+			if ( 0 === $otherPostId || ! current_user_can( 'edit_post', $otherPostId ) ) {
+				continue;
+			}
+
+			$post = get_post( $otherPostId );
+			if ( ! $post instanceof \WP_Post ) {
+				continue;
+			}
+
+			$files[ $index ]['other_post_title'] = get_the_title( $post );
+			$files[ $index ]['other_post_edit_url'] = get_edit_post_link( $otherPostId, 'raw' );
+		}
+
+		return $files;
+	}
+
+	/**
 	 * @param string[] $candidatePaths
-	 * @return array{imported_paths:string[], attached_paths:string[]}
+	 * @return array{imported_paths:string[], attached_paths:string[], other_post_by_path:array<string, array{post_id:int}>}
 	 */
 	private function resolveAttachmentStates( array $candidatePaths, int $postId ): array {
 		$known = [];
@@ -492,7 +604,7 @@ class EditorMediaController {
 		}
 
 		if ( [] === $known ) {
-			return [ 'imported_paths' => [], 'attached_paths' => [] ];
+			return [ 'imported_paths' => [], 'attached_paths' => [], 'other_post_by_path' => [] ];
 		}
 
 		$attachments = get_posts( [
@@ -502,11 +614,12 @@ class EditorMediaController {
 			'fields' => 'ids',
 		] );
 		if ( empty( $attachments ) || is_wp_error( $attachments ) ) {
-			return [ 'imported_paths' => [], 'attached_paths' => [] ];
+			return [ 'imported_paths' => [], 'attached_paths' => [], 'other_post_by_path' => [] ];
 		}
 
 		$imported = [];
 		$attached = [];
+		$otherPostByPath = [];
 		foreach ( $attachments as $attachmentId ) {
 			$attachmentId = (int) $attachmentId;
 			$path = get_attached_file( $attachmentId, true );
@@ -541,14 +654,18 @@ class EditorMediaController {
 			}
 
 			$imported[] = $sourcePath;
-			if ( 0 !== $postId && $postId === (int) get_post_field( 'post_parent', $attachmentId ) ) {
+			$parent = (int) get_post_field( 'post_parent', $attachmentId );
+			if ( 0 !== $postId && $postId === $parent ) {
 				$attached[] = $sourcePath;
+			} elseif ( 0 !== $parent ) {
+				$otherPostByPath[ $sourcePath ] = [ 'post_id' => $parent ];
 			}
 		}
 
 		return [
 			'imported_paths' => array_values( array_unique( $imported ) ),
 			'attached_paths' => array_values( array_unique( $attached ) ),
+			'other_post_by_path' => $otherPostByPath,
 		];
 	}
 }

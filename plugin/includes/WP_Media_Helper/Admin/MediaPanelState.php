@@ -198,6 +198,75 @@ class MediaPanelState {
 		return $items;
 	}
 
+	/**
+	 * @param array<int, array<string, mixed>> $items
+	 * @param array<string, array{post_id:int}> $otherPostByPath keyed by raw source path
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function setOtherPostState( array $items, array $otherPostByPath ): array {
+		$known = [];
+		foreach ( $otherPostByPath as $path => $info ) {
+			if ( ! is_string( $path ) || ! is_array( $info ) ) {
+				continue;
+			}
+			foreach ( self::pathSignatureCandidates( $path ) as $candidate ) {
+				$known[ $candidate ] = $info;
+			}
+		}
+
+		foreach ( $items as $index => $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+
+			$path = (string) ( $item['path'] ?? $item['name'] ?? '' );
+			$items[ $index ]['is_attached_to_other_post'] = false;
+			$items[ $index ]['other_post_id'] = 0;
+			foreach ( self::pathSignatureCandidates( $path ) as $candidate ) {
+				if ( isset( $known[ $candidate ] ) ) {
+					$items[ $index ]['is_attached_to_other_post'] = true;
+					$items[ $index ]['other_post_id'] = (int) $known[ $candidate ]['post_id'];
+					break;
+				}
+			}
+		}
+
+		return $items;
+	}
+
+	/**
+	 * Resolves the single attachment_scope state ("unattached", "current", or
+	 * "other") that an enriched item currently belongs to.
+	 *
+	 * @param array<string, mixed> $item
+	 */
+	public static function resolveAttachmentScopeState( array $item ): string {
+		if ( ! empty( $item['is_attached_to_current_post'] ) ) {
+			return 'current';
+		}
+
+		if ( ! empty( $item['is_attached_to_other_post'] ) ) {
+			return 'other';
+		}
+
+		return 'unattached';
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $items
+	 * @param array<int, string> $selectedStates
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function filterByAttachmentScope( array $items, array $selectedStates ): array {
+		return array_values( array_filter( $items, static function ( $item ) use ( $selectedStates ): bool {
+			if ( ! is_array( $item ) ) {
+				return false;
+			}
+
+			return in_array( self::resolveAttachmentScopeState( $item ), $selectedStates, true );
+		} ) );
+	}
+
 	public function __construct( ?TargetedRefreshCoordinator $coordinator = null ) {
 		$this->coordinator = $coordinator ?? new TargetedRefreshCoordinator();
 	}

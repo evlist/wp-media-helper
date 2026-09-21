@@ -27,6 +27,12 @@
 		{ value: 'simple', label: __( 'Simple', 'wp-media-helper' ) },
 		{ value: 'advanced', label: __( 'Advanced', 'wp-media-helper' ) },
 	];
+	const DEFAULT_ATTACHMENT_SCOPE = [ 'unattached', 'current' ];
+	const ATTACHMENT_SCOPE_STATES = [
+		{ value: 'unattached', label: __( 'Unattached', 'wp-media-helper' ) },
+		{ value: 'current', label: __( 'Attached to this post', 'wp-media-helper' ) },
+		{ value: 'other', label: __( 'Attached to another post', 'wp-media-helper' ) },
+	];
 
 	const formatElapsed = function ( lastRefreshedAt ) {
 		if ( ! lastRefreshedAt ) {
@@ -102,6 +108,10 @@
 			type: item && item.type ? item.type : 'other',
 			is_imported: !! ( item && item.is_imported ),
 			is_attached_to_current_post: !! ( item && item.is_attached_to_current_post ),
+			is_attached_to_other_post: !! ( item && item.is_attached_to_other_post ),
+			other_post_id: item && item.other_post_id ? item.other_post_id : 0,
+			other_post_title: item && item.other_post_title ? item.other_post_title : '',
+			other_post_edit_url: item && item.other_post_edit_url ? item.other_post_edit_url : '',
 		};
 	};
 
@@ -130,6 +140,23 @@
 		formData.append( 'action', 'wp_media_helper_panel_mode' );
 		formData.append( 'nonce', nonce );
 		formData.append( 'mode', mode );
+
+		return window.fetch( endpoint, {
+			method: 'POST',
+			credentials: 'same-origin',
+			body: formData,
+		} ).then( function ( response ) {
+			return response.json();
+		} );
+	};
+
+	const saveFilter = function ( key, value, postId ) {
+		const formData = new window.FormData();
+		formData.append( 'action', 'wp_media_helper_save_filter' );
+		formData.append( 'nonce', nonce );
+		formData.append( 'key', key );
+		formData.append( 'post_id', String( postId || 0 ) );
+		formData.append( 'value', JSON.stringify( value ) );
 
 		return window.fetch( endpoint, {
 			method: 'POST',
@@ -171,6 +198,11 @@
 			setStatus( payload.data.status || 'fresh' );
 			setReason( payload.data.reason || null );
 			setFiles( payload.data.files || [] );
+			if ( payload.data.filters && Array.isArray( payload.data.filters.attachment_scope ) ) {
+				setFiltersState( function ( currentFilters ) {
+					return Object.assign( {}, currentFilters, { attachment_scope: payload.data.filters.attachment_scope } );
+				} );
+			}
 			const nextIds = new window.Set( ( payload.data.files || [] ).map( function ( file ) {
 				return itemKey( normalizeMediaItem( file ) );
 			} ) );
@@ -195,9 +227,9 @@
 			};
 		}, [] );
 
-		const runFetch = function ( forceRefresh ) {
+		const runFetch = function ( forceRefresh, overrideFilters ) {
 			setLoading( true );
-			return fetchState( filters, forceRefresh )
+			return fetchState( overrideFilters || filters, forceRefresh )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
 						applyPayload( payload );
@@ -233,7 +265,7 @@
 				document.removeEventListener( 'visibilitychange', handleVisibilityChange );
 			};
 			// eslint-disable-next-line react-hooks/exhaustive-deps
-		}, [ filters.date ] );
+		}, [ filters.date, filters.attachment_scope ] );
 
 		const handleRefresh = function () {
 			runFetch( true );
@@ -243,6 +275,22 @@
 			setPanelMode( mode );
 			setBulkAction( 'none' );
 			savePanelMode( mode );
+		};
+
+		const toggleAttachmentScope = function ( state ) {
+			const current = filters.attachment_scope || DEFAULT_ATTACHMENT_SCOPE;
+			const next = current.includes( state )
+				? current.filter( function ( value ) { return value !== state; } )
+				: current.concat( [ state ] );
+
+			if ( 0 === next.length ) {
+				return;
+			}
+
+			const nextFilters = Object.assign( {}, filters, { attachment_scope: next } );
+			setFiltersState( nextFilters );
+			saveFilter( 'attachment_scope', next, getCurrentPostId() );
+			runFetch( false, nextFilters );
 		};
 
 		const toggleSelected = function ( item ) {
@@ -370,6 +418,7 @@
 		const visibleItems = files.map( function ( file ) {
 			return normalizeMediaItem( file );
 		} );
+		const currentAttachmentScope = filters.attachment_scope || DEFAULT_ATTACHMENT_SCOPE;
 		const visibleBulkActions = BULK_ACTIONS.filter( function ( action ) {
 			return 'advanced' === panelMode || [ 'attach', 'remove' ].includes( action.value );
 		} );
@@ -416,6 +465,34 @@
 							} );
 						} )
 					)
+				),
+				wp.element.createElement(
+					PanelRow,
+					null,
+					'advanced' === panelMode
+						? wp.element.createElement( 'div', { role: 'group', 'aria-label': __( 'Attachment scope', 'wp-media-helper' ), style: { display: 'flex', flexDirection: 'column', gap: '0.25rem' } },
+							ATTACHMENT_SCOPE_STATES.map( function ( state ) {
+								const checked = currentAttachmentScope.includes( state.value );
+								return wp.element.createElement( 'label', { key: state.value, style: { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '12px' } },
+									wp.element.createElement( 'input', {
+										type: 'checkbox',
+										checked: checked,
+										disabled: loading || ( checked && 1 === currentAttachmentScope.length ),
+										onChange: function () { toggleAttachmentScope( state.value ); }
+									} ),
+									state.label
+								);
+							} )
+						)
+						: wp.element.createElement( 'label', { style: { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '12px' } },
+							wp.element.createElement( 'input', {
+								type: 'checkbox',
+								checked: currentAttachmentScope.includes( 'other' ),
+								disabled: loading,
+								onChange: function () { toggleAttachmentScope( 'other' ); }
+							} ),
+							__( 'Show media attached to other posts', 'wp-media-helper' )
+						)
 				),
 				wp.element.createElement(
 					PanelRow,
@@ -510,9 +587,11 @@
 								wp.element.createElement( 'tbody', null,
 									visibleItems.map( function ( item ) {
 										const key = itemKey( item );
-										const primaryAction = 'simple' === panelMode
-											? ( item.is_attached_to_current_post ? 'remove' : 'attach' )
-											: ( item.is_imported ? 'remove' : 'import' );
+										const primaryAction = item.is_attached_to_other_post
+											? null
+											: ( 'simple' === panelMode
+												? ( item.is_attached_to_current_post ? 'remove' : 'attach' )
+												: ( item.is_imported ? 'remove' : 'import' ) );
 										const primaryLabel = {
 											import: __( 'Import', 'wp-media-helper' ),
 											remove: __( 'Remove', 'wp-media-helper' ),
@@ -533,43 +612,57 @@
 												wp.element.createElement( 'div', { style: { marginTop: '0.15rem', textTransform: 'uppercase', color: '#50575e', fontSize: '10px' } }, item.type )
 											),
 											wp.element.createElement( 'td', { style: { padding: '0.4rem', verticalAlign: 'top', overflowWrap: 'anywhere' } },
-												'simple' === panelMode
-													? wp.element.createElement( 'div', { style: { color: item.is_attached_to_current_post ? '#0a7d45' : '#50575e' } },
-														item.is_attached_to_current_post ? __( 'Attached to current post', 'wp-media-helper' ) : __( 'Not attached to current post', 'wp-media-helper' )
+												item.is_attached_to_other_post
+													? wp.element.createElement( 'div', { style: { color: '#b32d2e' } },
+														item.other_post_edit_url
+															? wp.element.createElement( 'a', { href: item.other_post_edit_url, target: '_blank', rel: 'noreferrer' },
+																item.other_post_title
+																	? sprintf( __( 'Attached to another post: %s', 'wp-media-helper' ), item.other_post_title )
+																	: __( 'Attached to another post', 'wp-media-helper' )
+															)
+															: ( item.other_post_title
+																? sprintf( __( 'Attached to another post: %s', 'wp-media-helper' ), item.other_post_title )
+																: __( 'Attached to another post', 'wp-media-helper' ) )
 													)
-													: [
-														wp.element.createElement( 'div', { key: 'library', style: { color: item.is_imported ? '#0a7d45' : '#50575e' } },
-															item.is_imported ? __( 'In WP media library', 'wp-media-helper' ) : __( 'Not in WP media library', 'wp-media-helper' )
-														),
-														wp.element.createElement( 'div', { key: 'post', style: { marginTop: '0.25rem', color: item.is_attached_to_current_post ? '#0a7d45' : '#50575e' } },
+													: ( 'simple' === panelMode
+														? wp.element.createElement( 'div', { style: { color: item.is_attached_to_current_post ? '#0a7d45' : '#50575e' } },
 															item.is_attached_to_current_post ? __( 'Attached to current post', 'wp-media-helper' ) : __( 'Not attached to current post', 'wp-media-helper' )
-														),
-													]
+														)
+														: [
+															wp.element.createElement( 'div', { key: 'library', style: { color: item.is_imported ? '#0a7d45' : '#50575e' } },
+																item.is_imported ? __( 'In WP media library', 'wp-media-helper' ) : __( 'Not in WP media library', 'wp-media-helper' )
+															),
+															wp.element.createElement( 'div', { key: 'post', style: { marginTop: '0.25rem', color: item.is_attached_to_current_post ? '#0a7d45' : '#50575e' } },
+																item.is_attached_to_current_post ? __( 'Attached to current post', 'wp-media-helper' ) : __( 'Not attached to current post', 'wp-media-helper' )
+															),
+														] )
 											),
 											wp.element.createElement( 'td', { style: { padding: '0.4rem', textAlign: 'right' } },
-												wp.element.createElement( 'div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' } },
-													wp.element.createElement( Button, {
-														isLink: true,
-														disabled: loading,
-														onClick: function () { handleItemAction( primaryAction, item ); },
-														text: primaryLabel
-													} ),
-													'advanced' === panelMode && item.is_attached_to_current_post
-														? wp.element.createElement( Button, {
+												item.is_attached_to_other_post
+													? null
+													: wp.element.createElement( 'div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' } },
+														wp.element.createElement( Button, {
 															isLink: true,
 															disabled: loading,
-															onClick: function () { handleItemAction( 'detach', item ); },
-															text: __( 'Detach', 'wp-media-helper' )
-														} )
-														: 'advanced' === panelMode
+															onClick: function () { handleItemAction( primaryAction, item ); },
+															text: primaryLabel
+														} ),
+														'advanced' === panelMode && item.is_attached_to_current_post
 															? wp.element.createElement( Button, {
-															isLink: true,
-															disabled: loading,
-															onClick: function () { handleItemAction( 'attach', item ); },
-															text: __( 'Attach', 'wp-media-helper' )
-														} )
-															: null
-												)
+																isLink: true,
+																disabled: loading,
+																onClick: function () { handleItemAction( 'detach', item ); },
+																text: __( 'Detach', 'wp-media-helper' )
+															} )
+															: 'advanced' === panelMode
+																? wp.element.createElement( Button, {
+																isLink: true,
+																disabled: loading,
+																onClick: function () { handleItemAction( 'attach', item ); },
+																text: __( 'Attach', 'wp-media-helper' )
+															} )
+																: null
+													)
 											)
 										);
 									} )

@@ -180,6 +180,36 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertFalse( $items[1]['is_attached_to_current_post'] );
 	}
 
+	public function test_set_other_post_state_marks_items_attached_elsewhere(): void {
+		$items = MediaPanelState::setOtherPostState( [
+			[ 'id' => 'a', 'path' => '/tmp/source/morning.png' ],
+			[ 'id' => 'b', 'path' => '/tmp/source/route.gpx' ],
+		], [ '/tmp/source/morning.png' => [ 'post_id' => 9 ] ] );
+
+		$this->assertTrue( $items[0]['is_attached_to_other_post'] );
+		$this->assertSame( 9, $items[0]['other_post_id'] );
+		$this->assertFalse( $items[1]['is_attached_to_other_post'] );
+		$this->assertSame( 0, $items[1]['other_post_id'] );
+	}
+
+	public function test_resolve_attachment_scope_state_prioritizes_current_over_other(): void {
+		$this->assertSame( 'current', MediaPanelState::resolveAttachmentScopeState( [ 'is_attached_to_current_post' => true, 'is_attached_to_other_post' => true ] ) );
+		$this->assertSame( 'other', MediaPanelState::resolveAttachmentScopeState( [ 'is_attached_to_current_post' => false, 'is_attached_to_other_post' => true ] ) );
+		$this->assertSame( 'unattached', MediaPanelState::resolveAttachmentScopeState( [ 'is_attached_to_current_post' => false, 'is_attached_to_other_post' => false ] ) );
+	}
+
+	public function test_filter_by_attachment_scope_keeps_only_selected_states(): void {
+		$items = [
+			[ 'id' => 'a', 'is_attached_to_current_post' => true, 'is_attached_to_other_post' => false ],
+			[ 'id' => 'b', 'is_attached_to_current_post' => false, 'is_attached_to_other_post' => true ],
+			[ 'id' => 'c', 'is_attached_to_current_post' => false, 'is_attached_to_other_post' => false ],
+		];
+
+		$filtered = MediaPanelState::filterByAttachmentScope( $items, [ 'unattached', 'current' ] );
+
+		$this->assertSame( [ 'a', 'c' ], array_column( $filtered, 'id' ) );
+	}
+
 	public function test_path_matches_handles_wordpress_renamed_uploads(): void {
 		$this->assertTrue( MediaPanelState::pathMatches( '/tmp/source/20260810-morning.png', '/wp-content/uploads/2026/08/20260810-morning_1.png' ) );
 		$this->assertFalse( MediaPanelState::pathMatches( '/tmp/source/20260810-morning.png', '/tmp/source/20260811-morning.png' ) );
@@ -209,23 +239,47 @@ class MediaPanelStateTest extends TestCase {
 
 	public function test_normalize_filters_prefers_the_structured_payload_over_legacy_parameters(): void {
 		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters(
-			json_encode( [ 'date' => '2026-09-20', 'source' => 'belledonne' ] ),
+			json_encode( [ 'date' => '2026-09-20', 'source' => 'belledonne', 'attachment_scope' => [ 'other' ] ] ),
 			'2026-01-01',
 			'legacy-source'
 		);
 
-		$this->assertSame( [ 'date' => '2026-09-20', 'source' => 'belledonne' ], $filters );
+		$this->assertSame( [ 'date' => '2026-09-20', 'source' => 'belledonne', 'attachment_scope' => [ 'other' ] ], $filters );
 	}
 
 	public function test_normalize_filters_falls_back_to_legacy_parameters_when_payload_is_absent(): void {
 		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( '', '2026-01-01', 'legacy-source' );
 
-		$this->assertSame( [ 'date' => '2026-01-01', 'source' => 'legacy-source' ], $filters );
+		$this->assertSame( [ 'date' => '2026-01-01', 'source' => 'legacy-source', 'attachment_scope' => [ 'unattached', 'current' ] ], $filters );
 	}
 
 	public function test_normalize_filters_ignores_invalid_payloads(): void {
 		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( 'not-json', '2026-01-01', 'legacy-source' );
 
-		$this->assertSame( [ 'date' => '2026-01-01', 'source' => 'legacy-source' ], $filters );
+		$this->assertSame( [ 'date' => '2026-01-01', 'source' => 'legacy-source', 'attachment_scope' => [ 'unattached', 'current' ] ], $filters );
+	}
+
+	public function test_normalize_filters_resolves_attachment_scope_from_storage_when_absent_from_payload(): void {
+		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters(
+			json_encode( [ 'date' => '2026-09-20' ] ),
+			'2026-01-01',
+			'legacy-source',
+			static fn () => [ 'other' ]
+		);
+
+		$this->assertSame( [ 'other' ], $filters['attachment_scope'] );
+	}
+
+	public function test_normalize_attachment_scope_defaults_when_empty_or_invalid(): void {
+		$this->assertSame( [ 'unattached', 'current' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeAttachmentScope( null ) );
+		$this->assertSame( [ 'unattached', 'current' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeAttachmentScope( [] ) );
+		$this->assertSame( [ 'unattached', 'current' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeAttachmentScope( [ 'bogus' ] ) );
+	}
+
+	public function test_normalize_attachment_scope_keeps_only_known_states(): void {
+		$this->assertSame(
+			[ 'current', 'other' ],
+			\WP_Media_Helper\Admin\EditorMediaController::normalizeAttachmentScope( [ 'current', 'other', 'bogus' ] )
+		);
 	}
 }
