@@ -35,26 +35,31 @@ As an editor, I want media attached to another post hidden during normal work so
 
 ## Filter definition
 
-The filter key is `attachment_scope`.
+Rather than a single enumerated scope, the filter models the three underlying attachment states as independent toggles. This avoids inventing named combinations for every useful subset and keeps the control legible.
 
-It uses an option-set type with `user_post_then_user` scope.
+The filter key is `attachment_scope`. It uses a multi-select-of-states type with `user_post_then_user` scope.
 
-Supported values:
+The available states are:
 
-- `current_or_unattached`: show items unattached or attached to the current post,
-- `all`: also show items attached to another post.
+- `unattached`: the media has no plugin-managed attachment, or one that is not associated with any post,
+- `current`: the media is attached to the post currently being edited,
+- `other`: the media is attached to a different post.
+
+The filter value is the set of states to include, for example `["unattached", "current"]`. An item is shown when its resolved state is a member of the selected set. An empty set is not a valid persisted value; the UI must always keep at least one state selected.
 
 Default value:
 
-- `current_or_unattached`.
+- `["unattached", "current"]`.
 
 Resolution order:
 
-1. current user's value for the current post,
-2. current user's latest global value,
-3. `current_or_unattached`.
+1. current user's set for the current post,
+2. current user's latest global set,
+3. the default set.
 
-Changing the value stores both the user-post value and the user's latest global value, as defined by slice 015. No reset-to-default control is added.
+Changing the value stores both the user-post set and the user's latest global set, as defined by slice 015. No reset-to-default control is added.
+
+This model also removes the need for named combinations such as "current or unattached" or "other or unattached": every one of the eight possible combinations is simply the set of checked states, including the previously awkward-to-name "other or unattached" (`["unattached", "other"]`, i.e. anything not attached to the current post).
 
 ## Attachment-state enrichment
 
@@ -73,9 +78,17 @@ If multiple plugin-managed attachment records match the same external item, the 
 
 ## Filtering behavior
 
-### 1. Default scope
+### 1. Resolving an item's state
 
-With `current_or_unattached`, the response excludes items whose matching plugin-managed attachment is associated with a post other than the current post.
+For every external media item, the server resolves exactly one of the three states:
+
+- `unattached` when no plugin-managed attachment exists, or the matching attachment has no post parent,
+- `current` when the matching attachment's post parent is the current post,
+- `other` when the matching attachment's post parent is a different post.
+
+### 2. Default selection
+
+With the default set `["unattached", "current"]`, the response excludes items resolved as `other`.
 
 The response includes:
 
@@ -83,32 +96,35 @@ The response includes:
 - imported but unattached files,
 - files attached to the current post.
 
-### 2. All scope
+### 3. Including other-post media
 
-With `all`, the response includes every matching external item, including those attached to another post.
+When the selected set includes `other`, the response also includes items attached to a different post.
 
-The item must carry its protected other-post state so the client does not infer availability from visibility alone.
+Every included item must carry its resolved state so the client does not infer availability from visibility alone.
 
-### 3. Current post requirement
+### 4. Current post requirement
 
-When no persisted current post ID exists, other-post comparison cannot be performed reliably. The server should treat all attached media as attached elsewhere and preserve the safe default behavior.
+When no persisted current post ID exists, an attached item cannot be resolved as `current`. The server should resolve it as `other` and preserve the safe default behavior.
 
 ## Filter control
 
-The filter is rendered in the common filter area introduced by slice 015.
+The filter is rendered in the common filter area introduced by slice 015, as three independent checkboxes rather than a single selector:
 
-A compact option selector is preferred over a standalone ad hoc toggle because the values represent a scope rather than a simple feature switch. Suggested labels:
+- `Unattached`,
+- `Attached to this post`,
+- `Attached to another post`.
 
-- `Available for this post`,
-- `All matching media`.
+Each checkbox toggles membership of its state in the selected set. This reads directly as "include this category or not" and avoids asking the editor to recognize a named combination.
+
+The UI must prevent unchecking the last remaining state, since an empty set has no defined meaning. Simple mode may still show only two checkboxes (`Unattached` implied together with `Attached to this post`, and `Attached to another post`) if the current-post/unattached distinction is not meaningful in that mode; this simplification does not change the underlying three-state model, only which checkboxes are exposed.
 
 The control should remain understandable in both Simple and Advanced panel modes. It filters the result set independently of presentation mode.
 
-Changing the filter triggers a media-state request and preserves selected IDs that remain in the result set. Items hidden by the new scope are removed from the active selection.
+Changing any checkbox triggers a media-state request and preserves selected IDs that remain in the result set. Items hidden by the new set are removed from the active selection.
 
 ## Other-post item rendering
 
-When `all` includes an item attached elsewhere, the row displays a warning state distinct from the normal current-post status.
+When the selected set includes `other` and an item resolves to that state, the row displays a warning state distinct from the normal current-post status.
 
 The row should show:
 
@@ -143,7 +159,7 @@ The media-state request includes:
 ```json
 {
   "filters": {
-    "attachment_scope": "current_or_unattached"
+    "attachment_scope": ["unattached", "current"]
   }
 }
 ```
@@ -186,19 +202,20 @@ This slice does not include:
 
 ## Acceptance criteria
 
-1. `attachment_scope` is registered through the common filter contract.
-2. Its default is `current_or_unattached`.
-3. The default result excludes media attached to another post.
-4. `all` includes other-post media with explicit protected state.
+1. `attachment_scope` is registered through the common filter contract as a set of `unattached`, `current`, and `other` states.
+2. Its default is `["unattached", "current"]`.
+3. The default result excludes media resolved as `other`.
+4. Selecting `other` includes other-post media with explicit protected state.
 5. The filter resolves and persists through current user/current post, user-global, then default.
-6. Other-post rows identify their parent post when permissions allow.
-7. Other-post rows are visibly protected in both Simple and Advanced modes.
-8. Individual attach, detach, remove, and import actions are unavailable for protected rows.
-9. The server rejects or safely ignores lifecycle actions against another post's media.
-10. Mixed bulk operations continue processing eligible items.
-11. Changing scope preserves selections for items that remain visible and removes hidden items from selection.
-12. The external source file and the other post's attachment remain untouched.
+6. The UI prevents deselecting every state at once.
+7. Other-post rows identify their parent post when permissions allow.
+8. Other-post rows are visibly protected in both Simple and Advanced modes.
+9. Individual attach, detach, remove, and import actions are unavailable for protected rows.
+10. The server rejects or safely ignores lifecycle actions against another post's media.
+11. Mixed bulk operations continue processing eligible items.
+12. Changing the selected set preserves selections for items that remain visible and removes hidden items from selection.
+13. The external source file and the other post's attachment remain untouched.
 
 ## Notes
 
-Visibility does not imply ownership. The `all` scope exists for inspection and awareness, not for cross-post media management. Reassignment, transfer, or another-post detachment would require an explicit future workflow with its own permissions and confirmation rules.
+Visibility does not imply ownership. Including the `other` state exists for inspection and awareness, not for cross-post media management. Reassignment, transfer, or another-post detachment would require an explicit future workflow with its own permissions and confirmation rules.
