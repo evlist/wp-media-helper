@@ -73,6 +73,27 @@ class EditorMediaController {
 		return array_values( $normalized );
 	}
 
+	/**
+	 * Normalizes the structured `filters` request payload, falling back to the
+	 * legacy top-level `date`/`source_id` parameters during migration.
+	 *
+	 * @return array{date:string, source:string}
+	 */
+	public static function normalizeFilters( mixed $rawFilters, string $legacyDate, string $legacySource ): array {
+		$decoded = is_string( $rawFilters ) ? json_decode( $rawFilters, true ) : null;
+		$decoded = is_array( $decoded ) ? $decoded : [];
+
+		$date = isset( $decoded['date'] ) ? trim( (string) $decoded['date'] ) : '';
+		$date = '' !== $date ? $date : $legacyDate;
+
+		$source = isset( $decoded['source'] ) ? trim( (string) $decoded['source'] ) : $legacySource;
+
+		return [
+			'date' => $date,
+			'source' => $source,
+		];
+	}
+
 	public function __construct() {
 		add_action( 'wp_ajax_wp_media_helper_media_panel_state', [ $this, 'handle' ] );
 		add_action( 'wp_ajax_wp_media_helper_bulk_media', [ $this, 'handleBulk' ] );
@@ -377,7 +398,11 @@ class EditorMediaController {
 
 		$sourceId = sanitize_text_field( wp_unslash( $_POST['source_id'] ?? '' ) );
 		$postId = absint( $_POST['post_id'] ?? 0 );
-		$dateValue = sanitize_text_field( wp_unslash( $_POST['date'] ?? current_time( 'Y-m-d' ) ) );
+		$legacyDate = sanitize_text_field( wp_unslash( $_POST['date'] ?? current_time( 'Y-m-d' ) ) );
+		$rawFilters = wp_unslash( $_POST['filters'] ?? '' );
+		$filters = self::normalizeFilters( $rawFilters, $legacyDate, $sourceId );
+		$dateValue = $filters['date'];
+		$sourceId = $filters['source'];
 		$forceRefresh = ! empty( $_POST['force_refresh'] );
 
 		$sources = new ExternalSourceSettings(
@@ -398,6 +423,7 @@ class EditorMediaController {
 				'reason' => null,
 				'files' => [],
 				'directory' => '',
+				'filters' => $filters,
 			] );
 		}
 
@@ -446,6 +472,7 @@ class EditorMediaController {
 		$merged['files'] = MediaPanelState::setImportState( $merged['files'], $attachmentStates['imported_paths'] );
 		$merged['files'] = MediaPanelState::setAttachmentState( $merged['files'], $attachmentStates['attached_paths'] );
 		$merged['status'] = $merged['refresh_required'] ? 'stale' : 'fresh';
+		$merged['filters'] = $filters;
 		wp_send_json_success( $merged );
 	}
 

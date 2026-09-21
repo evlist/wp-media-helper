@@ -206,4 +206,26 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertSame( 'simple', \WP_Media_Helper\Admin\EditorMediaController::normalizePanelMode( 'unexpected' ) );
 		$this->assertSame( 'advanced', \WP_Media_Helper\Admin\EditorMediaController::normalizePanelMode( 'advanced' ) );
 	}
+
+	public function test_normalize_filters_prefers_the_structured_payload_over_legacy_parameters(): void {
+		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters(
+			json_encode( [ 'date' => '2026-09-20', 'source' => 'belledonne' ] ),
+			'2026-01-01',
+			'legacy-source'
+		);
+
+		$this->assertSame( [ 'date' => '2026-09-20', 'source' => 'belledonne' ], $filters );
+	}
+
+	public function test_normalize_filters_falls_back_to_legacy_parameters_when_payload_is_absent(): void {
+		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( '', '2026-01-01', 'legacy-source' );
+
+		$this->assertSame( [ 'date' => '2026-01-01', 'source' => 'legacy-source' ], $filters );
+	}
+
+	public function test_normalize_filters_ignores_invalid_payloads(): void {
+		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( 'not-json', '2026-01-01', 'legacy-source' );
+
+		$this->assertSame( [ 'date' => '2026-01-01', 'source' => 'legacy-source' ], $filters );
+	}
 }

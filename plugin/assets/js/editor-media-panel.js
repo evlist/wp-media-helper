@@ -60,14 +60,14 @@
 		return Number( wp.data.select( 'core/editor' ).getCurrentPostId() || 0 );
 	};
 
-	const fetchState = function ( dateValue, forceRefresh ) {
+	const fetchState = function ( filters, forceRefresh ) {
 		const formData = new window.FormData();
 		formData.append( 'action', 'wp_media_helper_media_panel_state' );
 		formData.append( 'nonce', nonce );
-		formData.append( 'date', dateValue );
 		formData.append( 'force_refresh', forceRefresh ? '1' : '0' );
 		formData.append( 'source_id', wpMediaHelperEditorPanel.sourceId || '' );
 		formData.append( 'post_id', String( getCurrentPostId() ) );
+		formData.append( 'filters', JSON.stringify( filters ) );
 
 		return window.fetch( endpoint, {
 			method: 'POST',
@@ -145,7 +145,7 @@
 	};
 
 	const MediaPanel = function () {
-		const [ date, setDateState ] = useState( getStoredDate );
+		const [ filters, setFiltersState ] = useState( function () { return { date: getStoredDate() }; } );
 		const [ status, setStatus ] = useState( 'fresh' );
 		const [ reason, setReason ] = useState( null );
 		const [ files, setFiles ] = useState( [] );
@@ -158,7 +158,9 @@
 		const [ , setTick ] = useState( 0 );
 
 		const setDate = function ( value ) {
-			setDateState( value );
+			setFiltersState( function ( currentFilters ) {
+				return Object.assign( {}, currentFilters, { date: value } );
+			} );
 
 			const metaUpdate = {};
 			metaUpdate[ dateMetaKey ] = value;
@@ -195,7 +197,7 @@
 
 		const runFetch = function ( forceRefresh ) {
 			setLoading( true );
-			return fetchState( date, forceRefresh )
+			return fetchState( filters, forceRefresh )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
 						applyPayload( payload );
@@ -231,7 +233,7 @@
 				document.removeEventListener( 'visibilitychange', handleVisibilityChange );
 			};
 			// eslint-disable-next-line react-hooks/exhaustive-deps
-		}, [ date ] );
+		}, [ filters.date ] );
 
 		const handleRefresh = function () {
 			runFetch( true );
@@ -392,7 +394,7 @@
 					null,
 					wp.element.createElement( TextControl, {
 						label: __( 'Date', 'wp-media-helper' ),
-						value: date,
+						value: filters.date,
 						onChange: setDate,
 						type: 'date'
 					} )
