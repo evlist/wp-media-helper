@@ -152,6 +152,24 @@ class ExternalSourceSettingsTest extends TestCase {
 		] );
 	}
 
+	public function test_suffixes_names_that_produce_duplicate_source_ids(): void {
+		$saved = null;
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ) use ( &$saved ): void {
+				$saved = $value;
+			}
+		);
+
+		$settings->saveAll( [
+			[ 'name' => 'Nextcloud Main', 'root' => $this->tmpRoot ],
+			[ 'name' => 'Nextcloud-Main', 'root' => $this->tmpRoot ],
+		] );
+
+		$this->assertSame( 'nextcloud-main', $saved[0]['id'] );
+		$this->assertSame( 'nextcloud-main-2', $saved[1]['id'] );
+	}
+
 	public function test_allows_static_sources_without_path_pattern(): void {
 		$settings = new ExternalSourceSettings(
 			static fn(): mixed => [],

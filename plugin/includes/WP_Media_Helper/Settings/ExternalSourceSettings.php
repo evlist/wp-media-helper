@@ -176,12 +176,13 @@ class ExternalSourceSettings {
 			throw new InvalidArgumentException( __( 'Source names must be unique.', 'wp-media-helper' ) );
 		}
 
+		$usedIds = [];
 		foreach ( $sources as $index => $source ) {
 			if ( ! is_array( $source ) ) {
 				throw new InvalidArgumentException( __( 'Each external source must be an array.', 'wp-media-helper' ) );
 			}
 
-			$normalized[] = $this->normalizeSource( $source, $index );
+			$normalized[] = $this->normalizeSource( $source, $index, $usedIds );
 		}
 
 		return $normalized;
@@ -197,9 +198,10 @@ class ExternalSourceSettings {
 	/**
 	 * @param array<string, mixed> $source
 	 * @param int                  $index
+	 * @param array<string, bool>  $usedIds
 	 * @return array<string, mixed>
 	 */
-	private function normalizeSource( array $source, int $index ): array {
+	private function normalizeSource( array $source, int $index, array &$usedIds ): array {
 		$name = trim( (string) ( $source['name'] ?? '' ) );
 		$root = trim( (string) ( $source['root'] ?? '' ) );
 		$path = trim( (string) ( $source['path_pattern'] ?? '' ) );
@@ -280,8 +282,18 @@ class ExternalSourceSettings {
 		}
 
 
-		$id = strtolower( preg_replace( '/[^a-z0-9]+/i', '-', $name ) ?? $name );
-		$id = trim( (string) $id, '-' );
+		$id = trim( (string) ( $source['id'] ?? '' ) );
+		if ( '' === $id ) {
+			$id = $this->sourceIdFromName( $name );
+		}
+
+		$baseId = $id;
+		$suffix = 2;
+		while ( isset( $usedIds[ $id ] ) ) {
+			$id = $baseId . '-' . $suffix;
+			++$suffix;
+		}
+		$usedIds[ $id ] = true;
 
 		if ( '' === $id ) {
 			throw new InvalidArgumentException(
@@ -302,6 +314,12 @@ class ExternalSourceSettings {
 			'filter_pattern' => trim( (string) ( $source['filter_pattern'] ?? '' ) ),
 			'thumbnail_cache' => trim( (string) ( $source['thumbnail_cache'] ?? '' ) ),
 		];
+	}
+
+	private function sourceIdFromName( string $name ): string {
+		$id = function_exists( 'sanitize_title' ) ? sanitize_title( $name ) : preg_replace( '/[^a-z0-9]+/i', '-', $name );
+
+		return strtolower( trim( (string) $id, '-' ) );
 	}
 
 	/**

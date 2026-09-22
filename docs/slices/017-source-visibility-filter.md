@@ -36,7 +36,11 @@ It uses an option-set type with `user_post_then_user` scope.
 Supported values:
 
 - `all`: include every configured source,
-- one or more configured source IDs, represented as a list of IDs.
+- one or more selected sources, represented internally by stable source identifiers.
+
+The user-facing value is always the configured source name. Source IDs are
+implementation details used to identify the selected source reliably in
+requests and persistence; they must not be presented as the choice labels.
 
 Default value:
 
@@ -58,6 +62,20 @@ It does not change the underlying source configuration itself. It only changes t
 
 When the selected source list is empty or invalid, the server should normalize it back to `all` rather than returning an empty or broken result set.
 
+Only enabled and otherwise usable sources count as available sources for this
+filter. Disabled or invalid configurations do not create visible choices.
+
+The filter control follows the number of available sources:
+
+- zero active sources: hide the source filter and return an empty media list;
+- one active source: hide the source filter and use that source implicitly;
+- more than one active source: show the source filter with `All sources` and one
+  named choice per active source.
+
+The internal filter contract remains present in all cases. With one active
+source, the effective value is that source even though the user does not need
+to choose it explicitly.
+
 ## UI behavior
 
 The filter is rendered in the common filter area introduced by slice 015.
@@ -65,9 +83,13 @@ The filter is rendered in the common filter area introduced by slice 015.
 A compact selector is preferred, using either:
 
 - a checkbox list of available sources, or
-- a single select that includes `All sources` plus the configured source names/IDs.
+- a single select that includes `All sources` plus the configured source names.
 
-The exact control depends on the number of sources configured, but the contract remains the same: the user selects one or more sources, or chooses the default `all` value.
+When more than one source is active, a checkbox list is preferred because it
+allows selecting a subset of sources without inventing named combinations.
+The labels use source names; IDs remain invisible technical values.
+
+When zero or one source is active, no source selector is rendered.
 
 The control must remain compact enough for the sidebar, and it must operate independently of the panel mode.
 
@@ -94,13 +116,13 @@ The server resolves the effective source filter before resolving the media list.
 
 If the filter is `all`, the panel behaves as it does today and merges results from every configured source.
 
-If the filter is a list of source IDs, the panel only uses the matching configured sources.
+If the filter is a list of source identifiers, the panel only uses the matching configured sources. The response should also expose the source names used for the effective choices so the client can render names without knowing how IDs are generated.
 
-If a configured source has been removed or renamed, it should be ignored without crashing the request. The effective filter normalizes to the still-valid sources, or to `all` when no valid sources remain.
+If a configured source has been removed or renamed, it should be ignored without crashing the request. The effective filter normalizes to the still-valid sources, or to `all` when no valid sources remain. A source rename must not be treated as a new user-visible choice when its stable internal ID is unchanged.
 
 ## Error behavior
 
-If the stored source value refers to a removed source, it is normalized to the next valid source selection or to `all`.
+If the stored source value refers to a removed source, it is normalized to the next valid source selection or to `all`. If only one active source remains, it is used implicitly and the selector stays hidden.
 
 If the user’s preference cannot be persisted, the selection remains active for the current session and the panel continues to work.
 
@@ -121,9 +143,13 @@ This slice does not include:
 3. The request contract carries `source` under the `filters` object.
 4. Resolution order is current user/current post, then current user global, then default.
 5. A selection of one or more configured sources works without breaking the panel.
-6. Invalid or stale source IDs are gracefully normalized.
-7. The panel preserves selections for items that remain visible after a source change.
-8. The filter behaves consistently with the other filters defined in slice 015.
+6. Users see source names rather than source IDs.
+7. With zero active sources, the source selector is hidden and the result is empty.
+8. With one active source, the source selector is hidden and that source is used implicitly.
+9. With multiple active sources, users can select all or a subset by name.
+10. Invalid or stale internal source identifiers are gracefully normalized.
+11. The panel preserves selections for items that remain visible after a source change.
+12. The filter behaves consistently with the other filters defined in slice 015.
 
 ## Notes
 
