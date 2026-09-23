@@ -41,6 +41,10 @@
   selections.
 - A low-load scheduled refresh may maintain the index proactively, but the
   request-time consistency check remains authoritative.
+- Media filtering distinguishes post-scoped attachment eligibility from
+  user-scoped visibility. The visible list is their intersection; visibility
+  never restores a file excluded by attachment eligibility. See
+  [Media filter model](media-filter-model.md).
 
 ## Security model for external source configuration
 
