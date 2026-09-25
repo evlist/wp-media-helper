@@ -28,6 +28,7 @@
 		{ value: 'advanced', label: __( 'Advanced', 'wp-media-helper' ) },
 	];
 	const DEFAULT_ATTACHMENT_SCOPE = [ 'unattached', 'current' ];
+	const DEFAULT_SOURCE_FILTER = [ 'all' ];
 	const ATTACHMENT_SCOPE_STATES = [
 		{ value: 'unattached', label: __( 'Unattached', 'wp-media-helper' ) },
 		{ value: 'current', label: __( 'Attached to this post', 'wp-media-helper' ) },
@@ -106,6 +107,7 @@
 			name: item && item.name ? item.name : ( item && item.path ? item.path.split( '/' ).pop() : __( 'Media item', 'wp-media-helper' ) ),
 			path: item && item.path ? item.path : ( item && item.name ? item.name : '' ),
 			type: item && item.type ? item.type : 'other',
+			source_id: item && item.source_id ? item.source_id : '',
 			is_imported: !! ( item && item.is_imported ),
 			is_attached_to_current_post: !! ( item && item.is_attached_to_current_post ),
 			is_attached_to_other_post: !! ( item && item.is_attached_to_other_post ),
@@ -123,7 +125,7 @@
 		formData.append( 'bulk_action', action );
 		formData.append( 'post_id', String( postId || 0 ) );
 		formData.append( 'items', JSON.stringify( items.map( function ( item ) {
-			return { id: item.id, path: item.path };
+			return { id: item.id, path: item.path, source_id: item.source_id };
 		} ) ) );
 
 		return window.fetch( endpoint, {
@@ -173,6 +175,7 @@
 
 	const MediaPanel = function () {
 		const [ filters, setFiltersState ] = useState( function () { return { date: getStoredDate() }; } );
+		const [ availableSources, setAvailableSources ] = useState( [] );
 		const [ status, setStatus ] = useState( 'fresh' );
 		const [ reason, setReason ] = useState( null );
 		const [ files, setFiles ] = useState( [] );
@@ -198,6 +201,17 @@
 			setStatus( payload.data.status || 'fresh' );
 			setReason( payload.data.reason || null );
 			setFiles( payload.data.files || [] );
+			setAvailableSources( payload.data.available_sources || [] );
+			if ( payload.data.filters && Array.isArray( payload.data.filters.source ) ) {
+				setFiltersState( function ( currentFilters ) {
+					const nextSource = payload.data.filters.source;
+					const currentSource = currentFilters.source || [];
+					const isSameSource = nextSource.length === currentSource.length
+						&& nextSource.every( function ( value, index ) { return value === currentSource[ index ]; } );
+
+					return isSameSource ? currentFilters : Object.assign( {}, currentFilters, { source: nextSource } );
+				} );
+			}
 			if ( payload.data.filters && Array.isArray( payload.data.filters.attachment_scope ) ) {
 				setFiltersState( function ( currentFilters ) {
 					const nextScope = payload.data.filters.attachment_scope;
@@ -271,7 +285,7 @@
 				document.removeEventListener( 'visibilitychange', handleVisibilityChange );
 			};
 			// eslint-disable-next-line react-hooks/exhaustive-deps
-		}, [ filters.date, ( filters.attachment_scope || [] ).join( ',' ) ] );
+		}, [ filters.date, ( filters.attachment_scope || [] ).join( ',' ), ( filters.source || [] ).join( ',' ) ] );
 
 		const handleRefresh = function () {
 			runFetch( true );
@@ -296,7 +310,34 @@
 			const nextFilters = Object.assign( {}, filters, { attachment_scope: next } );
 			setFiltersState( nextFilters );
 			saveFilter( 'attachment_scope', next, getCurrentPostId() );
-			runFetch( false, nextFilters );
+		};
+
+		const toggleSource = function ( sourceId ) {
+			const current = filters.source || DEFAULT_SOURCE_FILTER;
+			let next;
+
+			if ( 'all' === sourceId ) {
+				next = DEFAULT_SOURCE_FILTER;
+			} else if ( current.includes( 'all' ) ) {
+				next = availableSources
+					.map( function ( source ) { return source.id; } )
+					.filter( function ( id ) { return id !== sourceId; } );
+			} else {
+				next = current.includes( sourceId )
+					? current.filter( function ( value ) { return value !== sourceId; } )
+					: current.concat( [ sourceId ] );
+
+				if ( 0 === next.length ) {
+					next = DEFAULT_SOURCE_FILTER;
+				} else if ( availableSources.length === next.length ) {
+					next = DEFAULT_SOURCE_FILTER;
+				}
+			}
+
+			setFiltersState( function ( currentFilters ) {
+				return Object.assign( {}, currentFilters, { source: next } );
+			} );
+			saveFilter( 'source', next, getCurrentPostId() );
 		};
 
 		const toggleSelected = function ( item ) {
@@ -425,6 +466,9 @@
 			return normalizeMediaItem( file );
 		} );
 		const currentAttachmentScope = filters.attachment_scope || DEFAULT_ATTACHMENT_SCOPE;
+		const currentSourceFilter = filters.source || DEFAULT_SOURCE_FILTER;
+		const allSourcesChecked = currentSourceFilter.includes( 'all' ) || currentSourceFilter.length === availableSources.length;
+		const someSourcesChecked = ! currentSourceFilter.includes( 'all' ) && currentSourceFilter.length > 0 && currentSourceFilter.length < availableSources.length;
 		const visibleBulkActions = BULK_ACTIONS.filter( function ( action ) {
 			return 'advanced' === panelMode || [ 'attach', 'remove' ].includes( action.value );
 		} );
@@ -471,6 +515,40 @@
 							} );
 						} )
 					)
+				),
+				wp.element.createElement(
+					PanelRow,
+					null,
+					availableSources.length > 1
+						? wp.element.createElement( 'div', { role: 'group', 'aria-label': __( 'Sources', 'wp-media-helper' ), style: { display: 'flex', flexDirection: 'column', gap: '0.25rem' } },
+							wp.element.createElement( 'label', { style: { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '12px' } },
+								wp.element.createElement( 'input', {
+									type: 'checkbox',
+										checked: allSourcesChecked,
+									disabled: loading,
+										ref: function ( element ) {
+											if ( element ) {
+												element.indeterminate = someSourcesChecked;
+											}
+										},
+									onChange: function () { toggleSource( 'all' ); }
+								} ),
+								__( 'All sources', 'wp-media-helper' )
+							),
+							availableSources.map( function ( source ) {
+								const checked = currentSourceFilter.includes( 'all' ) || currentSourceFilter.includes( source.id );
+								return wp.element.createElement( 'label', { key: source.id, style: { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '12px' } },
+									wp.element.createElement( 'input', {
+										type: 'checkbox',
+										checked: checked,
+										disabled: loading || ( checked && ! currentSourceFilter.includes( 'all' ) && 1 === currentSourceFilter.length ),
+										onChange: function () { toggleSource( source.id ); }
+									} ),
+									source.name
+								);
+							} )
+						)
+						: null
 				),
 				wp.element.createElement(
 					PanelRow,

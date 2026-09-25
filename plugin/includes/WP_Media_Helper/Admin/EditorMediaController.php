@@ -41,7 +41,7 @@ class EditorMediaController {
 
 	/**
 	 * @param array<int, mixed> $items
-	 * @return array<int, array{id:string, path:string}>
+	 * @return array<int, array{id:string, path:string, source_id?:string}>
 	 */
 	public static function normalizeBulkItems( array $items ): array {
 		$normalized = [];
@@ -68,6 +68,10 @@ class EditorMediaController {
 				'id' => $id,
 				'path' => $path,
 			];
+			$sourceId = trim( (string) ( $item['source_id'] ?? '' ) );
+			if ( '' !== $sourceId ) {
+				$normalized[ $key ]['source_id'] = $sourceId;
+			}
 		}
 
 		return array_values( $normalized );
@@ -88,6 +92,54 @@ class EditorMediaController {
 	}
 
 	/**
+	 * Normalizes a source filter against the IDs of active configured sources.
+	 * A single active source is implicit; multiple sources default to `all`.
+	 *
+	 * @param array<int, string> $activeSourceIds
+	 * @return array<int, string>
+	 */
+	public static function normalizeSourceFilter( mixed $rawSource, array $activeSourceIds ): array {
+		$activeSourceIds = array_values( array_unique( array_filter( $activeSourceIds, 'is_string' ) ) );
+		if ( [] === $activeSourceIds ) {
+			return [];
+		}
+
+		if ( 1 === count( $activeSourceIds ) ) {
+			return $activeSourceIds;
+		}
+
+		if ( 'all' === $rawSource || null === $rawSource ) {
+			return [ 'all' ];
+		}
+
+		$requested = is_array( $rawSource ) ? array_map( 'strval', $rawSource ) : [ (string) $rawSource ];
+		if ( in_array( 'all', $requested, true ) ) {
+			return [ 'all' ];
+		}
+
+		$selected = array_values( array_intersect( $activeSourceIds, $requested ) );
+
+		return [] === $selected ? [ 'all' ] : $selected;
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $activeSources
+	 * @param array<int, string>               $sourceFilter
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function resolveSourcesForFilter( array $activeSources, array $sourceFilter ): array {
+		if ( [] === $sourceFilter || in_array( 'all', $sourceFilter, true ) ) {
+			return $activeSources;
+		}
+
+		$selectedIds = array_fill_keys( $sourceFilter, true );
+
+		return array_values( array_filter( $activeSources, static function ( $source ) use ( $selectedIds ): bool {
+			return is_array( $source ) && isset( $selectedIds[ (string) ( $source['id'] ?? '' ) ] );
+		} ) );
+	}
+
+	/**
 	 * Normalizes the structured `filters` request payload, falling back to the
 	 * legacy top-level `date`/`source_id` parameters during migration.
 	 *
@@ -95,16 +147,23 @@ class EditorMediaController {
 	 * otherwise `$resolveStoredAttachmentScope` is called to look up the
 	 * user's persisted preference.
 	 *
-	 * @return array{date:string, source:string, attachment_scope:array<int, string>}
+	 * @return array{date:string, source:array<int, string>, attachment_scope:array<int, string>}
 	 */
-	public static function normalizeFilters( mixed $rawFilters, string $legacyDate, string $legacySource, ?callable $resolveStoredAttachmentScope = null ): array {
+	public static function normalizeFilters( mixed $rawFilters, string $legacyDate, mixed $legacySource, array $activeSourceIds = [], ?callable $resolveStoredAttachmentScope = null, ?callable $resolveStoredSource = null ): array {
 		$decoded = is_string( $rawFilters ) ? json_decode( $rawFilters, true ) : null;
 		$decoded = is_array( $decoded ) ? $decoded : [];
 
 		$date = isset( $decoded['date'] ) ? trim( (string) $decoded['date'] ) : '';
 		$date = '' !== $date ? $date : $legacyDate;
 
-		$source = isset( $decoded['source'] ) ? trim( (string) $decoded['source'] ) : $legacySource;
+		if ( array_key_exists( 'source', $decoded ) ) {
+			$rawSource = $decoded['source'];
+		} elseif ( '' !== (string) $legacySource ) {
+			$rawSource = $legacySource;
+		} else {
+			$rawSource = null === $resolveStoredSource ? null : $resolveStoredSource();
+		}
+		$source = self::normalizeSourceFilter( $rawSource, $activeSourceIds );
 
 		if ( isset( $decoded['attachment_scope'] ) ) {
 			$attachmentScope = self::normalizeAttachmentScope( $decoded['attachment_scope'] );
@@ -136,6 +195,27 @@ class EditorMediaController {
 		);
 	}
 
+	/**
+	 * Returns enabled source configurations with the fields needed by the panel.
+	 * Filesystem health is not rechecked here; settings validation owns that work.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function getActiveSources(): array {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => get_option( ExternalSourceSettings::optionKey(), [] ),
+			static function ( array $value ): void {}
+		);
+
+		return array_values( array_filter( $settings->getAll(), static function ( $source ): bool {
+			return is_array( $source )
+				&& ! empty( $source['id'] )
+				&& ! empty( $source['name'] )
+				&& ! empty( $source['root'] )
+				&& filter_var( $source['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN );
+		} ) );
+	}
+
 	public function handleSaveFilter(): void {
 		if ( ! current_user_can( 'edit_posts' ) ) {
 			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
@@ -148,11 +228,16 @@ class EditorMediaController {
 		$rawValue = wp_unslash( $_POST['value'] ?? '' );
 		$decodedValue = is_string( $rawValue ) ? json_decode( $rawValue, true ) : null;
 
-		if ( 'attachment_scope' !== $key ) {
+		if ( ! in_array( $key, [ 'attachment_scope', 'source' ], true ) ) {
 			wp_send_json_error( [ 'message' => 'The requested filter is not supported.' ], 400 );
 		}
 
-		$value = self::normalizeAttachmentScope( $decodedValue );
+		if ( 'attachment_scope' === $key ) {
+			$value = self::normalizeAttachmentScope( $decodedValue );
+		} else {
+			$activeSourceIds = array_column( $this->getActiveSources(), 'id' );
+			$value = self::normalizeSourceFilter( $decodedValue, $activeSourceIds );
+		}
 		$this->makeMediaFilters()->persistUserPostThenUser( $postId, $key, $value );
 		wp_send_json_success( [ 'key' => $key, 'value' => $value ] );
 	}
@@ -242,12 +327,13 @@ class EditorMediaController {
 	}
 
 	/**
-	 * @param array<int, array{id:string, path:string}> $items
+	 * @param array<int, array{id:string, path:string, source_id?:string}> $items
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function processBulkItems( string $sourceId, string $action, array $items, int $postId = 0 ): array {
 		$results = [];
 		foreach ( $items as $item ) {
+			$itemSourceId = (string) ( $item['source_id'] ?? $sourceId );
 			$result = [
 				'id' => $item['id'],
 				'path' => $item['path'],
@@ -258,7 +344,7 @@ class EditorMediaController {
 			];
 
 			if ( in_array( $action, [ 'attach', 'detach', 'remove' ], true ) ) {
-				$otherPostId = $this->findOtherPostAttachment( $sourceId, $item['path'], $postId );
+				$otherPostId = $this->findOtherPostAttachment( $itemSourceId, $item['path'], $postId );
 				if ( 0 !== $otherPostId ) {
 					$result['message'] = 'This media is attached to another post.';
 					$result['operation'] = 'protected_other_post';
@@ -274,8 +360,8 @@ class EditorMediaController {
 					continue;
 				}
 
-				$existing = $this->findVirtualAttachments( $sourceId, $item['path'] );
-				$attachmentId = $existing[0] ?? $this->registerVirtualAttachment( $sourceId, $item['path'] );
+				$existing = $this->findVirtualAttachments( $itemSourceId, $item['path'] );
+				$attachmentId = $existing[0] ?? $this->registerVirtualAttachment( $itemSourceId, $item['path'] );
 				if ( is_wp_error( $attachmentId ) ) {
 					$result['message'] = $attachmentId->get_error_message();
 					$results[] = $result;
@@ -308,7 +394,7 @@ class EditorMediaController {
 			}
 
 			if ( 'detach' === $action ) {
-				$detached = $this->detachVirtualAttachments( $sourceId, $item['path'], $postId );
+				$detached = $this->detachVirtualAttachments( $itemSourceId, $item['path'], $postId );
 				if ( is_wp_error( $detached ) ) {
 					$result['message'] = $detached->get_error_message();
 					$results[] = $result;
@@ -316,21 +402,21 @@ class EditorMediaController {
 				}
 
 				$result['success'] = true;
-				$result['is_imported'] = [] !== $this->findVirtualAttachments( $sourceId, $item['path'] );
+				$result['is_imported'] = [] !== $this->findVirtualAttachments( $itemSourceId, $item['path'] );
 				$result['detached_ids'] = $detached;
 				$result['operation'] = [] === $detached ? 'no_change' : 'detached';
 				$results[] = $result;
 				continue;
 			}
 
-			$detached = $this->detachVirtualAttachments( $sourceId, $item['path'], $postId );
+			$detached = $this->detachVirtualAttachments( $itemSourceId, $item['path'], $postId );
 			if ( is_wp_error( $detached ) ) {
 				$result['message'] = $detached->get_error_message();
 				$results[] = $result;
 				continue;
 			}
 
-			$removed = $this->removeVirtualAttachment( $sourceId, $item['path'] );
+			$removed = $this->removeVirtualAttachment( $itemSourceId, $item['path'] );
 			if ( is_wp_error( $removed ) ) {
 				$result['message'] = $removed->get_error_message();
 				$results[] = $result;
@@ -338,7 +424,7 @@ class EditorMediaController {
 			}
 
 			$result['success'] = true;
-			$result['is_imported'] = [] !== $this->findVirtualAttachments( $sourceId, $item['path'] );
+			$result['is_imported'] = [] !== $this->findVirtualAttachments( $itemSourceId, $item['path'] );
 			$result['detached_ids'] = $detached;
 			$result['removed_ids'] = array_values( array_unique( array_map( 'intval', $removed ) ) );
 			$result['operation'] = [] !== $detached ? 'detached_and_removed' : ( [] === $removed ? 'no_change' : 'removed_from_library' );
@@ -470,26 +556,27 @@ class EditorMediaController {
 
 		check_ajax_referer( 'wp_media_helper_media_panel', 'nonce' );
 
-		$sourceId = sanitize_text_field( wp_unslash( $_POST['source_id'] ?? '' ) );
+		$legacySource = sanitize_text_field( wp_unslash( $_POST['source_id'] ?? '' ) );
 		$postId = absint( $_POST['post_id'] ?? 0 );
 		$legacyDate = sanitize_text_field( wp_unslash( $_POST['date'] ?? current_time( 'Y-m-d' ) ) );
 		$rawFilters = wp_unslash( $_POST['filters'] ?? '' );
+		$activeSources = $this->getActiveSources();
+		$activeSourceIds = array_map( static fn ( array $source ): string => (string) $source['id'], $activeSources );
 		$filters = self::normalizeFilters(
 			$rawFilters,
 			$legacyDate,
-			$sourceId,
-			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'attachment_scope', null )
+			$legacySource,
+			$activeSourceIds,
+			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'attachment_scope', null ),
+			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'source', [ 'all' ] )
 		);
 		$dateValue = $filters['date'];
-		$sourceId = $filters['source'];
 		$forceRefresh = ! empty( $_POST['force_refresh'] );
-
-		$sources = new ExternalSourceSettings(
-			static fn(): mixed => get_option( ExternalSourceSettings::optionKey(), [] ),
-			static function ( array $value ): void {}
-		);
-		$allSources = $sources->getAll();
-		$selectedSources = self::resolveRequestedSources( $allSources, $sourceId );
+		$selectedSources = self::resolveSourcesForFilter( $activeSources, $filters['source'] );
+		$sourceOptions = array_map( static fn ( array $source ): array => [
+			'id' => (string) $source['id'],
+			'name' => (string) $source['name'],
+		], $activeSources );
 
 		if ( [] === $selectedSources ) {
 			wp_send_json_success( [
@@ -502,6 +589,7 @@ class EditorMediaController {
 				'reason' => null,
 				'files' => [],
 				'directory' => '',
+				'available_sources' => $sourceOptions,
 				'filters' => $filters,
 			] );
 		}
@@ -510,14 +598,14 @@ class EditorMediaController {
 		$panelState = new MediaPanelState();
 		$results = [];
 		foreach ( $selectedSources as $selected ) {
-			$sourceKey = (string) ( $selected['id'] ?? $sourceId );
+			$sourceKey = (string) ( $selected['id'] ?? '' );
 			$results[] = $forceRefresh
 				? $panelState->requestRefresh( $selected, $date, $sourceKey )
 				: $panelState->resolve( $selected, $date, $sourceKey );
 		}
 
 		$merged = [
-			'source_id' => $sourceId !== '' ? $sourceId : 'all',
+			'source_id' => 1 === count( $filters['source'] ) && 'all' !== $filters['source'][0] ? $filters['source'][0] : 'all',
 			'date' => $dateValue,
 			'date_range' => null,
 			'status' => 'fresh',
@@ -526,6 +614,7 @@ class EditorMediaController {
 			'reason' => null,
 			'files' => [],
 			'directory' => '',
+			'available_sources' => $sourceOptions,
 		];
 
 		foreach ( $results as $result ) {

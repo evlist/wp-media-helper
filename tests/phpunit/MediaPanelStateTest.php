@@ -231,6 +231,16 @@ class MediaPanelStateTest extends TestCase {
 		], $items );
 	}
 
+	public function test_normalize_bulk_items_preserves_source_id_per_item(): void {
+		$items = \WP_Media_Helper\Admin\EditorMediaController::normalizeBulkItems( [
+			[ 'id' => 'a', 'path' => '/tmp/north/a.jpg', 'source_id' => 'north' ],
+		] );
+
+		$this->assertSame( [
+			[ 'id' => 'a', 'path' => '/tmp/north/a.jpg', 'source_id' => 'north' ],
+		], $items );
+	}
+
 	public function test_normalize_panel_mode_defaults_to_simple(): void {
 		$this->assertSame( 'simple', \WP_Media_Helper\Admin\EditorMediaController::normalizePanelMode( null ) );
 		$this->assertSame( 'simple', \WP_Media_Helper\Admin\EditorMediaController::normalizePanelMode( 'unexpected' ) );
@@ -241,22 +251,23 @@ class MediaPanelStateTest extends TestCase {
 		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters(
 			json_encode( [ 'date' => '2026-09-20', 'source' => 'belledonne', 'attachment_scope' => [ 'other' ] ] ),
 			'2026-01-01',
-			'legacy-source'
+			'legacy-source',
+			[ 'belledonne', 'legacy-source' ]
 		);
 
-		$this->assertSame( [ 'date' => '2026-09-20', 'source' => 'belledonne', 'attachment_scope' => [ 'other' ] ], $filters );
+		$this->assertSame( [ 'date' => '2026-09-20', 'source' => [ 'belledonne' ], 'attachment_scope' => [ 'other' ] ], $filters );
 	}
 
 	public function test_normalize_filters_falls_back_to_legacy_parameters_when_payload_is_absent(): void {
-		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( '', '2026-01-01', 'legacy-source' );
+		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( '', '2026-01-01', 'legacy-source', [ 'legacy-source', 'other-source' ] );
 
-		$this->assertSame( [ 'date' => '2026-01-01', 'source' => 'legacy-source', 'attachment_scope' => [ 'unattached', 'current' ] ], $filters );
+		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ] ], $filters );
 	}
 
 	public function test_normalize_filters_ignores_invalid_payloads(): void {
-		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( 'not-json', '2026-01-01', 'legacy-source' );
+		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( 'not-json', '2026-01-01', 'legacy-source', [ 'legacy-source', 'other-source' ] );
 
-		$this->assertSame( [ 'date' => '2026-01-01', 'source' => 'legacy-source', 'attachment_scope' => [ 'unattached', 'current' ] ], $filters );
+		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ] ], $filters );
 	}
 
 	public function test_normalize_filters_resolves_attachment_scope_from_storage_when_absent_from_payload(): void {
@@ -264,10 +275,37 @@ class MediaPanelStateTest extends TestCase {
 			json_encode( [ 'date' => '2026-09-20' ] ),
 			'2026-01-01',
 			'legacy-source',
+			[ 'legacy-source', 'other-source' ],
 			static fn () => [ 'other' ]
 		);
 
 		$this->assertSame( [ 'other' ], $filters['attachment_scope'] );
+	}
+
+	public function test_normalize_filters_resolves_source_from_storage_when_absent_from_payload(): void {
+		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters(
+			json_encode( [ 'date' => '2026-09-20' ] ),
+			'2026-01-01',
+			'',
+			[ 'north', 'south' ],
+			null,
+			static fn () => [ 'south' ]
+		);
+
+		$this->assertSame( [ 'south' ], $filters['source'] );
+	}
+
+	public function test_normalize_filters_falls_back_to_all_when_stored_sources_are_stale(): void {
+		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters(
+			json_encode( [ 'date' => '2026-09-20' ] ),
+			'2026-01-01',
+			'',
+			[ 'north', 'south' ],
+			null,
+			static fn () => [ 'removed-source' ]
+		);
+
+		$this->assertSame( [ 'all' ], $filters['source'] );
 	}
 
 	public function test_normalize_attachment_scope_defaults_when_empty_or_invalid(): void {
@@ -281,5 +319,49 @@ class MediaPanelStateTest extends TestCase {
 			[ 'current', 'other' ],
 			\WP_Media_Helper\Admin\EditorMediaController::normalizeAttachmentScope( [ 'current', 'other', 'bogus' ] )
 		);
+	}
+
+	public function test_normalize_source_filter_uses_all_for_multiple_sources_by_default(): void {
+		$this->assertSame( [ 'all' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeSourceFilter( null, [ 'north', 'south' ] ) );
+	}
+
+	public function test_normalize_source_filter_uses_the_only_source_implicitly(): void {
+		$this->assertSame( [ 'north' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeSourceFilter( null, [ 'north' ] ) );
+		$this->assertSame( [ 'north' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeSourceFilter( [ 'all' ], [ 'north' ] ) );
+	}
+
+	public function test_normalize_source_filter_returns_empty_when_no_sources_are_active(): void {
+		$this->assertSame( [], \WP_Media_Helper\Admin\EditorMediaController::normalizeSourceFilter( [ 'all' ], [] ) );
+	}
+
+	public function test_normalize_source_filter_discards_stale_ids_and_falls_back_to_all(): void {
+		$this->assertSame( [ 'north' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeSourceFilter( [ 'north', 'removed' ], [ 'north', 'south' ] ) );
+		$this->assertSame( [ 'all' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeSourceFilter( [ 'removed' ], [ 'north', 'south' ] ) );
+	}
+
+	public function test_normalize_source_filter_keeps_a_selected_subset(): void {
+		$this->assertSame( [ 'north', 'south' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeSourceFilter( [ 'south', 'north', 'south' ], [ 'north', 'south' ] ) );
+	}
+
+	public function test_resolve_sources_for_filter_selects_by_internal_id_in_configuration_order(): void {
+		$sources = [
+			[ 'id' => 'north', 'name' => 'North' ],
+			[ 'id' => 'south', 'name' => 'South' ],
+			[ 'id' => 'east', 'name' => 'East' ],
+		];
+
+		$this->assertSame( [ $sources[0], $sources[2] ], \WP_Media_Helper\Admin\EditorMediaController::resolveSourcesForFilter( $sources, [ 'east', 'north' ] ) );
+		$this->assertSame( $sources, \WP_Media_Helper\Admin\EditorMediaController::resolveSourcesForFilter( $sources, [ 'all' ] ) );
+	}
+
+	public function test_resolve_sources_for_filter_uses_configured_source_order(): void {
+		$sources = [
+			[ 'id' => 'north', 'name' => 'North' ],
+			[ 'id' => 'south', 'name' => 'South' ],
+			[ 'id' => 'east', 'name' => 'East' ],
+		];
+
+		$this->assertSame( [ $sources[0], $sources[2] ], \WP_Media_Helper\Admin\EditorMediaController::resolveSourcesForFilter( $sources, [ 'east', 'north' ] ) );
+		$this->assertSame( $sources, \WP_Media_Helper\Admin\EditorMediaController::resolveSourcesForFilter( $sources, [ 'all' ] ) );
 	}
 }
