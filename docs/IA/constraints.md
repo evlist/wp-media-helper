@@ -46,6 +46,10 @@
   never restores a file excluded by attachment eligibility. See
   [Media filter model](media-filter-model.md).
 
+Open design questions about WordPress uploads as a source and reconfiguring
+sources with existing attachments are tracked in
+[Open questions: media sources](media-source-open-questions.md).
+
 ## Security model for external source configuration
 
 - The external source settings page requires the `manage_options` capability.
