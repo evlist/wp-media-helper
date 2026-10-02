@@ -503,8 +503,9 @@
 		const currentAttachmentScope = filters.attachment_scope || DEFAULT_ATTACHMENT_SCOPE;
 		const currentMediaType = filters.media_type || DEFAULT_MEDIA_TYPE;
 		const currentSourceFilter = filters.source || DEFAULT_SOURCE_FILTER;
-		const allSourcesChecked = currentSourceFilter.includes( 'all' ) || currentSourceFilter.length === availableSources.length;
-		const someSourcesChecked = ! currentSourceFilter.includes( 'all' ) && currentSourceFilter.length > 0 && currentSourceFilter.length < availableSources.length;
+		const checkedSourceIds = currentSourceFilter.includes( 'all' )
+			? availableSources.map( function ( source ) { return source.id; } )
+			: currentSourceFilter;
 		const visibleBulkActions = BULK_ACTIONS.filter( function ( action ) {
 			return 'advanced' === panelMode || [ 'attach', 'remove' ].includes( action.value );
 		} );
@@ -557,22 +558,8 @@
 					null,
 					availableSources.length > 1
 						? wp.element.createElement( 'div', { role: 'group', 'aria-label': __( 'Sources', 'wp-media-helper' ), style: { display: 'flex', flexDirection: 'column', gap: '0.25rem' } },
-							wp.element.createElement( 'label', { style: { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '12px' } },
-								wp.element.createElement( 'input', {
-									type: 'checkbox',
-										checked: allSourcesChecked,
-									disabled: loading,
-										ref: function ( element ) {
-											if ( element ) {
-												element.indeterminate = someSourcesChecked;
-											}
-										},
-									onChange: function () { toggleSource( 'all' ); }
-								} ),
-								__( 'All sources', 'wp-media-helper' )
-							),
 							availableSources.map( function ( source ) {
-								const checked = currentSourceFilter.includes( 'all' ) || currentSourceFilter.includes( source.id );
+								const checked = checkedSourceIds.includes( source.id );
 								return wp.element.createElement( 'label', { key: source.id, style: { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '12px' } },
 									wp.element.createElement( 'input', {
 										type: 'checkbox',

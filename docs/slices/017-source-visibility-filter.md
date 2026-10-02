@@ -69,8 +69,8 @@ The filter control follows the number of available sources:
 
 - zero active sources: hide the source filter and return an empty media list;
 - one active source: hide the source filter and use that source implicitly;
-- more than one active source: show the source filter with `All sources` and one
-  named choice per active source.
+- more than one active source: show one checkbox per source, using the source's
+  configured name as its label.
 
 The internal filter contract remains present in all cases. With one active
 source, the effective value is that source even though the user does not need
@@ -80,14 +80,11 @@ to choose it explicitly.
 
 The filter is rendered in the common filter area introduced by slice 015.
 
-A compact selector is preferred, using either:
-
-- a checkbox list of available sources, or
-- a single select that includes `All sources` plus the configured source names.
-
-When more than one source is active, a checkbox list is preferred because it
-allows selecting a subset of sources without inventing named combinations.
-The labels use source names; IDs remain invisible technical values.
+When more than one source is active, the UI shows a checkbox list so users can
+select any subset without inventing named combinations. Selecting all sources
+is represented by all source checkboxes being checked; there is no separate
+`All sources` checkbox. The labels use source names; IDs remain invisible
+technical values.
 
 When zero or one source is active, no source selector is rendered.
 
