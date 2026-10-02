@@ -121,18 +121,40 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertCount( 3, $entries );
 		$this->assertSame( 'photo-1.jpg', $entries[0]['name'] );
 		$this->assertSame( 'jpg', $entries[0]['type'] );
+		$this->assertSame( 'image', $entries[0]['media_type'] );
 		$this->assertFalse( $entries[0]['is_imported'] );
 		$this->assertFalse( $entries[0]['is_attached_to_current_post'] );
 		$this->assertSame( 'report.pdf', $entries[1]['name'] );
 		$this->assertSame( 'pdf', $entries[1]['type'] );
+		$this->assertSame( 'other', $entries[1]['media_type'] );
 		$this->assertFalse( $entries[1]['is_imported'] );
 		$this->assertSame( 'archive.tar.gz', $entries[2]['name'] );
 		$this->assertSame( 'gz', $entries[2]['type'] );
+		$this->assertSame( 'other', $entries[2]['media_type'] );
 		$this->assertFalse( $entries[2]['is_imported'] );
 	}
 
 	public function test_enrich_files_handles_an_empty_array(): void {
 		$this->assertSame( [], MediaPanelState::enrichFiles( [] ) );
+	}
+
+	public function test_resolve_media_type_groups_common_image_video_and_other_extensions(): void {
+		$this->assertSame( 'image', MediaPanelState::resolveMediaType( 'photo.JPEG' ) );
+		$this->assertSame( 'video', MediaPanelState::resolveMediaType( 'clip.webm' ) );
+		$this->assertSame( 'other', MediaPanelState::resolveMediaType( 'route.gpx' ) );
+		$this->assertSame( 'other', MediaPanelState::resolveMediaType( 'unknown' ) );
+	}
+
+	public function test_filter_by_media_type_keeps_only_selected_categories(): void {
+		$items = [
+			[ 'id' => 'image', 'media_type' => 'image' ],
+			[ 'id' => 'video', 'media_type' => 'video' ],
+			[ 'id' => 'other', 'media_type' => 'other' ],
+		];
+
+		$filtered = MediaPanelState::filterByMediaType( $items, [ 'image', 'other' ] );
+
+		$this->assertSame( [ 'image', 'other' ], array_column( $filtered, 'id' ) );
 	}
 
 	public function test_merge_files_keeps_all_distinct_entries_when_items_are_enriched(): void {
@@ -249,25 +271,25 @@ class MediaPanelStateTest extends TestCase {
 
 	public function test_normalize_filters_prefers_the_structured_payload_over_legacy_parameters(): void {
 		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters(
-			json_encode( [ 'date' => '2026-09-20', 'source' => 'belledonne', 'attachment_scope' => [ 'other' ] ] ),
+			json_encode( [ 'date' => '2026-09-20', 'source' => 'belledonne', 'attachment_scope' => [ 'other' ], 'media_type' => [ 'image' ] ] ),
 			'2026-01-01',
 			'legacy-source',
 			[ 'belledonne', 'legacy-source' ]
 		);
 
-		$this->assertSame( [ 'date' => '2026-09-20', 'source' => [ 'belledonne' ], 'attachment_scope' => [ 'other' ] ], $filters );
+		$this->assertSame( [ 'date' => '2026-09-20', 'source' => [ 'belledonne' ], 'attachment_scope' => [ 'other' ], 'media_type' => [ 'image' ] ], $filters );
 	}
 
 	public function test_normalize_filters_falls_back_to_legacy_parameters_when_payload_is_absent(): void {
 		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( '', '2026-01-01', 'legacy-source', [ 'legacy-source', 'other-source' ] );
 
-		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ] ], $filters );
+		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => [ 'image', 'video', 'other' ] ], $filters );
 	}
 
 	public function test_normalize_filters_ignores_invalid_payloads(): void {
 		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( 'not-json', '2026-01-01', 'legacy-source', [ 'legacy-source', 'other-source' ] );
 
-		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ] ], $filters );
+		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => [ 'image', 'video', 'other' ] ], $filters );
 	}
 
 	public function test_normalize_filters_resolves_attachment_scope_from_storage_when_absent_from_payload(): void {
@@ -321,6 +343,16 @@ class MediaPanelStateTest extends TestCase {
 		);
 	}
 
+	public function test_normalize_media_type_filter_defaults_to_all_categories(): void {
+		$this->assertSame( [ 'image', 'video', 'other' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeMediaTypeFilter( null ) );
+		$this->assertSame( [ 'image', 'video', 'other' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeMediaTypeFilter( [] ) );
+		$this->assertSame( [ 'image', 'video', 'other' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeMediaTypeFilter( [ 'unknown' ] ) );
+	}
+
+	public function test_normalize_media_type_filter_keeps_only_supported_categories(): void {
+		$this->assertSame( [ 'video', 'other' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeMediaTypeFilter( [ 'video', 'bogus', 'other' ] ) );
+	}
+
 	public function test_normalize_source_filter_uses_all_for_multiple_sources_by_default(): void {
 		$this->assertSame( [ 'all' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeSourceFilter( null, [ 'north', 'south' ] ) );
 	}
@@ -342,6 +374,7 @@ class MediaPanelStateTest extends TestCase {
 	public function test_normalize_source_filter_keeps_a_selected_subset(): void {
 		$this->assertSame( [ 'north', 'south' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeSourceFilter( [ 'south', 'north', 'south' ], [ 'north', 'south' ] ) );
 	}
+
 
 	public function test_resolve_sources_for_filter_selects_by_internal_id_in_configuration_order(): void {
 		$sources = [

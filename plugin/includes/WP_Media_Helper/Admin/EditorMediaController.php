@@ -92,6 +92,19 @@ class EditorMediaController {
 	}
 
 	/**
+	 * Normalizes the set of broad media categories shown by the panel.
+	 *
+	 * @return array<int, string>
+	 */
+	public static function normalizeMediaTypeFilter( mixed $rawTypes ): array {
+		$allowed = [ 'image', 'video', 'other' ];
+		$values = is_array( $rawTypes ) ? array_map( 'strval', $rawTypes ) : [];
+		$normalized = array_values( array_intersect( $allowed, $values ) );
+
+		return [] === $normalized ? $allowed : $normalized;
+	}
+
+	/**
 	 * Normalizes a source filter against the IDs of active configured sources.
 	 * A single active source is implicit; multiple sources default to `all`.
 	 *
@@ -147,9 +160,9 @@ class EditorMediaController {
 	 * otherwise `$resolveStoredAttachmentScope` is called to look up the
 	 * user's persisted preference.
 	 *
-	 * @return array{date:string, source:array<int, string>, attachment_scope:array<int, string>}
+	 * @return array{date:string, source:array<int, string>, attachment_scope:array<int, string>, media_type:array<int, string>}
 	 */
-	public static function normalizeFilters( mixed $rawFilters, string $legacyDate, mixed $legacySource, array $activeSourceIds = [], ?callable $resolveStoredAttachmentScope = null, ?callable $resolveStoredSource = null ): array {
+	public static function normalizeFilters( mixed $rawFilters, string $legacyDate, mixed $legacySource, array $activeSourceIds = [], ?callable $resolveStoredAttachmentScope = null, ?callable $resolveStoredSource = null, ?callable $resolveStoredMediaType = null ): array {
 		$decoded = is_string( $rawFilters ) ? json_decode( $rawFilters, true ) : null;
 		$decoded = is_array( $decoded ) ? $decoded : [];
 
@@ -172,10 +185,18 @@ class EditorMediaController {
 			$attachmentScope = self::normalizeAttachmentScope( $stored );
 		}
 
+		if ( isset( $decoded['media_type'] ) ) {
+			$mediaType = self::normalizeMediaTypeFilter( $decoded['media_type'] );
+		} else {
+			$stored = null === $resolveStoredMediaType ? null : $resolveStoredMediaType();
+			$mediaType = self::normalizeMediaTypeFilter( $stored );
+		}
+
 		return [
 			'date' => $date,
 			'source' => $source,
 			'attachment_scope' => $attachmentScope,
+			'media_type' => $mediaType,
 		];
 	}
 
@@ -228,12 +249,14 @@ class EditorMediaController {
 		$rawValue = wp_unslash( $_POST['value'] ?? '' );
 		$decodedValue = is_string( $rawValue ) ? json_decode( $rawValue, true ) : null;
 
-		if ( ! in_array( $key, [ 'attachment_scope', 'source' ], true ) ) {
+		if ( ! in_array( $key, [ 'attachment_scope', 'source', 'media_type' ], true ) ) {
 			wp_send_json_error( [ 'message' => 'The requested filter is not supported.' ], 400 );
 		}
 
 		if ( 'attachment_scope' === $key ) {
 			$value = self::normalizeAttachmentScope( $decodedValue );
+		} elseif ( 'media_type' === $key ) {
+			$value = self::normalizeMediaTypeFilter( $decodedValue );
 		} else {
 			$activeSourceIds = array_column( $this->getActiveSources(), 'id' );
 			$value = self::normalizeSourceFilter( $decodedValue, $activeSourceIds );
@@ -568,7 +591,8 @@ class EditorMediaController {
 			$legacySource,
 			$activeSourceIds,
 			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'attachment_scope', null ),
-			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'source', [ 'all' ] )
+			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'source', [ 'all' ] ),
+			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'media_type', [ 'image', 'video', 'other' ] )
 		);
 		$dateValue = $filters['date'];
 		$forceRefresh = ! empty( $_POST['force_refresh'] );
@@ -641,6 +665,7 @@ class EditorMediaController {
 		$merged['files'] = MediaPanelState::setAttachmentState( $merged['files'], $attachmentStates['attached_paths'] );
 		$merged['files'] = MediaPanelState::setOtherPostState( $merged['files'], $attachmentStates['other_post_by_path'] );
 		$merged['files'] = MediaPanelState::filterByAttachmentScope( $merged['files'], $filters['attachment_scope'] );
+		$merged['files'] = MediaPanelState::filterByMediaType( $merged['files'], $filters['media_type'] );
 		$merged['files'] = $this->enrichOtherPostInfo( $merged['files'] );
 		$merged['status'] = $merged['refresh_required'] ? 'stale' : 'fresh';
 		$merged['filters'] = $filters;

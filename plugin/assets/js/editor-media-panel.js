@@ -28,11 +28,17 @@
 		{ value: 'advanced', label: __( 'Advanced', 'wp-media-helper' ) },
 	];
 	const DEFAULT_ATTACHMENT_SCOPE = [ 'unattached', 'current' ];
+	const DEFAULT_MEDIA_TYPE = [ 'image', 'video', 'other' ];
 	const DEFAULT_SOURCE_FILTER = [ 'all' ];
 	const ATTACHMENT_SCOPE_STATES = [
 		{ value: 'unattached', label: __( 'Unattached', 'wp-media-helper' ) },
 		{ value: 'current', label: __( 'Attached to this post', 'wp-media-helper' ) },
 		{ value: 'other', label: __( 'Attached to another post', 'wp-media-helper' ) },
+	];
+	const MEDIA_TYPE_OPTIONS = [
+		{ value: 'image', label: __( 'Images', 'wp-media-helper' ) },
+		{ value: 'video', label: __( 'Videos', 'wp-media-helper' ) },
+		{ value: 'other', label: __( 'Other', 'wp-media-helper' ) },
 	];
 
 	const formatElapsed = function ( lastRefreshedAt ) {
@@ -114,6 +120,7 @@
 			other_post_id: item && item.other_post_id ? item.other_post_id : 0,
 			other_post_title: item && item.other_post_title ? item.other_post_title : '',
 			other_post_edit_url: item && item.other_post_edit_url ? item.other_post_edit_url : '',
+			media_type: item && item.media_type ? item.media_type : 'other',
 		};
 	};
 
@@ -223,6 +230,16 @@
 					return isSameScope ? currentFilters : Object.assign( {}, currentFilters, { attachment_scope: nextScope } );
 				} );
 			}
+			if ( payload.data.filters && Array.isArray( payload.data.filters.media_type ) ) {
+				setFiltersState( function ( currentFilters ) {
+					const nextTypes = payload.data.filters.media_type;
+					const currentTypes = currentFilters.media_type || [];
+					const isSameTypes = nextTypes.length === currentTypes.length
+						&& nextTypes.every( function ( value, index ) { return value === currentTypes[ index ]; } );
+
+					return isSameTypes ? currentFilters : Object.assign( {}, currentFilters, { media_type: nextTypes } );
+				} );
+			}
 			const nextIds = new window.Set( ( payload.data.files || [] ).map( function ( file ) {
 				return itemKey( normalizeMediaItem( file ) );
 			} ) );
@@ -285,7 +302,7 @@
 				document.removeEventListener( 'visibilitychange', handleVisibilityChange );
 			};
 			// eslint-disable-next-line react-hooks/exhaustive-deps
-		}, [ filters.date, ( filters.attachment_scope || [] ).join( ',' ), ( filters.source || [] ).join( ',' ) ] );
+		}, [ filters.date, ( filters.attachment_scope || [] ).join( ',' ), ( filters.source || [] ).join( ',' ), ( filters.media_type || [] ).join( ',' ) ] );
 
 		const handleRefresh = function () {
 			runFetch( true );
@@ -310,6 +327,24 @@
 			const nextFilters = Object.assign( {}, filters, { attachment_scope: next } );
 			setFiltersState( nextFilters );
 			saveFilter( 'attachment_scope', next, getCurrentPostId() );
+		};
+
+		const toggleMediaType = function ( mediaType ) {
+			const current = filters.media_type || DEFAULT_MEDIA_TYPE;
+			const next = current.includes( mediaType )
+				? current.filter( function ( value ) { return value !== mediaType; } )
+				: MEDIA_TYPE_OPTIONS.map( function ( option ) { return option.value; } ).filter( function ( value ) {
+					return current.includes( value ) || value === mediaType;
+				} );
+
+			if ( 0 === next.length ) {
+				return;
+			}
+
+			setFiltersState( function ( currentFilters ) {
+				return Object.assign( {}, currentFilters, { media_type: next } );
+			} );
+			saveFilter( 'media_type', next, getCurrentPostId() );
 		};
 
 		const toggleSource = function ( sourceId ) {
@@ -466,6 +501,7 @@
 			return normalizeMediaItem( file );
 		} );
 		const currentAttachmentScope = filters.attachment_scope || DEFAULT_ATTACHMENT_SCOPE;
+		const currentMediaType = filters.media_type || DEFAULT_MEDIA_TYPE;
 		const currentSourceFilter = filters.source || DEFAULT_SOURCE_FILTER;
 		const allSourcesChecked = currentSourceFilter.includes( 'all' ) || currentSourceFilter.length === availableSources.length;
 		const someSourcesChecked = ! currentSourceFilter.includes( 'all' ) && currentSourceFilter.length > 0 && currentSourceFilter.length < availableSources.length;
@@ -564,6 +600,24 @@
 									onChange: function () { toggleAttachmentScope( state.value ); }
 								} ),
 								state.label
+							);
+						} )
+					)
+				),
+				wp.element.createElement(
+					PanelRow,
+					null,
+					wp.element.createElement( 'div', { role: 'group', 'aria-label': __( 'Media type', 'wp-media-helper' ), style: { display: 'flex', flexDirection: 'column', gap: '0.25rem' } },
+						MEDIA_TYPE_OPTIONS.map( function (option) {
+							const checked = currentMediaType.includes( option.value );
+							return wp.element.createElement( 'label', { key: option.value, style: { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '12px' } },
+								wp.element.createElement( 'input', {
+									type: 'checkbox',
+									checked: checked,
+									disabled: loading || ( checked && 1 === currentMediaType.length ),
+									onChange: function () { toggleMediaType( option.value ); }
+								} ),
+								option.label
 							);
 						} )
 					)

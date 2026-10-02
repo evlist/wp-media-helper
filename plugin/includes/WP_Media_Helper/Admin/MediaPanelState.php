@@ -11,6 +11,21 @@ use WP_Media_Helper\MediaSource\TargetedRefreshCoordinator;
 class MediaPanelState {
 
 	private TargetedRefreshCoordinator $coordinator;
+	private const IMAGE_EXTENSIONS = [ 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg' ];
+	private const VIDEO_EXTENSIONS = [ 'mp4', 'mov', 'webm', 'avi', 'm4v' ];
+
+	public static function resolveMediaType( string $filename ): string {
+		$extension = strtolower( pathinfo( basename( $filename ), PATHINFO_EXTENSION ) );
+		if ( in_array( $extension, self::IMAGE_EXTENSIONS, true ) ) {
+			return 'image';
+		}
+
+		if ( in_array( $extension, self::VIDEO_EXTENSIONS, true ) ) {
+			return 'video';
+		}
+
+		return 'other';
+	}
 
 	/**
 	 * @param array<int, string> $filePaths
@@ -32,6 +47,7 @@ class MediaPanelState {
 				'name' => $name,
 				'path' => $path,
 				'type' => $type,
+				'media_type' => self::resolveMediaType( $name ),
 				'source_id' => $sourceId,
 				'date' => $date,
 				'is_imported' => false,
@@ -40,6 +56,22 @@ class MediaPanelState {
 		}
 
 		return $entries;
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $items
+	 * @param array<int, string> $selectedTypes
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function filterByMediaType( array $items, array $selectedTypes ): array {
+		return array_values( array_filter( $items, static function ( $item ) use ( $selectedTypes ): bool {
+			if ( ! is_array( $item ) ) {
+				return false;
+			}
+
+			$mediaType = (string) ( $item['media_type'] ?? self::resolveMediaType( (string) ( $item['name'] ?? $item['path'] ?? '' ) ) );
+			return in_array( $mediaType, $selectedTypes, true );
+		} ) );
 	}
 
 	/**
