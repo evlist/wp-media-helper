@@ -180,6 +180,40 @@
 		return item.id || item.path || item.name;
 	};
 
+	const FilterCheckboxGroup = function ( { label, options, selectedValues, disabled, minSelected, onToggle } ) {
+		const selectedLabels = options.filter( function ( option ) {
+			return selectedValues.includes( option.value );
+		} ).map( function ( option ) {
+			return option.label;
+		} );
+		const selectionSummary = selectedLabels.length === options.length
+			? __( 'All', 'wp-media-helper' )
+			: selectedLabels.length > 0 ? selectedLabels.join( ', ' ) : __( 'None', 'wp-media-helper' );
+
+		return wp.element.createElement( 'details', { style: { borderTop: '1px solid #ddd' } },
+			wp.element.createElement( 'summary', { style: { cursor: 'pointer', padding: '7px 0' } },
+				wp.element.createElement( 'span', { style: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '0.5rem' } },
+					wp.element.createElement( 'strong', { style: { fontSize: '12px', fontWeight: 600, flexShrink: 0 } }, label ),
+					wp.element.createElement( 'span', { style: { color: '#757575', fontSize: '11px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'right' } }, selectionSummary )
+				)
+			),
+			wp.element.createElement( 'div', { role: 'group', 'aria-label': label, style: { display: 'flex', flexDirection: 'column', gap: '0.1rem', padding: '0 0 8px' } },
+				options.map( function ( option ) {
+					const checked = selectedValues.includes( option.value );
+					return wp.element.createElement( 'label', { key: option.value, style: { display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '12px' } },
+						wp.element.createElement( 'input', {
+							type: 'checkbox',
+							checked: checked,
+							disabled: disabled || ( checked && selectedValues.length <= minSelected ),
+							onChange: function () { onToggle( option.value ); }
+						} ),
+						option.label
+					);
+				} )
+			)
+		);
+	};
+
 	const MediaPanel = function () {
 		const [ filters, setFiltersState ] = useState( function () { return { date: getStoredDate() }; } );
 		const [ availableSources, setAvailableSources ] = useState( [] );
@@ -528,16 +562,6 @@
 				wp.element.createElement(
 					PanelRow,
 					null,
-					wp.element.createElement( TextControl, {
-						label: __( 'Date', 'wp-media-helper' ),
-						value: filters.date,
-						onChange: setDate,
-						type: 'date'
-					} )
-				),
-				wp.element.createElement(
-					PanelRow,
-					null,
 					wp.element.createElement( 'div', { role: 'group', 'aria-label': __( 'Panel mode', 'wp-media-helper' ), style: { display: 'inline-flex', border: '1px solid #949494', borderRadius: '3px', overflow: 'hidden' } },
 						PANEL_MODES.map( function ( mode, index ) {
 							return wp.element.createElement( Button, {
@@ -556,56 +580,41 @@
 				wp.element.createElement(
 					PanelRow,
 					null,
-					availableSources.length > 1
-						? wp.element.createElement( 'div', { role: 'group', 'aria-label': __( 'Sources', 'wp-media-helper' ), style: { display: 'flex', flexDirection: 'column', gap: '0.25rem' } },
-							availableSources.map( function ( source ) {
-								const checked = checkedSourceIds.includes( source.id );
-								return wp.element.createElement( 'label', { key: source.id, style: { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '12px' } },
-									wp.element.createElement( 'input', {
-										type: 'checkbox',
-										checked: checked,
-										disabled: loading || ( checked && ! currentSourceFilter.includes( 'all' ) && 1 === currentSourceFilter.length ),
-										onChange: function () { toggleSource( source.id ); }
-									} ),
-									source.name
-								);
+					wp.element.createElement( 'div', { style: { width: '100%', borderTop: '1px solid #ddd', borderBottom: '1px solid #ddd', padding: '10px 0' } },
+						wp.element.createElement( 'h3', { style: { margin: '0 0 8px', color: '#50575e', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase' } }, __( 'Filters', 'wp-media-helper' ) ),
+						wp.element.createElement( TextControl, {
+							label: __( 'Date', 'wp-media-helper' ),
+							value: filters.date,
+							onChange: setDate,
+							type: 'date'
+						} ),
+						availableSources.length > 1
+							? wp.element.createElement( FilterCheckboxGroup, {
+								label: __( 'Sources', 'wp-media-helper' ),
+								options: availableSources.map( function ( source ) {
+									return { value: source.id, label: source.name };
+								} ),
+								selectedValues: checkedSourceIds,
+								disabled: loading,
+								minSelected: 1,
+								onToggle: toggleSource
 							} )
-						)
-						: null
-				),
-				wp.element.createElement(
-					PanelRow,
-					null,
-					wp.element.createElement( 'div', { role: 'group', 'aria-label': __( 'Attachment scope', 'wp-media-helper' ), style: { display: 'flex', flexDirection: 'column', gap: '0.25rem' } },
-						ATTACHMENT_SCOPE_STATES.map( function ( state ) {
-							const checked = currentAttachmentScope.includes( state.value );
-							return wp.element.createElement( 'label', { key: state.value, style: { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '12px' } },
-								wp.element.createElement( 'input', {
-									type: 'checkbox',
-									checked: checked,
-									disabled: loading || ( checked && 1 === currentAttachmentScope.length ),
-									onChange: function () { toggleAttachmentScope( state.value ); }
-								} ),
-								state.label
-							);
-						} )
-					)
-				),
-				wp.element.createElement(
-					PanelRow,
-					null,
-					wp.element.createElement( 'div', { role: 'group', 'aria-label': __( 'Media type', 'wp-media-helper' ), style: { display: 'flex', flexDirection: 'column', gap: '0.25rem' } },
-						MEDIA_TYPE_OPTIONS.map( function (option) {
-							const checked = currentMediaType.includes( option.value );
-							return wp.element.createElement( 'label', { key: option.value, style: { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '12px' } },
-								wp.element.createElement( 'input', {
-									type: 'checkbox',
-									checked: checked,
-									disabled: loading || ( checked && 1 === currentMediaType.length ),
-									onChange: function () { toggleMediaType( option.value ); }
-								} ),
-								option.label
-							);
+							: null,
+						wp.element.createElement( FilterCheckboxGroup, {
+							label: __( 'Attachment', 'wp-media-helper' ),
+							options: ATTACHMENT_SCOPE_STATES,
+							selectedValues: currentAttachmentScope,
+							disabled: loading,
+							minSelected: 1,
+							onToggle: toggleAttachmentScope
+						} ),
+						wp.element.createElement( FilterCheckboxGroup, {
+							label: __( 'Media type', 'wp-media-helper' ),
+							options: MEDIA_TYPE_OPTIONS,
+							selectedValues: currentMediaType,
+							disabled: loading,
+							minSelected: 1,
+							onToggle: toggleMediaType
 						} )
 					)
 				),
