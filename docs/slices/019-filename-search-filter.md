@@ -69,6 +69,11 @@ The server trims the query, collapses repeated whitespace, and strips leading/tr
 
 The client should not send an unbounded query string. Empty or whitespace-only values normalize to the empty string.
 
+The supported edge separators are periods, underscores, hyphens, forward slashes,
+and backslashes. Queries are limited to 255 Unicode characters. Non-string values,
+invalid UTF-8, control characters, and overlong values normalize to the empty
+string rather than failing the media-state request.
+
 A normalized empty string means “no filename restriction.”
 
 ## UI behavior

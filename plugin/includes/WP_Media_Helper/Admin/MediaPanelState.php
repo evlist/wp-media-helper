@@ -75,6 +75,30 @@ class MediaPanelState {
 	}
 
 	/**
+	 * @param array<int, array<string, mixed>> $items
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function filterByFilename( array $items, string $query ): array {
+		if ( '' === $query ) {
+			return $items;
+		}
+
+		return array_values( array_filter( $items, static function ( $item ) use ( $query ): bool {
+			if ( ! is_array( $item ) ) {
+				return false;
+			}
+
+			$filename = (string) ( $item['name'] ?? $item['path'] ?? '' );
+			$basename = basename( str_replace( '\\', '/', $filename ) );
+			if ( function_exists( 'mb_stripos' ) ) {
+				return false !== mb_stripos( $basename, $query, 0, 'UTF-8' );
+			}
+
+			return false !== stripos( $basename, $query );
+		} ) );
+	}
+
+	/**
 	 * @param array<int, array<string, mixed>|string> $current
 	 * @param array<int, array<string, mixed>|string> $incoming
 	 * @return array<int, array<string, mixed>>

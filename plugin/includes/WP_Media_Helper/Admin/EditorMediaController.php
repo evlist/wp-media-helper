@@ -10,6 +10,7 @@ use WP_Media_Helper\Settings\ExternalSourceSettings;
 class EditorMediaController {
 
 	public const panelModeMetaKey = '_wp_media_helper_panel_mode';
+	public const MAX_FILENAME_QUERY_LENGTH = 255;
 
 	public static function normalizePanelMode( mixed $mode ): string {
 		return 'advanced' === $mode ? 'advanced' : 'simple';
@@ -104,6 +105,30 @@ class EditorMediaController {
 		return [] === $normalized ? $allowed : $normalized;
 	}
 
+	public static function normalizeFilenameFilter( mixed $rawFilename ): string {
+		if ( ! is_string( $rawFilename ) || strlen( $rawFilename ) > 4 * self::MAX_FILENAME_QUERY_LENGTH || 1 !== preg_match( '//u', $rawFilename ) ) {
+			return '';
+		}
+
+		if ( 1 === preg_match( '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $rawFilename ) ) {
+			return '';
+		}
+
+		$characters = [];
+		if ( false === preg_match_all( '/./us', $rawFilename, $characters ) || count( $characters[0] ) > self::MAX_FILENAME_QUERY_LENGTH ) {
+			return '';
+		}
+
+		$normalized = preg_replace( '/\s+/u', ' ', trim( $rawFilename ) );
+		if ( ! is_string( $normalized ) ) {
+			return '';
+		}
+
+		$normalized = preg_replace( '/^[._\/\\\\-]+|[._\/\\\\-]+$/u', '', $normalized );
+
+		return is_string( $normalized ) ? trim( $normalized ) : '';
+	}
+
 	/**
 	 * Normalizes a source filter against the IDs of active configured sources.
 	 * A single active source is implicit; multiple sources default to `all`.
@@ -160,9 +185,9 @@ class EditorMediaController {
 	 * otherwise `$resolveStoredAttachmentScope` is called to look up the
 	 * user's persisted preference.
 	 *
-	 * @return array{date:string, source:array<int, string>, attachment_scope:array<int, string>, media_type:array<int, string>}
+	 * @return array{date:string, source:array<int, string>, attachment_scope:array<int, string>, media_type:array<int, string>, filename:string}
 	 */
-	public static function normalizeFilters( mixed $rawFilters, string $legacyDate, mixed $legacySource, array $activeSourceIds = [], ?callable $resolveStoredAttachmentScope = null, ?callable $resolveStoredSource = null, ?callable $resolveStoredMediaType = null ): array {
+	public static function normalizeFilters( mixed $rawFilters, string $legacyDate, mixed $legacySource, array $activeSourceIds = [], ?callable $resolveStoredAttachmentScope = null, ?callable $resolveStoredSource = null, ?callable $resolveStoredMediaType = null, ?callable $resolveStoredFilename = null ): array {
 		$decoded = is_string( $rawFilters ) ? json_decode( $rawFilters, true ) : null;
 		$decoded = is_array( $decoded ) ? $decoded : [];
 
@@ -192,11 +217,17 @@ class EditorMediaController {
 			$mediaType = self::normalizeMediaTypeFilter( $stored );
 		}
 
+		$rawFilename = array_key_exists( 'filename', $decoded )
+			? $decoded['filename']
+			: ( null === $resolveStoredFilename ? '' : $resolveStoredFilename() );
+		$filename = self::normalizeFilenameFilter( $rawFilename );
+
 		return [
 			'date' => $date,
 			'source' => $source,
 			'attachment_scope' => $attachmentScope,
 			'media_type' => $mediaType,
+			'filename' => $filename,
 		];
 	}
 
@@ -249,7 +280,7 @@ class EditorMediaController {
 		$rawValue = wp_unslash( $_POST['value'] ?? '' );
 		$decodedValue = is_string( $rawValue ) ? json_decode( $rawValue, true ) : null;
 
-		if ( ! in_array( $key, [ 'attachment_scope', 'source', 'media_type' ], true ) ) {
+		if ( ! in_array( $key, [ 'attachment_scope', 'source', 'media_type', 'filename' ], true ) ) {
 			wp_send_json_error( [ 'message' => 'The requested filter is not supported.' ], 400 );
 		}
 
@@ -257,6 +288,8 @@ class EditorMediaController {
 			$value = self::normalizeAttachmentScope( $decodedValue );
 		} elseif ( 'media_type' === $key ) {
 			$value = self::normalizeMediaTypeFilter( $decodedValue );
+		} elseif ( 'filename' === $key ) {
+			$value = self::normalizeFilenameFilter( $decodedValue );
 		} else {
 			$activeSourceIds = array_column( $this->getActiveSources(), 'id' );
 			$value = self::normalizeSourceFilter( $decodedValue, $activeSourceIds );
@@ -592,7 +625,8 @@ class EditorMediaController {
 			$activeSourceIds,
 			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'attachment_scope', null ),
 			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'source', [ 'all' ] ),
-			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'media_type', [ 'image', 'video', 'other' ] )
+			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'media_type', [ 'image', 'video', 'other' ] ),
+			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'filename', '' )
 		);
 		$dateValue = $filters['date'];
 		$forceRefresh = ! empty( $_POST['force_refresh'] );
@@ -666,6 +700,7 @@ class EditorMediaController {
 		$merged['files'] = MediaPanelState::setOtherPostState( $merged['files'], $attachmentStates['other_post_by_path'] );
 		$merged['files'] = MediaPanelState::filterByAttachmentScope( $merged['files'], $filters['attachment_scope'] );
 		$merged['files'] = MediaPanelState::filterByMediaType( $merged['files'], $filters['media_type'] );
+		$merged['files'] = MediaPanelState::filterByFilename( $merged['files'], $filters['filename'] );
 		$merged['files'] = $this->enrichOtherPostInfo( $merged['files'] );
 		$merged['status'] = $merged['refresh_required'] ? 'stale' : 'fresh';
 		$merged['filters'] = $filters;

@@ -157,6 +157,24 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertSame( [ 'image', 'other' ], array_column( $filtered, 'id' ) );
 	}
 
+	public function test_filter_by_filename_matches_case_insensitive_basename_only(): void {
+		$items = [
+			[ 'id' => 'match', 'name' => '20260810-Summit.png', 'path' => '/private/route/20260810-Summit.png' ],
+			[ 'id' => 'path-only', 'name' => 'photo.jpg', 'path' => '/private/summit/photo.jpg' ],
+			[ 'id' => 'other', 'name' => 'route.gpx' ],
+		];
+
+		$filtered = MediaPanelState::filterByFilename( $items, 'sUmMiT' );
+
+		$this->assertSame( [ 'match' ], array_column( $filtered, 'id' ) );
+	}
+
+	public function test_filter_by_empty_filename_returns_all_items(): void {
+		$items = [ [ 'id' => 'one' ], [ 'id' => 'two' ] ];
+
+		$this->assertSame( $items, MediaPanelState::filterByFilename( $items, '' ) );
+	}
+
 	public function test_merge_files_keeps_all_distinct_entries_when_items_are_enriched(): void {
 		$current = [
 			[ 'id' => 'a', 'path' => '/tmp/20260810-morning.png', 'name' => '20260810-morning.png', 'type' => 'png', 'is_imported' => false ],
@@ -271,25 +289,25 @@ class MediaPanelStateTest extends TestCase {
 
 	public function test_normalize_filters_prefers_the_structured_payload_over_legacy_parameters(): void {
 		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters(
-			json_encode( [ 'date' => '2026-09-20', 'source' => 'belledonne', 'attachment_scope' => [ 'other' ], 'media_type' => [ 'image' ] ] ),
+			json_encode( [ 'date' => '2026-09-20', 'source' => 'belledonne', 'attachment_scope' => [ 'other' ], 'media_type' => [ 'image' ], 'filename' => 'summit' ] ),
 			'2026-01-01',
 			'legacy-source',
 			[ 'belledonne', 'legacy-source' ]
 		);
 
-		$this->assertSame( [ 'date' => '2026-09-20', 'source' => [ 'belledonne' ], 'attachment_scope' => [ 'other' ], 'media_type' => [ 'image' ] ], $filters );
+		$this->assertSame( [ 'date' => '2026-09-20', 'source' => [ 'belledonne' ], 'attachment_scope' => [ 'other' ], 'media_type' => [ 'image' ], 'filename' => 'summit' ], $filters );
 	}
 
 	public function test_normalize_filters_falls_back_to_legacy_parameters_when_payload_is_absent(): void {
 		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( '', '2026-01-01', 'legacy-source', [ 'legacy-source', 'other-source' ] );
 
-		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => [ 'image', 'video', 'other' ] ], $filters );
+		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => [ 'image', 'video', 'other' ], 'filename' => '' ], $filters );
 	}
 
 	public function test_normalize_filters_ignores_invalid_payloads(): void {
 		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( 'not-json', '2026-01-01', 'legacy-source', [ 'legacy-source', 'other-source' ] );
 
-		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => [ 'image', 'video', 'other' ] ], $filters );
+		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => [ 'image', 'video', 'other' ], 'filename' => '' ], $filters );
 	}
 
 	public function test_normalize_filters_resolves_attachment_scope_from_storage_when_absent_from_payload(): void {
@@ -315,6 +333,36 @@ class MediaPanelStateTest extends TestCase {
 		);
 
 		$this->assertSame( [ 'south' ], $filters['source'] );
+	}
+
+	public function test_normalize_filters_resolves_filename_from_storage_when_absent_from_payload(): void {
+		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters(
+			json_encode( [ 'date' => '2026-09-20' ] ),
+			'2026-01-01',
+			'',
+			[ 'north' ],
+			null,
+			null,
+			null,
+			static fn () => '  stored   summit  '
+		);
+
+		$this->assertSame( 'stored summit', $filters['filename'] );
+	}
+
+	public function test_normalize_filters_honors_an_explicit_empty_filename(): void {
+		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters(
+			json_encode( [ 'filename' => '' ] ),
+			'2026-01-01',
+			'',
+			[ 'north' ],
+			null,
+			null,
+			null,
+			static fn () => 'stored summit'
+		);
+
+		$this->assertSame( '', $filters['filename'] );
 	}
 
 	public function test_normalize_filters_falls_back_to_all_when_stored_sources_are_stale(): void {
@@ -351,6 +399,18 @@ class MediaPanelStateTest extends TestCase {
 
 	public function test_normalize_media_type_filter_keeps_only_supported_categories(): void {
 		$this->assertSame( [ 'video', 'other' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeMediaTypeFilter( [ 'video', 'bogus', 'other' ] ) );
+	}
+
+	public function test_normalize_filename_filter_trims_collapses_and_strips_separators(): void {
+		$this->assertSame( 'Rando Summit', \WP_Media_Helper\Admin\EditorMediaController::normalizeFilenameFilter( " --  Rando\t  Summit_- " ) );
+		$this->assertSame( '', \WP_Media_Helper\Admin\EditorMediaController::normalizeFilenameFilter( "  ._-/\\  " ) );
+	}
+
+	public function test_normalize_filename_filter_rejects_invalid_or_oversized_values(): void {
+		$this->assertSame( '', \WP_Media_Helper\Admin\EditorMediaController::normalizeFilenameFilter( [ 'summit' ] ) );
+		$this->assertSame( '', \WP_Media_Helper\Admin\EditorMediaController::normalizeFilenameFilter( "summit\xFF" ) );
+		$this->assertSame( '', \WP_Media_Helper\Admin\EditorMediaController::normalizeFilenameFilter( "summit\x01" ) );
+		$this->assertSame( '', \WP_Media_Helper\Admin\EditorMediaController::normalizeFilenameFilter( str_repeat( 'a', 256 ) ) );
 	}
 
 	public function test_normalize_source_filter_uses_all_for_multiple_sources_by_default(): void {

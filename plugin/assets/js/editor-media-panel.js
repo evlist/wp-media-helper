@@ -180,6 +180,10 @@
 		return item.id || item.path || item.name;
 	};
 
+	const normalizeFilenameQuery = function ( query ) {
+		return query.replace( /\s+/g, ' ' ).trim().replace( /^[._/\\-]+|[._/\\-]+$/g, '' ).trim();
+	};
+
 	const FilterCheckboxGroup = function ( { label, options, selectedValues, disabled, minSelected, onToggle } ) {
 		const selectedLabels = options.filter( function ( option ) {
 			return selectedValues.includes( option.value );
@@ -238,7 +242,7 @@
 			wp.data.dispatch( 'core/editor' ).editPost( { meta: metaUpdate } );
 		};
 
-		const applyPayload = function ( payload ) {
+		const applyPayload = function ( payload, requestedFilters ) {
 			setStatus( payload.data.status || 'fresh' );
 			setReason( payload.data.reason || null );
 			setFiles( payload.data.files || [] );
@@ -274,6 +278,15 @@
 					return isSameTypes ? currentFilters : Object.assign( {}, currentFilters, { media_type: nextTypes } );
 				} );
 			}
+			if ( payload.data.filters && 'string' === typeof payload.data.filters.filename ) {
+				setFiltersState( function ( currentFilters ) {
+					if ( Object.prototype.hasOwnProperty.call( requestedFilters, 'filename' ) || Object.prototype.hasOwnProperty.call( currentFilters, 'filename' ) ) {
+						return currentFilters;
+					}
+
+					return Object.assign( {}, currentFilters, { filename: payload.data.filters.filename } );
+				} );
+			}
 			const nextIds = new window.Set( ( payload.data.files || [] ).map( function ( file ) {
 				return itemKey( normalizeMediaItem( file ) );
 			} ) );
@@ -299,11 +312,12 @@
 		}, [] );
 
 		const runFetch = function ( forceRefresh, overrideFilters ) {
+			const requestedFilters = overrideFilters || filters;
 			setLoading( true );
-			return fetchState( overrideFilters || filters, forceRefresh )
+			return fetchState( requestedFilters, forceRefresh )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
-						applyPayload( payload );
+						applyPayload( payload, requestedFilters );
 					} else if ( ! forceRefresh ) {
 						setStatus( 'fresh' );
 						setReason( null );
@@ -336,7 +350,7 @@
 				document.removeEventListener( 'visibilitychange', handleVisibilityChange );
 			};
 			// eslint-disable-next-line react-hooks/exhaustive-deps
-		}, [ filters.date, ( filters.attachment_scope || [] ).join( ',' ), ( filters.source || [] ).join( ',' ), ( filters.media_type || [] ).join( ',' ) ] );
+		}, [ filters.date, filters.filename || '', ( filters.attachment_scope || [] ).join( ',' ), ( filters.source || [] ).join( ',' ), ( filters.media_type || [] ).join( ',' ) ] );
 
 		const handleRefresh = function () {
 			runFetch( true );
@@ -379,6 +393,22 @@
 				return Object.assign( {}, currentFilters, { media_type: next } );
 			} );
 			saveFilter( 'media_type', next, getCurrentPostId() );
+		};
+
+		const setFilename = function ( value ) {
+			const next = value.slice( 0, 255 );
+			setFiltersState( function ( currentFilters ) {
+				return Object.assign( {}, currentFilters, { filename: next } );
+			} );
+			saveFilter( 'filename', next, getCurrentPostId() );
+		};
+
+		const normalizeFilename = function () {
+			const current = filters.filename || '';
+			const normalized = normalizeFilenameQuery( current );
+			if ( normalized !== current ) {
+				setFilename( normalized );
+			}
 		};
 
 		const toggleSource = function ( sourceId ) {
@@ -587,6 +617,15 @@
 							value: filters.date,
 							onChange: setDate,
 							type: 'date'
+						} ),
+						wp.element.createElement( TextControl, {
+							label: __( 'Filename', 'wp-media-helper' ),
+							value: filters.filename || '',
+							onChange: setFilename,
+							onBlur: normalizeFilename,
+							maxLength: 255,
+							placeholder: __( 'Search filenames', 'wp-media-helper' ),
+							type: 'search'
 						} ),
 						availableSources.length > 1
 							? wp.element.createElement( FilterCheckboxGroup, {
