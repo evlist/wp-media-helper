@@ -11,6 +11,21 @@ use WP_Media_Helper\MediaSource\TargetedRefreshCoordinator;
 class MediaPanelState {
 
 	private TargetedRefreshCoordinator $coordinator;
+	private const IMAGE_EXTENSIONS = [ 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg' ];
+	private const VIDEO_EXTENSIONS = [ 'mp4', 'mov', 'webm', 'avi', 'm4v' ];
+
+	public static function resolveMediaType( string $filename ): string {
+		$extension = strtolower( pathinfo( basename( $filename ), PATHINFO_EXTENSION ) );
+		if ( in_array( $extension, self::IMAGE_EXTENSIONS, true ) ) {
+			return 'image';
+		}
+
+		if ( in_array( $extension, self::VIDEO_EXTENSIONS, true ) ) {
+			return 'video';
+		}
+
+		return 'other';
+	}
 
 	/**
 	 * @param array<int, string> $filePaths
@@ -32,6 +47,7 @@ class MediaPanelState {
 				'name' => $name,
 				'path' => $path,
 				'type' => $type,
+				'media_type' => self::resolveMediaType( $name ),
 				'source_id' => $sourceId,
 				'date' => $date,
 				'is_imported' => false,
@@ -40,6 +56,46 @@ class MediaPanelState {
 		}
 
 		return $entries;
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $items
+	 * @param array<int, string> $selectedTypes
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function filterByMediaType( array $items, array $selectedTypes ): array {
+		return array_values( array_filter( $items, static function ( $item ) use ( $selectedTypes ): bool {
+			if ( ! is_array( $item ) ) {
+				return false;
+			}
+
+			$mediaType = (string) ( $item['media_type'] ?? self::resolveMediaType( (string) ( $item['name'] ?? $item['path'] ?? '' ) ) );
+			return in_array( $mediaType, $selectedTypes, true );
+		} ) );
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $items
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function filterByFilename( array $items, string $query ): array {
+		if ( '' === $query ) {
+			return $items;
+		}
+
+		return array_values( array_filter( $items, static function ( $item ) use ( $query ): bool {
+			if ( ! is_array( $item ) ) {
+				return false;
+			}
+
+			$filename = (string) ( $item['name'] ?? $item['path'] ?? '' );
+			$basename = basename( str_replace( '\\', '/', $filename ) );
+			if ( function_exists( 'mb_stripos' ) ) {
+				return false !== mb_stripos( $basename, $query, 0, 'UTF-8' );
+			}
+
+			return false !== stripos( $basename, $query );
+		} ) );
 	}
 
 	/**

@@ -12,6 +12,7 @@ use WP_Media_Helper\Settings\GeneralSettings;
 class EditorMediaController {
 
 	public const panelModeMetaKey = '_wp_media_helper_panel_mode';
+	public const MAX_FILENAME_QUERY_LENGTH = 255;
 
 	public static function normalizePanelMode( mixed $mode ): string {
 		return 'advanced' === $mode ? 'advanced' : 'simple';
@@ -94,6 +95,43 @@ class EditorMediaController {
 	}
 
 	/**
+	 * Normalizes the set of broad media categories shown by the panel.
+	 *
+	 * @return array<int, string>
+	 */
+	public static function normalizeMediaTypeFilter( mixed $rawTypes ): array {
+		$allowed = [ 'image', 'video', 'other' ];
+		$values = is_array( $rawTypes ) ? array_map( 'strval', $rawTypes ) : [];
+		$normalized = array_values( array_intersect( $allowed, $values ) );
+
+		return [] === $normalized ? $allowed : $normalized;
+	}
+
+	public static function normalizeFilenameFilter( mixed $rawFilename ): string {
+		if ( ! is_string( $rawFilename ) || strlen( $rawFilename ) > 4 * self::MAX_FILENAME_QUERY_LENGTH || 1 !== preg_match( '//u', $rawFilename ) ) {
+			return '';
+		}
+
+		if ( 1 === preg_match( '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $rawFilename ) ) {
+			return '';
+		}
+
+		$characters = [];
+		if ( false === preg_match_all( '/./us', $rawFilename, $characters ) || count( $characters[0] ) > self::MAX_FILENAME_QUERY_LENGTH ) {
+			return '';
+		}
+
+		$normalized = preg_replace( '/\s+/u', ' ', trim( $rawFilename ) );
+		if ( ! is_string( $normalized ) ) {
+			return '';
+		}
+
+		$normalized = preg_replace( '/^[._\/\\\\-]+|[._\/\\\\-]+$/u', '', $normalized );
+
+		return is_string( $normalized ) ? trim( $normalized ) : '';
+	}
+
+	/**
 	 * Normalizes a source filter against the IDs of active configured sources.
 	 * A single active source is implicit; multiple sources default to `all`.
 	 *
@@ -149,9 +187,9 @@ class EditorMediaController {
 	 * otherwise `$resolveStoredAttachmentScope` is called to look up the
 	 * user's persisted preference.
 	 *
-	 * @return array{date:string, source:array<int, string>, attachment_scope:array<int, string>}
+	 * @return array{date:string, source:array<int, string>, attachment_scope:array<int, string>, media_type:array<int, string>, filename:string}
 	 */
-	public static function normalizeFilters( mixed $rawFilters, string $legacyDate, mixed $legacySource, array $activeSourceIds = [], ?callable $resolveStoredAttachmentScope = null, ?callable $resolveStoredSource = null ): array {
+	public static function normalizeFilters( mixed $rawFilters, string $legacyDate, mixed $legacySource, array $activeSourceIds = [], ?callable $resolveStoredAttachmentScope = null, ?callable $resolveStoredSource = null, ?callable $resolveStoredMediaType = null, ?callable $resolveStoredFilename = null ): array {
 		$decoded = is_string( $rawFilters ) ? json_decode( $rawFilters, true ) : null;
 		$decoded = is_array( $decoded ) ? $decoded : [];
 
@@ -174,10 +212,24 @@ class EditorMediaController {
 			$attachmentScope = self::normalizeAttachmentScope( $stored );
 		}
 
+		if ( isset( $decoded['media_type'] ) ) {
+			$mediaType = self::normalizeMediaTypeFilter( $decoded['media_type'] );
+		} else {
+			$stored = null === $resolveStoredMediaType ? null : $resolveStoredMediaType();
+			$mediaType = self::normalizeMediaTypeFilter( $stored );
+		}
+
+		$rawFilename = array_key_exists( 'filename', $decoded )
+			? $decoded['filename']
+			: ( null === $resolveStoredFilename ? '' : $resolveStoredFilename() );
+		$filename = self::normalizeFilenameFilter( $rawFilename );
+
 		return [
 			'date' => $date,
 			'source' => $source,
 			'attachment_scope' => $attachmentScope,
+			'media_type' => $mediaType,
+			'filename' => $filename,
 		];
 	}
 
@@ -242,12 +294,16 @@ class EditorMediaController {
 		$rawValue = wp_unslash( $_POST['value'] ?? '' );
 		$decodedValue = is_string( $rawValue ) ? json_decode( $rawValue, true ) : null;
 
-		if ( ! in_array( $key, [ 'attachment_scope', 'source' ], true ) ) {
+		if ( ! in_array( $key, [ 'attachment_scope', 'source', 'media_type', 'filename' ], true ) ) {
 			wp_send_json_error( [ 'message' => 'The requested filter is not supported.' ], 400 );
 		}
 
 		if ( 'attachment_scope' === $key ) {
 			$value = self::normalizeAttachmentScope( $decodedValue );
+		} elseif ( 'media_type' === $key ) {
+			$value = self::normalizeMediaTypeFilter( $decodedValue );
+		} elseif ( 'filename' === $key ) {
+			$value = self::normalizeFilenameFilter( $decodedValue );
 		} else {
 			$activeSourceIds = array_column( $this->getActiveSources(), 'id' );
 			$value = self::normalizeSourceFilter( $decodedValue, $activeSourceIds );
@@ -653,7 +709,9 @@ class EditorMediaController {
 			$legacySource,
 			$activeSourceIds,
 			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'attachment_scope', null ),
-			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'source', [ 'all' ] )
+			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'source', [ 'all' ] ),
+			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'media_type', [ 'image', 'video', 'other' ] ),
+			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'filename', '' )
 		);
 		$filters['date'] = MediaPanelState::normalizeDate( (string) $filters['date'], $legacyDate );
 		$dateValue = $filters['date'];
@@ -733,6 +791,8 @@ class EditorMediaController {
 		$merged['files'] = MediaPanelState::setAttachmentState( $merged['files'], $attachmentStates['attached_paths'] );
 		$merged['files'] = MediaPanelState::setOtherPostState( $merged['files'], $attachmentStates['other_post_by_path'] );
 		$merged['files'] = MediaPanelState::filterByAttachmentScope( $merged['files'], $filters['attachment_scope'] );
+		$merged['files'] = MediaPanelState::filterByMediaType( $merged['files'], $filters['media_type'] );
+		$merged['files'] = MediaPanelState::filterByFilename( $merged['files'], $filters['filename'] );
 		$pageData = MediaPanelState::paginate( $merged['files'], $page, $maxEntries );
 		$merged['files'] = $this->enrichOtherPostInfo( $pageData['items'] );
 		unset( $pageData['items'] );
