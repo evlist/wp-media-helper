@@ -267,6 +267,38 @@ class MediaPanelState {
 		} ) );
 	}
 
+	/**
+	 * Slices an item list into one page. The requested page is clamped to the
+	 * available range so an out-of-date page number never yields an empty view.
+	 *
+	 * @param array<int, mixed> $items
+	 * @return array{items:array<int, mixed>, page:int, per_page:int, total:int, total_pages:int}
+	 */
+	public static function paginate( array $items, int $page, int $perPage ): array {
+		$perPage = max( 1, $perPage );
+		$total = count( $items );
+		$totalPages = max( 1, (int) ceil( $total / $perPage ) );
+		$page = min( max( 1, $page ), $totalPages );
+
+		return [
+			'items' => array_slice( array_values( $items ), ( $page - 1 ) * $perPage, $perPage ),
+			'page' => $page,
+			'per_page' => $perPage,
+			'total' => $total,
+			'total_pages' => $totalPages,
+		];
+	}
+
+	/**
+	 * Returns $value when it is a real calendar date written as Y-m-d, else $fallback.
+	 */
+	public static function normalizeDate( string $value, string $fallback ): string {
+		$value = trim( $value );
+		$parsed = 1 === preg_match( '/^\d{4}-\d{2}-\d{2}$/', $value ) ? \DateTimeImmutable::createFromFormat( '!Y-m-d', $value ) : false;
+
+		return false !== $parsed && $parsed->format( 'Y-m-d' ) === $value ? $value : $fallback;
+	}
+
 	public function __construct( ?TargetedRefreshCoordinator $coordinator = null ) {
 		$this->coordinator = $coordinator ?? new TargetedRefreshCoordinator();
 	}

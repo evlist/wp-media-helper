@@ -69,6 +69,36 @@ sources with existing attachments are tracked in
   a filter set by the site owner in code), which is a larger architectural
   feature and is not planned unless explicitly requested.
 
+## Security model for editor AJAX endpoints
+
+Unlike the settings page, the editor endpoints are reachable by every user who
+can `edit_posts` (for example Contributors), so everything they receive is
+untrusted input.
+
+- A client-supplied file path is only accepted when `PathConfinement`
+  resolves it (`realpath()`) to a regular file below the root of an *enabled
+  configured source*. The client may name a source id, but cannot make a path
+  belong to a source whose root does not contain it. This does not conflict
+  with the trusted-admin model above: the admin chooses the roots, while
+  non-admin users are confined to them.
+- `import` and `attach` require `upload_files`. Per-attachment operations
+  require `edit_post` (attach, detach) or `delete_post` (remove) on the
+  attachment itself, not only on the current post.
+- Registered files must have a MIME type allowed by `wp_check_filetype()`.
+- The scanner skips symbolic links and verifies each result against the real
+  root, so a link inside a root cannot expose files outside it.
+- The persistent index is a cache, not a trusted source. It lives in a private
+  folder of the uploads directory, and cached entries are reduced to plain path
+  strings when read. Paths are re-confined when an action is performed.
+- Request size is bounded by the `max_entries` setting (default 100, range
+  1-500). Listings are paginated with that page size, and bulk requests larger
+  than it are rejected. See
+  [slice 020](../slices/020-pagination-and-entry-limit.md).
+- Request dates must be valid `Y-m-d` calendar dates; invalid values fall back
+  to the current date.
+- Server-side absolute directories are not returned to the browser, and
+  `other_post_id` is blanked when the user cannot edit that post.
+
 ## Repository and environment constraints
 
 - Managed `.devcontainer/` graft files should not be edited directly unless they

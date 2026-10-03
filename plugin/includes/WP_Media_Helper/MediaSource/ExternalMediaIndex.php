@@ -12,10 +12,49 @@ class ExternalMediaIndex {
 	private string $storageDir;
 
 	public function __construct( string $storageDir = '' ) {
-		$this->storageDir = '' === $storageDir ? sys_get_temp_dir() . '/wp-media-helper-index' : $storageDir;
+		$this->storageDir = '' === $storageDir ? self::defaultStorageDir() : $storageDir;
 
 		if ( ! is_dir( $this->storageDir ) ) {
-			mkdir( $this->storageDir, 0755, true );
+			mkdir( $this->storageDir, 0700, true );
+		}
+
+		$this->protectStorageDir();
+	}
+
+	/**
+	 * Default location of the index: a private folder in the WordPress uploads
+	 * directory, never the world-writable system temp directory.
+	 */
+	public static function defaultStorageDir(): string {
+		if ( function_exists( 'wp_upload_dir' ) ) {
+			$uploads = wp_upload_dir( null, false );
+			if ( is_array( $uploads ) && ! empty( $uploads['basedir'] ) && is_string( $uploads['basedir'] ) ) {
+				return rtrim( $uploads['basedir'], '/\\' ) . '/wp-media-helper-index';
+			}
+		}
+
+		return sys_get_temp_dir() . '/wp-media-helper-index-' . ( function_exists( 'posix_getuid' ) ? (string) posix_getuid() : 'user' );
+	}
+
+	/**
+	 * Keeps the index unreadable over HTTP and from other system users.
+	 */
+	private function protectStorageDir(): void {
+		if ( ! is_dir( $this->storageDir ) || ! is_writable( $this->storageDir ) ) {
+			return;
+		}
+
+		@chmod( $this->storageDir, 0700 );
+
+		$guards = [
+			'index.php' => "<?php\n// Silence is golden.\n",
+			'.htaccess' => "Require all denied\n<IfModule !mod_authz_core.c>\nDeny from all\n</IfModule>\n",
+		];
+		foreach ( $guards as $name => $contents ) {
+			$guard = rtrim( $this->storageDir, '/\\' ) . '/' . $name;
+			if ( ! file_exists( $guard ) ) {
+				@file_put_contents( $guard, $contents );
+			}
 		}
 	}
 
@@ -118,9 +157,12 @@ class ExternalMediaIndex {
 			return null;
 		}
 
+		// The index is a cache, not a trusted source: keep only plain path strings.
+		$files = array_values( array_filter( $payload['files'], static fn ( $file ): bool => is_string( $file ) && '' !== $file && ! str_contains( $file, "\0" ) ) );
+
 		return [
 			'directory' => $payload['directory'],
-			'files' => array_values( $payload['files'] ),
+			'files' => $files,
 			'mtime' => (float) $payload['mtime'],
 		];
 	}
@@ -156,6 +198,8 @@ class ExternalMediaIndex {
 			'files' => array_values( $files ),
 		];
 
-		file_put_contents( $cachePath, json_encode( $payload, JSON_PRETTY_PRINT ), LOCK_EX );
+		if ( false !== file_put_contents( $cachePath, json_encode( $payload, JSON_PRETTY_PRINT ), LOCK_EX ) ) {
+			@chmod( $cachePath, 0600 );
+		}
 	}
 }

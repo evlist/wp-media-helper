@@ -148,4 +148,32 @@ class ExternalMediaIndexTest extends TestCase {
 		$this->assertCount( 1, $second );
 		$this->assertStringContainsString( '20260811', $second[0] );
 	}
+
+	public function test_storage_directory_is_private_and_guarded(): void {
+		new ExternalMediaIndex( $this->storage );
+		clearstatcache();
+
+		$this->assertSame( '0700', substr( sprintf( '%o', fileperms( $this->storage ) ), -4 ) );
+		$this->assertFileExists( $this->storage . '/index.php' );
+		$this->assertStringContainsString( 'Require all denied', (string) file_get_contents( $this->storage . '/.htaccess' ) );
+	}
+
+	public function test_cached_entries_that_are_not_plain_paths_are_ignored(): void {
+		$index = new ExternalMediaIndex( $this->storage );
+		$source = [ 'id' => 'belledonne', 'root' => $this->root, 'path_pattern' => '{date:Y}/{date:m}', 'filter_pattern' => '{date:Ymd}' ];
+		$date = new DateTimeImmutable( '2026-08-10' );
+		$index->getForSource( $source, $date, 'belledonne' );
+
+		$cachePath = $index->pathForSource( $source, 'belledonne', $date );
+		$payload = json_decode( (string) file_get_contents( $cachePath ), true );
+		$payload['files'] = array_merge( $payload['files'], [ [ 'path' => '/etc/passwd' ], 42, '', "/tmp/a\0b" ] );
+		file_put_contents( $cachePath, json_encode( $payload ) );
+
+		$files = $index->getForSource( $source, $date, 'belledonne' );
+
+		$this->assertCount( 2, $files );
+		foreach ( $files as $file ) {
+			$this->assertStringStartsWith( $this->root, $file );
+		}
+	}
 }

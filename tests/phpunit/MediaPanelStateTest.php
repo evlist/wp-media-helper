@@ -364,4 +364,35 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertSame( [ $sources[0], $sources[2] ], \WP_Media_Helper\Admin\EditorMediaController::resolveSourcesForFilter( $sources, [ 'east', 'north' ] ) );
 		$this->assertSame( $sources, \WP_Media_Helper\Admin\EditorMediaController::resolveSourcesForFilter( $sources, [ 'all' ] ) );
 	}
+
+	public function test_paginate_slices_items_and_reports_totals(): void {
+		$page = MediaPanelState::paginate( range( 1, 25 ), 2, 10 );
+
+		$this->assertSame( range( 11, 20 ), $page['items'] );
+		$this->assertSame( 2, $page['page'] );
+		$this->assertSame( 10, $page['per_page'] );
+		$this->assertSame( 25, $page['total'] );
+		$this->assertSame( 3, $page['total_pages'] );
+		$this->assertSame( range( 21, 25 ), MediaPanelState::paginate( range( 1, 25 ), 3, 10 )['items'] );
+	}
+
+	public function test_paginate_clamps_the_requested_page(): void {
+		$this->assertSame( 3, MediaPanelState::paginate( range( 1, 25 ), 99, 10 )['page'] );
+		$this->assertSame( 1, MediaPanelState::paginate( range( 1, 25 ), 0, 10 )['page'] );
+	}
+
+	public function test_paginate_handles_empty_lists_and_invalid_page_sizes(): void {
+		$empty = MediaPanelState::paginate( [], 4, 10 );
+		$this->assertSame( [], $empty['items'] );
+		$this->assertSame( 1, $empty['page'] );
+		$this->assertSame( 1, $empty['total_pages'] );
+		$this->assertSame( 1, MediaPanelState::paginate( [ 'a', 'b' ], 1, 0 )['per_page'] );
+	}
+
+	public function test_normalize_date_accepts_only_real_calendar_dates(): void {
+		$this->assertSame( '2026-08-10', MediaPanelState::normalizeDate( ' 2026-08-10 ', '2000-01-01' ) );
+		foreach ( [ '', 'tomorrow', '2026-13-01', '2026-02-30', '26-08-10', '2026-08-10 12:00', '../../etc' ] as $invalid ) {
+			$this->assertSame( '2000-01-01', MediaPanelState::normalizeDate( $invalid, '2000-01-01' ) );
+		}
+	}
 }

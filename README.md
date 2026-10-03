@@ -69,11 +69,44 @@ All settings are managed on the plugin's **Settings** page
 | **External media directories** | Optional. One or more absolute server paths to external media roots. Leave empty to use only the standard WordPress media library. |
 | **Path pattern** | Optional. Pattern used to derive the directory for a given date and source. Supports placeholders such as `{date:Y}`, `{date:m}`, `{date:d}` and `{source}`. If left empty, the resolver falls back to the source root directly, which is useful for static media sources that do not depend on the date. |
 | **Filter pattern** | Optional. Pattern used to further filter filenames after the target directory has been resolved. Supports placeholders such as `{date:Ymd}`. Defaults to an empty filter. |
+| **Maximum entries per page** | Number of media items shown per page in the editor panel, and the maximum number of items accepted by a single bulk action. Whole number between 1 and 500, default 100. |
 | **Thumbnail cache directory** | Optional. Writable path where thumbnails for external media files are stored. Required when external directories are read-only. Thumbnails are generated lazily on first request. |
 
 Each external directory can define its own path pattern and optional filter
 pattern. This makes it possible to target different user trees without scanning
 large directory hierarchies.
+
+## Pagination
+
+The editor panel never loads every matching file at once. Results are sorted,
+filtered, then split into pages of **Maximum entries per page** items, with
+*Previous* / *Next* controls and a "Page X of Y" indicator. Changing the date
+or a filter returns to the first page, and a page number beyond the last page
+is clamped to the last one. Selections apply to the visible page only, so a
+bulk action can never exceed the configured maximum; the server rejects larger
+requests.
+
+## Security
+
+- Every AJAX endpoint checks a capability and a nonce. Importing or attaching
+  media requires `upload_files`; removing or detaching an attachment requires
+  the matching `delete_post` / `edit_post` capability on that attachment.
+- File paths sent by the browser are never trusted: they are resolved with
+  `realpath()` and accepted only when they point to a regular file below the
+  root of an enabled source. `..` segments and symbolic links leaving the root
+  are rejected, and the scanner ignores symbolic links.
+- Only file types allowed by WordPress (`wp_check_filetype()`) can be
+  registered.
+- The external media index is stored in a private
+  `wp-media-helper-index` folder of the uploads directory (mode `0700`, with
+  `index.php` and `.htaccess` guards), not in the system temporary directory.
+  On servers that ignore `.htaccess` (for example nginx), deny HTTP access to
+  that folder in the server configuration.
+- Dates sent by the browser must be valid `Y-m-d` calendar dates, and absolute
+  server directories are not sent back to the browser.
+
+See [Constraints and working rules](docs/IA/constraints.md) for the trust
+model.
 
 ## External Media Indexing
 

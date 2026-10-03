@@ -6,6 +6,7 @@ namespace WP_Media_Helper\Admin;
 
 use InvalidArgumentException;
 use WP_Media_Helper\Settings\ExternalSourceSettings;
+use WP_Media_Helper\Settings\GeneralSettings;
 
 class ExternalSourceSettingsPage {
 
@@ -56,6 +57,7 @@ class ExternalSourceSettingsPage {
 
 		$pending = $this->consumePendingSubmission();
 		$sources = null === $pending ? $this->loadSources() : $pending['sources'];
+		$maxEntries = null !== $pending && null !== $pending['max_entries'] ? $pending['max_entries'] : (string) $this->loadGeneralSettings()->getMaxEntries();
 		$validationErrors = $this->getValidationErrors( $sources );
 		$notices = $this->buildErrorNotices( $sources );
 
@@ -84,6 +86,29 @@ class ExternalSourceSettingsPage {
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<input type="hidden" name="action" value="wp_media_helper_save_external_sources" />
 				<?php wp_nonce_field( 'wp_media_helper_save_external_sources' ); ?>
+
+				<h2><?php esc_html_e( 'General', 'wp-media-helper' ); ?></h2>
+				<table class="form-table" role="presentation">
+					<tbody>
+						<tr>
+							<th scope="row"><label for="wp-media-helper-max-entries"><?php esc_html_e( 'Maximum entries per page', 'wp-media-helper' ); ?></label></th>
+							<td>
+								<input id="wp-media-helper-max-entries" type="number" class="small-text" name="general[max_entries]" value="<?php echo esc_attr( $maxEntries ); ?>" min="<?php echo esc_attr( (string) GeneralSettings::MIN_MAX_ENTRIES ); ?>" max="<?php echo esc_attr( (string) GeneralSettings::MAX_MAX_ENTRIES ); ?>" step="1" aria-describedby="wp-media-helper-max-entries-description" />
+								<p class="description" id="wp-media-helper-max-entries-description">
+									<?php
+									printf(
+										/* translators: 1: minimum value, 2: maximum value, 3: default value. */
+										esc_html__( 'Number of media items shown per page in the editor panel, and the maximum number of items processed by a single bulk action. Between %1$d and %2$d, default %3$d.', 'wp-media-helper' ),
+										GeneralSettings::MIN_MAX_ENTRIES,
+										GeneralSettings::MAX_MAX_ENTRIES,
+										GeneralSettings::DEFAULT_MAX_ENTRIES
+									);
+									?>
+								</p>
+							</td>
+						</tr>
+					</tbody>
+				</table>
 
 				<h2><?php esc_html_e( 'External media sources', 'wp-media-helper' ); ?></h2>
 				<p class="description"><?php esc_html_e( 'Add one or more directories that should be included in the external media workflow.', 'wp-media-helper' ); ?></p>
@@ -310,8 +335,18 @@ class ExternalSourceSettingsPage {
 
 		$submitted = array_values( $raw );
 
+		$rawGeneral = wp_unslash( $_POST['general'] ?? [] );
+		$submittedMaxEntries = is_array( $rawGeneral ) && isset( $rawGeneral['max_entries'] ) && is_scalar( $rawGeneral['max_entries'] )
+			? (string) $rawGeneral['max_entries']
+			: (string) GeneralSettings::DEFAULT_MAX_ENTRIES;
+
+		$maxEntriesError = GeneralSettings::validateMaxEntries( $submittedMaxEntries );
+		if ( null !== $maxEntriesError ) {
+			$this->redirectBackWithSubmission( $submitted, $maxEntriesError, $submittedMaxEntries );
+		}
+
 		if ( [] !== $this->getValidationErrors( $submitted ) ) {
-			$this->redirectBackWithSubmission( $submitted );
+			$this->redirectBackWithSubmission( $submitted, '', $submittedMaxEntries );
 		}
 
 		$settings = new ExternalSourceSettings(
@@ -323,8 +358,9 @@ class ExternalSourceSettingsPage {
 
 		try {
 			$settings->saveAll( $submitted );
+			$this->loadGeneralSettings( true )->save( [ 'max_entries' => $submittedMaxEntries ] );
 		} catch ( InvalidArgumentException $exception ) {
-			$this->redirectBackWithSubmission( $submitted, $exception->getMessage() );
+			$this->redirectBackWithSubmission( $submitted, $exception->getMessage(), $submittedMaxEntries );
 		}
 
 		wp_safe_redirect( add_query_arg( 'updated', 'true', $this->pageUrl() ) );
@@ -334,12 +370,13 @@ class ExternalSourceSettingsPage {
 	/**
 	 * @param array<int, array<string, mixed>> $submitted
 	 */
-	private function redirectBackWithSubmission( array $submitted, string $message = '' ): void {
+	private function redirectBackWithSubmission( array $submitted, string $message = '', ?string $maxEntries = null ): void {
 		set_transient(
 			$this->pendingSubmissionKey(),
 			[
 				'sources' => $submitted,
 				'message' => $message,
+				'max_entries' => $maxEntries,
 			],
 			5 * MINUTE_IN_SECONDS
 		);
@@ -351,7 +388,7 @@ class ExternalSourceSettingsPage {
 	/**
 	 * Returns the rejected submission so the form can be redisplayed as filled in.
 	 *
-	 * @return array{sources: array<int, array<string, mixed>>, message: string}|null
+	 * @return array{sources: array<int, array<string, mixed>>, message: string, max_entries: string|null}|null
 	 */
 	private function consumePendingSubmission(): ?array {
 		$pending = get_transient( $this->pendingSubmissionKey() );
@@ -365,6 +402,7 @@ class ExternalSourceSettingsPage {
 		return [
 			'sources' => array_values( $pending['sources'] ),
 			'message' => (string) ( $pending['message'] ?? '' ),
+			'max_entries' => isset( $pending['max_entries'] ) && is_string( $pending['max_entries'] ) ? $pending['max_entries'] : null,
 		];
 	}
 
@@ -374,6 +412,17 @@ class ExternalSourceSettingsPage {
 
 	private function pageUrl(): string {
 		return admin_url( 'options-general.php?page=wp-media-helper' );
+	}
+
+	private function loadGeneralSettings( bool $persist = false ): GeneralSettings {
+		return new GeneralSettings(
+			static fn(): mixed => get_option( GeneralSettings::optionKey(), [] ),
+			static function ( array $value ) use ( $persist ): void {
+				if ( $persist ) {
+					update_option( GeneralSettings::optionKey(), $value );
+				}
+			}
+		);
 	}
 
 	/**

@@ -70,4 +70,24 @@ class FilesystemScannerTest extends TestCase {
 		}
 		rmdir( $dir );
 	}
+
+	public function test_ignores_symbolic_links(): void {
+		$outside = sys_get_temp_dir() . '/wpmh_scanner_outside_' . uniqid();
+		mkdir( $outside );
+		touch( $outside . '/20260810-secret.jpg' );
+		symlink( $outside . '/20260810-secret.jpg', $this->root . '/2026/08/20260810-link.jpg' );
+
+		try {
+			$results = ( new FilesystemScanner() )->find( $this->root, '20260810' );
+		} finally {
+			unlink( $this->root . '/2026/08/20260810-link.jpg' );
+			unlink( $outside . '/20260810-secret.jpg' );
+			rmdir( $outside );
+		}
+
+		$this->assertCount( 2, $results );
+		foreach ( $results as $path ) {
+			$this->assertStringNotContainsString( 'link', $path );
+		}
+	}
 }

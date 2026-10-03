@@ -5,7 +5,9 @@
 namespace WP_Media_Helper\Admin;
 
 use DateTimeImmutable;
+use WP_Media_Helper\MediaSource\PathConfinement;
 use WP_Media_Helper\Settings\ExternalSourceSettings;
+use WP_Media_Helper\Settings\GeneralSettings;
 
 class EditorMediaController {
 
@@ -196,6 +198,18 @@ class EditorMediaController {
 	}
 
 	/**
+	 * Maximum number of entries per page and per bulk request.
+	 */
+	private function getMaxEntries(): int {
+		$settings = new GeneralSettings(
+			static fn(): mixed => get_option( GeneralSettings::optionKey(), [] ),
+			static function ( array $value ): void {}
+		);
+
+		return $settings->getMaxEntries();
+	}
+
+	/**
 	 * Returns enabled source configurations with the fields needed by the panel.
 	 * Filesystem health is not rechecked here; settings validation owns that work.
 	 *
@@ -271,6 +285,10 @@ class EditorMediaController {
 			wp_send_json_error( [ 'message' => 'The requested bulk action is not supported.' ], 400 );
 		}
 
+		if ( in_array( $action, [ 'import', 'attach' ], true ) && ! current_user_can( 'upload_files' ) ) {
+			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
+		}
+
 		if ( in_array( $action, [ 'attach', 'detach', 'remove' ], true ) && ( 0 === $postId || ! get_post( $postId ) || ! current_user_can( 'edit_post', $postId ) ) ) {
 			wp_send_json_error( [ 'message' => 'The current post must be saved before media can be changed.' ], 400 );
 		}
@@ -282,6 +300,20 @@ class EditorMediaController {
 		$items = self::normalizeBulkItems( $items );
 		if ( [] === $items ) {
 			wp_send_json_error( [ 'message' => 'At least one media item must be selected.' ], 400 );
+		}
+
+		$maxEntries = $this->getMaxEntries();
+		if ( count( $items ) > $maxEntries ) {
+			wp_send_json_error(
+				[
+					'message' => sprintf(
+						/* translators: %d: maximum number of items per request. */
+						__( 'At most %d media items can be processed at once.', 'wp-media-helper' ),
+						$maxEntries
+					),
+				],
+				400
+			);
 		}
 
 		wp_send_json_success( [
@@ -332,6 +364,7 @@ class EditorMediaController {
 	 */
 	private function processBulkItems( string $sourceId, string $action, array $items, int $postId = 0 ): array {
 		$results = [];
+		$activeSources = in_array( $action, [ 'import', 'attach' ], true ) ? $this->getActiveSources() : [];
 		foreach ( $items as $item ) {
 			$itemSourceId = (string) ( $item['source_id'] ?? $sourceId );
 			$result = [
@@ -354,11 +387,25 @@ class EditorMediaController {
 			}
 
 			if ( in_array( $action, [ 'import', 'attach' ], true ) ) {
-				if ( ! is_file( $item['path'] ) ) {
-					$result['message'] = 'The selected media file is not readable.';
+				// The path comes from the browser: it must resolve to a regular
+				// file below the root of an active configured source.
+				$confined = PathConfinement::resolveFileInSources( $activeSources, $itemSourceId, $item['path'] );
+				if ( null === $confined ) {
+					$result['message'] = __( 'The selected media file is not readable.', 'wp-media-helper' );
 					$results[] = $result;
 					continue;
 				}
+
+				$filetype = wp_check_filetype( basename( $confined['path'] ) );
+				if ( empty( $filetype['type'] ) ) {
+					$result['message'] = __( 'This file type is not allowed.', 'wp-media-helper' );
+					$results[] = $result;
+					continue;
+				}
+
+				$itemSourceId = (string) $confined['source']['id'];
+				$item['path'] = $confined['path'];
+				$result['path'] = $confined['path'];
 
 				$existing = $this->findVirtualAttachments( $itemSourceId, $item['path'] );
 				$attachmentId = $existing[0] ?? $this->registerVirtualAttachment( $itemSourceId, $item['path'] );
@@ -374,6 +421,13 @@ class EditorMediaController {
 				$result['operation'] = 'imported';
 
 				if ( 'attach' === $action ) {
+					if ( ! current_user_can( 'edit_post', (int) $attachmentId ) ) {
+						$result['success'] = false;
+						$result['message'] = __( 'You are not allowed to attach this media.', 'wp-media-helper' );
+						$results[] = $result;
+						continue;
+					}
+
 					$updated = wp_update_post( [
 						'ID' => (int) $attachmentId,
 						'post_parent' => $postId,
@@ -451,6 +505,10 @@ class EditorMediaController {
 				continue;
 			}
 
+			if ( ! current_user_can( 'delete_post', (int) $attachmentId ) ) {
+				continue;
+			}
+
 			delete_post_meta( (int) $attachmentId, '_wp_attached_file' );
 			wp_delete_post( (int) $attachmentId, true );
 			$removed[] = $attachmentId;
@@ -468,6 +526,10 @@ class EditorMediaController {
 		$detached = [];
 		foreach ( $this->findVirtualAttachments( $sourceId, $path ) as $attachmentId ) {
 			if ( $postId !== (int) get_post_field( 'post_parent', $attachmentId ) ) {
+				continue;
+			}
+
+			if ( ! current_user_can( 'edit_post', (int) $attachmentId ) ) {
 				continue;
 			}
 
@@ -501,17 +563,38 @@ class EditorMediaController {
 	}
 
 	/**
+	 * IDs of the attachments created by this plugin, with their post meta
+	 * loaded in a single query so per-attachment lookups hit the cache.
+	 *
 	 * @return int[]
 	 */
-	private function findVirtualAttachments( string $sourceId, string $path ): array {
+	private function getVirtualAttachmentIds(): array {
 		$attachments = get_posts( [
 			'post_type' => 'attachment',
 			'post_status' => 'inherit',
 			'posts_per_page' => -1,
 			'fields' => 'ids',
+			'meta_key' => '_wp_media_helper_source_path',
+			'no_found_rows' => true,
+			'update_post_term_cache' => false,
 		] );
 
 		if ( empty( $attachments ) || is_wp_error( $attachments ) ) {
+			return [];
+		}
+
+		$attachments = array_map( 'intval', $attachments );
+		update_meta_cache( 'post', $attachments );
+
+		return $attachments;
+	}
+
+	/**
+	 * @return int[]
+	 */
+	private function findVirtualAttachments( string $sourceId, string $path ): array {
+		$attachments = $this->getVirtualAttachmentIds();
+		if ( [] === $attachments ) {
 			return [];
 		}
 
@@ -558,7 +641,9 @@ class EditorMediaController {
 
 		$legacySource = sanitize_text_field( wp_unslash( $_POST['source_id'] ?? '' ) );
 		$postId = absint( $_POST['post_id'] ?? 0 );
-		$legacyDate = sanitize_text_field( wp_unslash( $_POST['date'] ?? current_time( 'Y-m-d' ) ) );
+		$today = current_time( 'Y-m-d' );
+		$legacyDate = MediaPanelState::normalizeDate( sanitize_text_field( wp_unslash( $_POST['date'] ?? $today ) ), $today );
+		$page = absint( $_POST['page'] ?? 1 );
 		$rawFilters = wp_unslash( $_POST['filters'] ?? '' );
 		$activeSources = $this->getActiveSources();
 		$activeSourceIds = array_map( static fn ( array $source ): string => (string) $source['id'], $activeSources );
@@ -570,7 +655,9 @@ class EditorMediaController {
 			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'attachment_scope', null ),
 			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'source', [ 'all' ] )
 		);
+		$filters['date'] = MediaPanelState::normalizeDate( (string) $filters['date'], $legacyDate );
 		$dateValue = $filters['date'];
+		$maxEntries = $this->getMaxEntries();
 		$forceRefresh = ! empty( $_POST['force_refresh'] );
 		$selectedSources = self::resolveSourcesForFilter( $activeSources, $filters['source'] );
 		$sourceOptions = array_map( static fn ( array $source ): array => [
@@ -588,7 +675,12 @@ class EditorMediaController {
 				'stale' => false,
 				'reason' => null,
 				'files' => [],
-				'directory' => '',
+				'pagination' => [
+					'page' => 1,
+					'per_page' => $maxEntries,
+					'total' => 0,
+					'total_pages' => 1,
+				],
 				'available_sources' => $sourceOptions,
 				'filters' => $filters,
 			] );
@@ -641,7 +733,12 @@ class EditorMediaController {
 		$merged['files'] = MediaPanelState::setAttachmentState( $merged['files'], $attachmentStates['attached_paths'] );
 		$merged['files'] = MediaPanelState::setOtherPostState( $merged['files'], $attachmentStates['other_post_by_path'] );
 		$merged['files'] = MediaPanelState::filterByAttachmentScope( $merged['files'], $filters['attachment_scope'] );
-		$merged['files'] = $this->enrichOtherPostInfo( $merged['files'] );
+		$pageData = MediaPanelState::paginate( $merged['files'], $page, $maxEntries );
+		$merged['files'] = $this->enrichOtherPostInfo( $pageData['items'] );
+		unset( $pageData['items'] );
+		$merged['pagination'] = $pageData;
+		// Absolute server directories are not exposed to the browser.
+		unset( $merged['directory'] );
 		$merged['status'] = $merged['refresh_required'] ? 'stale' : 'fresh';
 		$merged['filters'] = $filters;
 		wp_send_json_success( $merged );
@@ -661,7 +758,12 @@ class EditorMediaController {
 			}
 
 			$otherPostId = (int) ( $file['other_post_id'] ?? 0 );
-			if ( 0 === $otherPostId || ! current_user_can( 'edit_post', $otherPostId ) ) {
+			if ( 0 === $otherPostId ) {
+				continue;
+			}
+
+			if ( ! current_user_can( 'edit_post', $otherPostId ) ) {
+				$files[ $index ]['other_post_id'] = 0;
 				continue;
 			}
 
@@ -696,13 +798,8 @@ class EditorMediaController {
 			return [ 'imported_paths' => [], 'attached_paths' => [], 'other_post_by_path' => [] ];
 		}
 
-		$attachments = get_posts( [
-			'post_type' => 'attachment',
-			'post_status' => 'inherit',
-			'posts_per_page' => -1,
-			'fields' => 'ids',
-		] );
-		if ( empty( $attachments ) || is_wp_error( $attachments ) ) {
+		$attachments = $this->getVirtualAttachmentIds();
+		if ( [] === $attachments ) {
 			return [ 'imported_paths' => [], 'attached_paths' => [], 'other_post_by_path' => [] ];
 		}
 

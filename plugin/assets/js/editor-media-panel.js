@@ -67,7 +67,7 @@
 		return Number( wp.data.select( 'core/editor' ).getCurrentPostId() || 0 );
 	};
 
-	const fetchState = function ( filters, forceRefresh ) {
+	const fetchState = function ( filters, forceRefresh, page ) {
 		const formData = new window.FormData();
 		formData.append( 'action', 'wp_media_helper_media_panel_state' );
 		formData.append( 'nonce', nonce );
@@ -75,6 +75,7 @@
 		formData.append( 'source_id', wpMediaHelperEditorPanel.sourceId || '' );
 		formData.append( 'post_id', String( getCurrentPostId() ) );
 		formData.append( 'filters', JSON.stringify( filters ) );
+		formData.append( 'page', String( page || 1 ) );
 
 		return window.fetch( endpoint, {
 			method: 'POST',
@@ -179,6 +180,8 @@
 		const [ status, setStatus ] = useState( 'fresh' );
 		const [ reason, setReason ] = useState( null );
 		const [ files, setFiles ] = useState( [] );
+		const [ page, setPage ] = useState( 1 );
+		const [ pagination, setPagination ] = useState( { page: 1, per_page: 0, total: 0, total_pages: 1 } );
 		const [ loading, setLoading ] = useState( false );
 		const [ selectedIds, setSelectedIds ] = useState( [] );
 		const [ bulkAction, setBulkAction ] = useState( 'none' );
@@ -188,6 +191,7 @@
 		const [ , setTick ] = useState( 0 );
 
 		const setDate = function ( value ) {
+			setPage( 1 );
 			setFiltersState( function ( currentFilters ) {
 				return Object.assign( {}, currentFilters, { date: value } );
 			} );
@@ -202,6 +206,11 @@
 			setReason( payload.data.reason || null );
 			setFiles( payload.data.files || [] );
 			setAvailableSources( payload.data.available_sources || [] );
+			if ( payload.data.pagination ) {
+				setPagination( payload.data.pagination );
+				// The server clamps the page when fewer results remain.
+				setPage( payload.data.pagination.page );
+			}
 			if ( payload.data.filters && Array.isArray( payload.data.filters.source ) ) {
 				setFiltersState( function ( currentFilters ) {
 					const nextSource = payload.data.filters.source;
@@ -249,7 +258,7 @@
 
 		const runFetch = function ( forceRefresh, overrideFilters ) {
 			setLoading( true );
-			return fetchState( overrideFilters || filters, forceRefresh )
+			return fetchState( overrideFilters || filters, forceRefresh, page )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
 						applyPayload( payload );
@@ -285,7 +294,7 @@
 				document.removeEventListener( 'visibilitychange', handleVisibilityChange );
 			};
 			// eslint-disable-next-line react-hooks/exhaustive-deps
-		}, [ filters.date, ( filters.attachment_scope || [] ).join( ',' ), ( filters.source || [] ).join( ',' ) ] );
+		}, [ filters.date, ( filters.attachment_scope || [] ).join( ',' ), ( filters.source || [] ).join( ',' ), page ] );
 
 		const handleRefresh = function () {
 			runFetch( true );
@@ -307,6 +316,7 @@
 				return;
 			}
 
+			setPage( 1 );
 			const nextFilters = Object.assign( {}, filters, { attachment_scope: next } );
 			setFiltersState( nextFilters );
 			saveFilter( 'attachment_scope', next, getCurrentPostId() );
@@ -334,6 +344,7 @@
 				}
 			}
 
+			setPage( 1 );
 			setFiltersState( function ( currentFilters ) {
 				return Object.assign( {}, currentFilters, { source: next } );
 			} );
@@ -741,7 +752,32 @@
 										);
 									} )
 								)
-							)
+							),
+							pagination.total_pages > 1
+								? wp.element.createElement( 'div', { role: 'navigation', 'aria-label': __( 'Pagination', 'wp-media-helper' ), style: { display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.75rem', fontSize: '12px' } },
+									wp.element.createElement( Button, {
+										isSecondary: true,
+										disabled: loading || pagination.page <= 1,
+										onClick: function () { setPage( pagination.page - 1 ); },
+										text: __( 'Previous', 'wp-media-helper' )
+									} ),
+									wp.element.createElement( 'span', null,
+										sprintf(
+											/* translators: 1: current page number, 2: total number of pages, 3: total number of items. */
+											__( 'Page %1$d of %2$d (%3$d items)', 'wp-media-helper' ),
+											pagination.page,
+											pagination.total_pages,
+											pagination.total
+										)
+									),
+									wp.element.createElement( Button, {
+										isSecondary: true,
+										disabled: loading || pagination.page >= pagination.total_pages,
+										onClick: function () { setPage( pagination.page + 1 ); },
+										text: __( 'Next', 'wp-media-helper' )
+									} )
+								)
+								: null
 						)
 					)
 				)
