@@ -178,6 +178,16 @@ integration tests with the WordPress test suite would protect the controls
 above from regressions; capability checks for each endpoint and role are the
 first candidates.
 
+## Planned fixes
+
+Several residual weaknesses are addressed by the proposed slices:
+
+- R3 (server path in `guid`) and R5 (attachment scan): [slice 022](../slices/022-wordpress-native-registration.md).
+- R6 (deletion of originals): the `wp_delete_file` guard of slice 022.
+- Resource exhaustion by on-demand thumbnails (new risk): the allow-list and
+  limits of [slice 023](../slices/023-thumbnails-in-cache.md).
+- R1, R2 and R4 remain independent of those slices.
+
 ## Suggested order of work
 
 1. R2 and R3: both are code changes with a clear fix.

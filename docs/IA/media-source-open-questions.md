@@ -15,6 +15,13 @@ but it is a hypothesis, not a supported integration yet. The uploads location
 must be resolved from WordPress configuration rather than assumed to be the
 default path.
 
+Status: the case where the source is below the uploads directory is now
+designed in [slice 022](../slices/022-wordpress-native-registration.md)
+(recognition of attachments registered by other tools, no duplicates,
+WordPress-native representation) and
+[slice 023](../slices/023-thumbnails-in-cache.md) (thumbnails). The remainder
+of this section still applies to files outside uploads.
+
 A future slice should check how discovered upload files map to existing
 WordPress attachments: avoid duplicate registration, distinguish registered
 media from files merely present on disk, and preserve the existing attachment
