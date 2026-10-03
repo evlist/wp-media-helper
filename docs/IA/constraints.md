@@ -52,22 +52,37 @@ sources with existing attachments are tracked in
 
 ## Security model for external source configuration
 
-- The external source settings page requires the `manage_options` capability.
-  Anyone who can reach it already has full site control, so it is treated as a
-  trusted-admin surface, not an untrusted-input boundary.
-- `root` is not restricted to an allow-listed filesystem scope: an admin can
-  point it at any absolute, existing, readable directory. Because of this,
-  rejecting `../` or absolute-path injection in `path_pattern` would not stop
-  a malicious admin (who could set `root` itself to a sensitive path) and
-  cannot be reached by a non-admin (blocked by the capability check and
-  nonce). Such a check was tried and removed for giving a false sense of
-  security; see the project history for details.
-- An admin-editable allow-list of permitted roots would not fix this either:
-  it would be stored and modified through the same `manage_options` surface,
-  so it moves the trust boundary nowhere. A scope restriction only becomes
-  meaningful if it is defined outside admin reach (for example a constant or
-  a filter set by the site owner in code), which is a larger architectural
-  feature and is not planned unless explicitly requested.
+- The external source settings page requires the `manage_options` capability,
+  which is not by itself the right to run code or read arbitrary files: on a
+  multisite network a site administrator cannot install plugins, and hardened
+  sites set `DISALLOW_FILE_MODS` / `DISALLOW_FILE_EDIT`. On a single site
+  without those restrictions an administrator can already execute PHP, so no
+  setting can stop a malicious one.
+- Every source `root` must therefore be a **sub-directory of an allowed base
+  directory**, which is the WordPress uploads directory by default. This keeps
+  the settings page from becoming a way to browse the rest of the file system
+  for administrators who are not otherwise trusted with it.
+- The allowed base is defined **outside the admin UI**, by the site owner in
+  code: the `WP_MEDIA_HELPER_ALLOWED_BASE` constant or the
+  `wp_media_helper_allowed_base` filter. An administrator-editable allow-list
+  would move the trust boundary nowhere, because it would be changed through the
+  same `manage_options` surface. Setting the constant or the filter result to
+  `false` lifts the restriction for installations that need roots elsewhere.
+- Containment is checked on canonical paths (`realpath()`), strictly below the
+  base, so `..` segments and symbolic links cannot escape it.
+- The check is made when settings are validated and saved, and again whenever
+  sources are loaded for the editor. A stored source whose root is outside the
+  base (for example after an upgrade, or after the base was changed) is treated
+  as disabled and reported with a warning on the settings page; the stored
+  configuration is left untouched.
+- Rejecting `../` inside `path_pattern` is still not done: the pattern is
+  resolved under a root that is itself confined, and the scanner verifies that
+  every file it returns resolves below the root.
+- Files under the uploads directory are normally served by the web server. The
+  plugin does not need HTTP access to external files, so private sources should
+  be blocked at the web-server level; the settings page warns about this and
+  the README gives examples. See
+  [slice 021](../slices/021-allowed-base-directory.md).
 
 ## Security model for editor AJAX endpoints
 
@@ -106,7 +121,9 @@ untrusted input.
 - Runtime code should stay under the PSR-4 structure rooted at
   `plugin/includes/{{Namespace}}/`.
 - Configuration should live in the plugin settings page rather than in ad hoc
-  runtime constants or shell-dependent setup.
+  runtime constants or shell-dependent setup. The only exception is the allowed
+  base directory (see the security model above): it is a trust boundary, so it
+  must stay out of reach of the settings page.
 
 ## Delivery discipline
 

@@ -5,6 +5,8 @@
 namespace WP_Media_Helper\Admin;
 
 use InvalidArgumentException;
+use WP_Media_Helper\MediaSource\PathConfinement;
+use WP_Media_Helper\Settings\AllowedBase;
 use WP_Media_Helper\Settings\ExternalSourceSettings;
 use WP_Media_Helper\Settings\GeneralSettings;
 
@@ -58,8 +60,18 @@ class ExternalSourceSettingsPage {
 		$pending = $this->consumePendingSubmission();
 		$sources = null === $pending ? $this->loadSources() : $pending['sources'];
 		$maxEntries = null !== $pending && null !== $pending['max_entries'] ? $pending['max_entries'] : (string) $this->loadGeneralSettings()->getMaxEntries();
-		$validationErrors = $this->getValidationErrors( $sources );
-		$notices = $this->buildErrorNotices( $sources );
+		// Stored sources outside the allowed base are reported as a warning instead.
+		$enforceBase = null !== $pending;
+		$validationErrors = $this->getValidationErrors( $sources, $enforceBase );
+		$notices = $this->buildErrorNotices( $sources, $enforceBase );
+		$disabledSources = null === $pending ? $this->findDisabledSourceNames( $sources ) : [];
+		$exposedUrls = [];
+		foreach ( $sources as $source ) {
+			$url = is_array( $source ) ? $this->publicUrlFor( (string) ( $source['root'] ?? '' ) ) : null;
+			if ( null !== $url ) {
+				$exposedUrls[] = $url;
+			}
+		}
 
 		if ( null !== $pending && '' !== $pending['message'] ) {
 			array_unshift( $notices, $pending['message'] );
@@ -80,6 +92,38 @@ class ExternalSourceSettingsPage {
 			<?php elseif ( isset( $_GET['updated'] ) ) : ?>
 				<div class="notice notice-success is-dismissible">
 					<p><?php esc_html_e( 'External media sources saved.', 'wp-media-helper' ); ?></p>
+				</div>
+			<?php endif; ?>
+
+			<?php if ( [] !== $disabledSources ) : ?>
+				<div class="notice notice-warning">
+					<p><strong><?php esc_html_e( 'Some external sources are disabled.', 'wp-media-helper' ); ?></strong>
+						<?php
+						printf(
+							/* translators: %s: allowed base directory path. */
+							esc_html__( 'Their root directory is not inside %s. Move them there, or ask the site owner to change the allowed base directory.', 'wp-media-helper' ),
+							'<code>' . esc_html( (string) AllowedBase::resolve() ) . '</code>'
+						);
+						?>
+					</p>
+					<ul class="ul-disc">
+						<?php foreach ( $disabledSources as $disabledName ) : ?>
+							<li><?php echo esc_html( $disabledName ); ?></li>
+						<?php endforeach; ?>
+					</ul>
+				</div>
+			<?php endif; ?>
+
+			<?php if ( [] !== $exposedUrls ) : ?>
+				<div class="notice notice-info">
+					<p><strong><?php esc_html_e( 'These directories are inside the uploads directory.', 'wp-media-helper' ); ?></strong>
+						<?php esc_html_e( 'Web servers usually serve that directory publicly, so anyone who knows or guesses a file URL can download it. If the files are private, block HTTP access to these URLs in your web server configuration (see the plugin README).', 'wp-media-helper' ); ?>
+					</p>
+					<ul class="ul-disc">
+						<?php foreach ( array_unique( $exposedUrls ) as $exposedUrl ) : ?>
+							<li><code><?php echo esc_html( $exposedUrl ); ?></code></li>
+						<?php endforeach; ?>
+					</ul>
 				</div>
 			<?php endif; ?>
 
@@ -162,8 +206,16 @@ class ExternalSourceSettingsPage {
 												printf(
 													/* translators: %s: example directory path, wrapped in a code element. */
 													esc_html__( 'Absolute path to the external media root, for example %s.', 'wp-media-helper' ),
-													'<code>/var/www/media</code>'
+													'<code>' . esc_html( ( AllowedBase::resolve() ?? '/var/www' ) . '/media' ) . '</code>'
 												);
+												if ( null !== AllowedBase::resolve() ) {
+													echo ' ';
+													printf(
+														/* translators: %s: allowed base directory path, wrapped in a code element. */
+														esc_html__( 'It must be a sub-directory of %s.', 'wp-media-helper' ),
+														'<code>' . esc_html( (string) AllowedBase::resolve() ) . '</code>'
+													);
+												}
 												?>
 											</p>
 											<?php if ( isset( $validationErrors[ $index ]['root'] ) ) : ?>
@@ -289,13 +341,14 @@ class ExternalSourceSettingsPage {
 		<?php
 	}
 
-	public function getValidationErrors( array $sources ): array {
+	public function getValidationErrors( array $sources, bool $enforceAllowedBase = true ): array {
 		$settings = new ExternalSourceSettings(
 			static fn(): mixed => [],
-			static function ( array $value ): void {}
+			static function ( array $value ): void {},
+			static fn(): ?string => AllowedBase::resolve()
 		);
 
-		return $settings->validateSources( $sources );
+		return $settings->validateSources( $sources, $enforceAllowedBase );
 	}
 
 	/**
@@ -304,10 +357,10 @@ class ExternalSourceSettingsPage {
 	 * @param array<int, array<string, mixed>> $sources
 	 * @return string[]
 	 */
-	public function buildErrorNotices( array $sources ): array {
+	public function buildErrorNotices( array $sources, bool $enforceAllowedBase = true ): array {
 		$notices = [];
 
-		foreach ( $this->getValidationErrors( $sources ) as $index => $fieldErrors ) {
+		foreach ( $this->getValidationErrors( $sources, $enforceAllowedBase ) as $index => $fieldErrors ) {
 			foreach ( $fieldErrors as $message ) {
 				$notices[] = sprintf(
 					/* translators: 1: position of the source in the form, 2: validation message. */
@@ -353,7 +406,8 @@ class ExternalSourceSettingsPage {
 			static fn(): mixed => get_option( ExternalSourceSettings::optionKey(), [] ),
 			static function ( array $value ): void {
 				update_option( ExternalSourceSettings::optionKey(), $value );
-			}
+			},
+			static fn(): ?string => AllowedBase::resolve()
 		);
 
 		try {
@@ -425,15 +479,56 @@ class ExternalSourceSettingsPage {
 		);
 	}
 
+	private function makeReadOnlySettings(): ExternalSourceSettings {
+		return new ExternalSourceSettings(
+			static fn(): mixed => get_option( ExternalSourceSettings::optionKey(), [] ),
+			static function ( array $value ): void {},
+			static fn(): ?string => AllowedBase::resolve()
+		);
+	}
+
+	/**
+	 * Names of enabled sources whose root is outside the allowed base directory.
+	 * Such sources are ignored by the editor panel until their root is fixed.
+	 *
+	 * @param array<int, array<string, mixed>> $sources
+	 * @return string[]
+	 */
+	private function findDisabledSourceNames( array $sources ): array {
+		$settings = $this->makeReadOnlySettings();
+		$names = [];
+		foreach ( $sources as $source ) {
+			if ( ! is_array( $source ) || ! filter_var( $source['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN ) ) {
+				continue;
+			}
+			$root = trim( (string) ( $source['root'] ?? '' ) );
+			if ( '' !== $root && file_exists( $root ) && ! $settings->isRootAllowed( $root ) ) {
+				$names[] = (string) ( $source['name'] ?? $root );
+			}
+		}
+
+		return $names;
+	}
+
+	/**
+	 * Public URL prefix under which a source root is reachable when the web
+	 * server serves the uploads directory, or null when it is not under it.
+	 */
+	private function publicUrlFor( string $root ): ?string {
+		$uploads = wp_upload_dir( null, false );
+		$realRoot = realpath( $root );
+		$realBase = is_array( $uploads ) && ! empty( $uploads['basedir'] ) ? realpath( (string) $uploads['basedir'] ) : false;
+		if ( false === $realRoot || false === $realBase || ! PathConfinement::isWithin( $realBase, $realRoot ) ) {
+			return null;
+		}
+
+		return trailingslashit( (string) $uploads['baseurl'] ) . ltrim( str_replace( '\\', '/', substr( $realRoot, strlen( $realBase ) ) ), '/' ) . '/';
+	}
+
 	/**
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function loadSources(): array {
-		$settings = new ExternalSourceSettings(
-			static fn(): mixed => get_option( ExternalSourceSettings::optionKey(), [] ),
-			static function ( array $value ): void {}
-		);
-
-		return $settings->getAll();
+		return $this->makeReadOnlySettings()->getAll();
 	}
 }

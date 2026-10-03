@@ -66,7 +66,7 @@ All settings are managed on the plugin's **Settings** page
 
 | Setting | Description |
 |---------|-------------|
-| **External media directories** | Optional. One or more absolute server paths to external media roots. Leave empty to use only the standard WordPress media library. |
+| **External media directories** | Optional. One or more absolute server paths to external media roots, each located inside the WordPress uploads directory (see [Allowed base directory](#allowed-base-directory)). Leave empty to use only the standard WordPress media library. |
 | **Path pattern** | Optional. Pattern used to derive the directory for a given date and source. Supports placeholders such as `{date:Y}`, `{date:m}`, `{date:d}` and `{source}`. If left empty, the resolver falls back to the source root directly, which is useful for static media sources that do not depend on the date. |
 | **Filter pattern** | Optional. Pattern used to further filter filenames after the target directory has been resolved. Supports placeholders such as `{date:Ymd}`. Defaults to an empty filter. |
 | **Maximum entries per page** | Number of media items shown per page in the editor panel, and the maximum number of items accepted by a single bulk action. Whole number between 1 and 500, default 100. |
@@ -75,6 +75,60 @@ All settings are managed on the plugin's **Settings** page
 Each external directory can define its own path pattern and optional filter
 pattern. This makes it possible to target different user trees without scanning
 large directory hierarchies.
+
+## Allowed base directory
+
+Every external source root must be a sub-directory of the WordPress uploads
+directory (for example `wp-content/uploads/nextcloud`). A source whose root is
+outside it is rejected when saving, and a source already stored outside it is
+disabled and flagged with a warning on the settings page.
+
+With Docker, mount the directories you want to expose inside the uploads
+directory, read-only:
+
+```yaml
+services:
+  wordpress:
+    volumes:
+      - /srv/nextcloud/data/alice/files/Photos:/var/www/html/wp-content/uploads/nextcloud/photos:ro
+```
+
+The site owner can move the base directory, or lift the restriction, from
+`wp-config.php` or a plugin; it cannot be changed from the admin screen:
+
+```php
+// A different base directory.
+define( 'WP_MEDIA_HELPER_ALLOWED_BASE', '/srv/media' );
+
+// Or through a filter. Return false to remove the restriction.
+add_filter( 'wp_media_helper_allowed_base', static fn () => '/srv/media' );
+```
+
+### Public access to files under uploads
+
+Web servers normally serve the uploads directory, so **anything mounted there
+can be downloaded by anyone who knows or guesses its URL**, even though the
+plugin itself never exposes these URLs. The settings page lists the public URL
+prefix of each source. If the files are private, block HTTP access to them in
+the web-server configuration:
+
+```apache
+# Apache, in the virtual host
+<Location "/wp-content/uploads/nextcloud">
+    Require all denied
+</Location>
+```
+
+```nginx
+# nginx
+location ^~ /wp-content/uploads/nextcloud/ { deny all; }
+```
+
+Adjust the URL prefix to your mount point. The plugin does not write these
+rules itself: read-only mounts cannot hold an `.htaccess` file, nginx ignores
+it, and a future feature may need to serve some of these files. The plugin's
+own index (`wp-media-helper-index`) is protected by an `.htaccess` file and an
+`index.php`, which nginx also requires you to deny in its configuration.
 
 ## Pagination
 
@@ -91,6 +145,8 @@ requests.
 - Every AJAX endpoint checks a capability and a nonce. Importing or attaching
   media requires `upload_files`; removing or detaching an attachment requires
   the matching `delete_post` / `edit_post` capability on that attachment.
+- Source roots must be inside the allowed base directory (the uploads
+  directory by default), which only the site owner can change.
 - File paths sent by the browser are never trusted: they are resolved with
   `realpath()` and accepted only when they point to a regular file below the
   root of an enabled source. `..` segments and symbolic links leaving the root

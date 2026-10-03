@@ -22,12 +22,29 @@ class ExternalSourceSettings {
 	private Closure $saver;
 
 	/**
+	 * @var (Closure(): ?string)|null
+	 */
+	private ?Closure $allowedBase;
+
+	/**
 	 * @param Closure(): mixed $loader
 	 * @param Closure(array<mixed>): void $saver
+	 * @param (Closure(): ?string)|null $allowedBase Returns the directory every root must be under, or null for no restriction.
 	 */
-	public function __construct( Closure $loader, Closure $saver ) {
-		$this->loader = $loader;
-		$this->saver  = $saver;
+	public function __construct( Closure $loader, Closure $saver, ?Closure $allowedBase = null ) {
+		$this->loader      = $loader;
+		$this->saver       = $saver;
+		$this->allowedBase = $allowedBase;
+	}
+
+	/**
+	 * Whether a source root is inside the allowed base directory (always true
+	 * when no base is configured).
+	 */
+	public function isRootAllowed( string $root ): bool {
+		$base = null === $this->allowedBase ? null : ( $this->allowedBase )();
+
+		return null === $base || AllowedBase::contains( $base, $root );
 	}
 
 	/**
@@ -65,7 +82,7 @@ class ExternalSourceSettings {
 	 * @param array<int, array<string, mixed>> $sources
 	 * @return array<int, array<string, string>>
 	 */
-	public function validateSources( array $sources ): array {
+	public function validateSources( array $sources, bool $enforceAllowedBase = true ): array {
 		$errors = [];
 
 		foreach ( $sources as $index => $source ) {
@@ -87,7 +104,7 @@ class ExternalSourceSettings {
 			if ( '' === $root ) {
 				$entryErrors['root'] = __( 'Root directory is required.', 'wp-media-helper' );
 			} else {
-				$rootError = $this->validateRootDirectory( $root );
+				$rootError = $this->validateRootDirectory( $root, $enforceAllowedBase );
 				if ( null !== $rootError ) {
 					$entryErrors['root'] = $rootError;
 				} else {
@@ -325,7 +342,7 @@ class ExternalSourceSettings {
 	/**
 	 * Checks that a root directory is an absolute, existing, readable directory.
 	 */
-	private function validateRootDirectory( string $root ): ?string {
+	private function validateRootDirectory( string $root, bool $enforceAllowedBase = true ): ?string {
 		if ( ! str_starts_with( $root, '/' ) ) {
 			return __( 'Root directory must be an absolute path.', 'wp-media-helper' );
 		}
@@ -340,6 +357,16 @@ class ExternalSourceSettings {
 
 		if ( ! is_readable( $root ) ) {
 			return __( 'Root directory is not readable.', 'wp-media-helper' );
+		}
+
+		if ( $enforceAllowedBase && ! $this->isRootAllowed( $root ) ) {
+			$base = null === $this->allowedBase ? '' : (string) ( $this->allowedBase )();
+
+			return sprintf(
+				/* translators: %s: allowed base directory path. */
+				__( 'Root directory must be a sub-directory of %s.', 'wp-media-helper' ),
+				$base
+			);
 		}
 
 		return null;

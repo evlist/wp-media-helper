@@ -6,6 +6,7 @@ namespace WP_Media_Helper\Admin;
 
 use DateTimeImmutable;
 use WP_Media_Helper\MediaSource\PathConfinement;
+use WP_Media_Helper\Settings\AllowedBase;
 use WP_Media_Helper\Settings\ExternalSourceSettings;
 use WP_Media_Helper\Settings\GeneralSettings;
 
@@ -270,15 +271,18 @@ class EditorMediaController {
 	private function getActiveSources(): array {
 		$settings = new ExternalSourceSettings(
 			static fn(): mixed => get_option( ExternalSourceSettings::optionKey(), [] ),
-			static function ( array $value ): void {}
+			static function ( array $value ): void {},
+			static fn(): ?string => AllowedBase::resolve()
 		);
 
-		return array_values( array_filter( $settings->getAll(), static function ( $source ): bool {
+		// A source whose root is outside the allowed base is treated as disabled.
+		return array_values( array_filter( $settings->getAll(), static function ( $source ) use ( $settings ): bool {
 			return is_array( $source )
 				&& ! empty( $source['id'] )
 				&& ! empty( $source['name'] )
 				&& ! empty( $source['root'] )
-				&& filter_var( $source['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN );
+				&& filter_var( $source['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN )
+				&& $settings->isRootAllowed( (string) $source['root'] );
 		} ) );
 	}
 
