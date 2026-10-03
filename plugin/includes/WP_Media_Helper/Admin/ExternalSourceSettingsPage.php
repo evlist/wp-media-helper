@@ -126,7 +126,7 @@ class ExternalSourceSettingsPage {
 			<?php if ( [] !== $exposedUrls ) : ?>
 				<div class="notice notice-info">
 					<p><strong><?php esc_html_e( 'These directories are inside the uploads directory.', 'wp-media-helper' ); ?></strong>
-						<?php esc_html_e( 'Web servers usually serve that directory publicly, so anyone who knows or guesses a file URL can download it. If the files are private, block HTTP access to these URLs in your web server configuration (see the plugin README).', 'wp-media-helper' ); ?>
+						<?php esc_html_e( 'Web servers usually serve that directory publicly, so anyone who knows or guesses a file URL can download it, and a script file added to these directories could be executed. Block HTTP access to these URLs if the files are private, and disable script execution there, in your web server configuration (see the plugin README).', 'wp-media-helper' ); ?>
 					</p>
 					<ul class="ul-disc">
 						<?php foreach ( array_unique( $exposedUrls ) as $exposedUrl ) : ?>

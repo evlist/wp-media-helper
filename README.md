@@ -135,11 +135,32 @@ the web-server configuration:
 location ^~ /wp-content/uploads/nextcloud/ { deny all; }
 ```
 
-Adjust the URL prefix to your mount point. The plugin does not write these
+Adjust the URL prefix to your mount point. Also make sure scripts cannot run from
+these directories: a `.php` file added to a source by anyone who can write to it
+would otherwise be executed by a server that runs PHP in uploads.
+
+```apache
+# Apache: no script execution under the source directory
+<Directory "/var/www/html/wp-content/uploads/nextcloud">
+    php_flag engine off
+    Options -ExecCGI
+    RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8
+</Directory>
+```
+
+```nginx
+# nginx: refuse PHP below the source directory
+# (place it before the generic "location ~ \.php$" block)
+location ~* ^/wp-content/uploads/nextcloud/.*\.php$ { deny all; }
+```
+
+The plugin does not write these
 rules itself: read-only mounts cannot hold an `.htaccess` file, nginx ignores
 it, and a future feature may need to serve some of these files. The plugin's
 own index (`wp-media-helper-index`) is protected by an `.htaccess` file and an
-`index.php`, which nginx also requires you to deny in its configuration.
+`index.php`, which nginx ignores: on nginx, deny
+`/wp-content/uploads/wp-media-helper-index/` explicitly (see weakness R2 in the
+[security audit](docs/IA/security-audit.md)).
 
 ## Pagination
 
@@ -173,7 +194,8 @@ requests.
   server directories are not sent back to the browser.
 
 See [Constraints and working rules](docs/IA/constraints.md) for the trust
-model.
+model and the [security audit](docs/IA/security-audit.md) for the known
+residual weaknesses.
 
 ## External Media Indexing
 

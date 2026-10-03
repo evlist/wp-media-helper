@@ -29,6 +29,15 @@ class SourceIndexer {
 		$directory = $resolver->resolvePath( $root, $pathPattern, $date, $sourceId );
 		$filter = '' === $filterPattern ? '' : $resolver->resolveFilter( $filterPattern, $date, $sourceId );
 
+		// The path pattern is resolved under the root; it must not climb out of it
+		// (`..`, or a symbolic link pointing elsewhere).
+		$realRoot = realpath( $root );
+		$realDirectory = realpath( $directory );
+		if ( false === $realRoot || false === $realDirectory
+			|| ( $realDirectory !== $realRoot && ! PathConfinement::isWithin( $realRoot, $realDirectory ) ) ) {
+			return [];
+		}
+
 		$files = ( new FilesystemScanner() )->find( $directory, $filter );
 		sort( $files, SORT_STRING );
 

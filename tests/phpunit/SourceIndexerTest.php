@@ -87,4 +87,28 @@ class SourceIndexerTest extends TestCase {
 			$date
 		);
 	}
+
+	public function test_a_path_pattern_cannot_climb_out_of_the_root(): void {
+		$outside = $this->root . '-outside';
+		mkdir( $outside );
+		touch( $outside . '/20260810-private.jpg' );
+		symlink( $outside, $this->root . '/2026/link' );
+
+		try {
+			$indexer = new SourceIndexer();
+			$date = new DateTimeImmutable( '2026-08-10' );
+
+			foreach ( [ '../' . basename( $outside ), '{date:Y}/../../' . basename( $outside ), '{date:Y}/link' ] as $pattern ) {
+				$this->assertSame(
+					[],
+					$indexer->findForDate( [ 'root' => $this->root, 'path_pattern' => $pattern, 'filter_pattern' => '{date:Ymd}', 'id' => 'a' ], $date, 'a' ),
+					$pattern
+				);
+			}
+		} finally {
+			unlink( $this->root . '/2026/link' );
+			unlink( $outside . '/20260810-private.jpg' );
+			rmdir( $outside );
+		}
+	}
 }

@@ -80,9 +80,11 @@ sources with existing attachments are tracked in
   outside the base (for example after an upgrade, or after the base was changed) is treated
   as disabled and reported with a warning on the settings page; the stored
   configuration is left untouched.
-- Rejecting `../` inside `path_pattern` is still not done: the pattern is
-  resolved under a root that is itself confined, and the scanner verifies that
-  every file it returns resolves below the root.
+- `path_pattern` is not syntactically rejected for `..`, but the resolved
+  directory is verified with `realpath()` to be the root or inside it before
+  anything is scanned (`SourceIndexer`), so `..` and symbolic links cannot make
+  the scan leave the root. The scanner also verifies that every file it returns
+  is inside the scanned directory.
 - Files under the uploads directory are normally served by the web server. The
   plugin does not need HTTP access to external files, so private sources should
   be blocked at the web-server level; the settings page warns about this and
@@ -118,6 +120,9 @@ untrusted input.
   to the current date.
 - Server-side absolute directories are not returned to the browser, and
   `other_post_id` is blanked when the user cannot edit that post.
+
+Residual weaknesses, with their status, are tracked in the
+[security audit](security-audit.md).
 
 ## Repository and environment constraints
 
