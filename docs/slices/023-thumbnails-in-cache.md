@@ -82,6 +82,10 @@ Checked in the WordPress trunk source:
   **no absolute path**. The location is always derived, so the metadata stays
   portable and discloses nothing.
 
+The global cache is excluded from every source by the built-in exclusions of
+[slice 024](024-source-priority-and-ownership.md), so no source lists thumbnails
+as media, even a source on the uploads directory itself.
+
 ### 2. URLs
 
 For attachments whose sizes live in the cache (created by this plugin or by

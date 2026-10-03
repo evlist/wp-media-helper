@@ -76,6 +76,13 @@ only below the canonical cache directory with a fixed image extension, and
 re-checked against the allowed base at write time, not only when settings are
 saved.
 
+## Planned amendment
+
+[Slice 024](024-source-priority-and-ownership.md) proposes to let a root equal the
+base itself and a cache lie inside a root (it is then excluded automatically),
+with an ordered list of sources where each file has a single owner. The rules
+above describe the current implementation.
+
 ## Non-goals
 
 - Restricting the base from the admin UI.

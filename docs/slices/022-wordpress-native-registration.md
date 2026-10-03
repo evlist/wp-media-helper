@@ -138,6 +138,12 @@ therefore a transition, not a target:
   thereafter treats it as its own. Only meta is added; nothing else about the
   attachment changes. The alternative is an explicit "adopt" action.
 
+## Interaction with source ownership
+
+[Slice 024](024-source-priority-and-ownership.md) makes the sources an ordered
+list in which each file has one owner. Registration records the provenance of the
+**owner**, resolved on the server, and recognition never depends on it.
+
 ## Scope
 
 Files below the uploads directory (the allowed base, slice 021). Files outside
