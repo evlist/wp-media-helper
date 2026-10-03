@@ -92,6 +92,17 @@ sources, even for files never published.
   inside uploads to URLs), and decide whether unattached imports should be
   readable by anonymous users at all.
 
+### R3b - Medium: absolute server paths in other plugins' attachment metadata
+
+Observed on the target site and confirmed in the sources of Thumbnails Folder
+1.4.0 and WordPress trunk: Thumbnails Folder deliberately stores an absolute
+`path` in each size entry of `_wp_attachment_metadata`, and the REST media
+endpoint returns `media_details` as stored. The server path of every thumbnail
+is therefore part of the API response. This plugin does not write such keys;
+the migration planned in [slice 023](../slices/023-thumbnails-in-cache.md)
+removes them, and a REST filter can hide them in the meantime. Check
+`/wp-json/wp/v2/media/<id>` on the site to see what is exposed.
+
 ### R4 - Medium: any user with `edit_posts` can enumerate sources and force rescans
 
 The panel and the listing endpoint require only `edit_posts`. A Contributor
@@ -182,7 +193,7 @@ first candidates.
 
 Several residual weaknesses are addressed by the proposed slices:
 
-- R3 (server path in `guid`) and R5 (attachment scan): [slice 022](../slices/022-wordpress-native-registration.md).
+- R3 (server path in `guid`), R3b and R5 (attachment scan): [slice 022](../slices/022-wordpress-native-registration.md).
 - R6 (deletion of originals): the `wp_delete_file` guard of slice 022.
 - Resource exhaustion by on-demand thumbnails (new risk): the allow-list and
   limits of [slice 023](../slices/023-thumbnails-in-cache.md).

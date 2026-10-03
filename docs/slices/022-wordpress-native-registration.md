@@ -34,6 +34,44 @@ created itself. So the Media Library shows its imports without dimensions or
 thumbnails, imports of an already registered file are duplicated, and the
 guid discloses a server path.
 
+## What Bulk Media Register does (version 1.41, read from its source)
+
+- It works **inside the uploads directory** only (it lists and registers files
+  below `wp_upload_dir()['basedir']`), recursively, with extension, text and
+  exclusion filters, in time-limited batches.
+- For each file: `wp_insert_attachment()` with a `guid` that is the file URL,
+  `post_author` the current user, status `inherit`, `post_title` the file name
+  without extension; then `_wp_attached_file` set to the **path relative to
+  uploads**.
+- **It renames the file on disk** when `sanitize_file_name()` would change its
+  name.
+- The attachment date follows a setting: the file's modification time, the time
+  of registration, or a fixed date.
+- It calls `wp_generate_attachment_metadata()`, which writes sub-sizes next to
+  the original (or wherever another tool redirects them) and can create a
+  `-scaled` or `-rotated` copy and an `original_image` key.
+- It skips files that already have an attachment by comparing
+  `_wp_attached_file` exactly, and can email a result report with a CSV.
+- Its changelog records a fixed path traversal (version 1.32), a reminder that
+  this class of weakness applies to this kind of plugin.
+
+This confirms that the uploads-relative representation, exact-path recognition
+and uploads-only scope proposed here are the established model.
+
+## Feature parity with Bulk Media Register
+
+| Feature | Decision |
+|---------|----------|
+| Folder structure kept | Implicit: files are registered in place |
+| Title from file name | Yes, as core and that tool do |
+| Metadata for images, audio, video | Yes (without writing files, see above) |
+| Attachment date | Proposed: the file's date (EXIF capture date for images, else modification time), as in date-based workflows; open question |
+| Renaming files whose names core would sanitise | **No**: the plugin never modifies a source. Such names are an open question |
+| Sub-sizes at registration | Delegated to [slice 023](023-thumbnails-in-cache.md) |
+| Extension, text and exclusion filters | Covered by the panel filters (slices 018, 019) |
+| Email report and CSV | Out of scope |
+| Batched registration with time limit | Covered by bulk actions limited to `max_entries` (slice 020) |
+
 ## Replacing Bulk Media Register
 
 The README states that this plugin is designed to make Bulk Media Register
@@ -146,8 +184,12 @@ This closes weakness R6 of the [security audit](../IA/security-audit.md).
 
 ## Open questions
 
-- Which behaviors of Bulk Media Register must be reproduced (title, dates,
-  parent post, subdirectories, batch size), and which can be dropped?
+- Attachment date: file date (EXIF capture date, else modification time),
+  registration time, or a per-source setting?
+- File names that `sanitize_file_name()` would change (spaces, accents,
+  characters such as `#` or `%` that break an unencoded URL, since
+  `wp_get_attachment_url()` does not encode): register them with an encoded URL,
+  skip them with a message, or both?
 - Adoption of recognised attachments: automatic when under an enabled source,
   or explicit?
 

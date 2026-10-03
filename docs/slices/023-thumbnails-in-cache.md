@@ -10,149 +10,155 @@ Status: **proposed** (design only, not implemented). Depends on
 
 Generate and serve the image sub-sizes of registered media from a separate
 cache directory, so that originals can stay on a read-only or shared file
-system, and so that this plugin can replace tools such as Thumbnails Folder
-without changing existing thumbnail URLs.
+system, and so that this plugin can replace Thumbnails Folder without changing
+existing thumbnail URLs.
 
-## Replacing Thumbnails Folder
+## What Thumbnails Folder does (version 1.4.0, read from its source)
 
-The README states that this plugin is designed to make Thumbnails Folder
-unnecessary. The migration must therefore be safe and ordered:
+Hooks and behavior, as verified in the plugin's code:
 
-1. enable this plugin's thumbnail handling for the directories the replaced tool
-   covered (each needs a source with a cache, or a cache covering the uploads
-   directories that tool handled);
-2. check that existing thumbnail URLs still resolve, by file reuse and URL
-   rewriting that do **not** rely on the replaced tool;
-3. only then deactivate the replaced tool.
+- `intermediate_image_sizes_advanced` and `fallback_intermediate_image_sizes`
+  return an empty list, so **no sub-size is generated at upload or registration**.
+- `image_downsize` generates a sub-size **on demand, when WordPress code asks
+  for a named size** of an attachment (for example when a page is rendered),
+  unless the size already exists in the new location. Generation is not
+  triggered by an HTTP request for a missing file. Sizes that are not smaller
+  than the original are skipped, and WordPress then falls back to the full image.
+- The generated file goes to `<uploads>/thumbnails/<path of the original relative
+  to uploads>/<name>-<W>x<H>.<ext>` (the folder name can be changed with a
+  filter; multisite uses the per-site uploads directory).
+- The size entry in `_wp_attachment_metadata` keeps an **absolute `path`** key.
+  The plugin says so explicitly: this path is used to compute the URL and to
+  delete the file, whereas core removes it. The `file` key stays a bare file name.
+- `wp_calculate_image_srcset` is filtered to replace the URLs of such sizes, and
+  `image_downsize` returns the cache URL for them.
+- `delete_attachment` deletes the files listed by those `path` keys. A WP-CLI
+  command and a Tools page delete all thumbnails.
+- Only images uploaded after activation are affected; non-image files (PDF) get
+  a converted preview stored as `sizes.full`.
+- Its uninstall procedure asks to regenerate thumbnails and delete the folder:
+  deactivating it alone leaves metadata that core resolves **next to the
+  original**, so the cache URLs stop working.
 
-After step 3, this plugin alone resolves the URLs of sizes stored in the cache,
-including those of attachments it did not create (for example registered by
-Bulk Media Register), since core builds size URLs next to the original and
-nothing else would redirect them. Attachments outside every configured source
-and cache would lose their thumbnail URLs, so the settings page should warn
-about uncovered directories when migrating.
+Observed on the target site, this matches an attachment whose metadata holds
+`width`, `height`, `file` (relative), `filesize`, `image_meta` and six sizes
+(`thumbnail`, `medium`, `medium_large` 512x288, `large`, plus two custom sizes
+`gpxmaps` and `gallery`), each with the absolute `path` and thumbnails at
+`uploads/thumbnails/photos/2026/eric/10/02/<name>-<W>x<H>.jpg`.
 
-## Observed layout (real site, used as the compatibility target)
+## Facts about WordPress core that shape the design
 
-For an original `uploads/photos/2026/eric/10/02/20261002_121549.jpg` the
-attachment metadata contains `width`, `height`, `file` (relative path),
-`filesize`, `image_meta` and six `sizes`: `thumbnail` (150x150), `medium`
-(300x169), `medium_large` (512x288), `large` (1024x577) and two sizes added by
-a theme or plugin (`gpxmaps` 400x225, `gallery` 480x270). The thumbnails are
-files and public URLs below:
+Checked in the WordPress trunk source:
 
-`uploads/thumbnails/photos/2026/eric/10/02/20261002_121549-1024x577.jpg`
-
-That is: `<cache>/<directory of the relative path>/<name>-<W>x<H>.<ext>`. Each
-size entry has the core keys (`file` is the bare file name) **plus a non-core
-`path` key holding an absolute server path**, which is evidently added by the
-tool that moved the thumbnails. Core resolves a size URL from the directory of
-the original, so that tool must also rewrite URLs.
-
-Consequences for the design:
-
-- the cache layout mirrors the **uploads-relative** path of the original, not
-  the path relative to the source root;
-- sizes are those registered at generation time (custom names, a changed
-  `medium_large`), so the plugin must use WordPress's current size list, never
-  a hard-coded one;
-- the absolute `path` key leaks the server layout through any API that returns
-  attachment metadata, and must not be written by this plugin.
+- `image_get_intermediate_size()` only computes `path` and `url` when `path` is
+  empty, and the URL it builds is next to the original. Anything stored elsewhere
+  therefore needs filters for URLs.
+- The REST media endpoint returns `media_details` as stored, only renaming
+  `mime-type`. **The absolute `path` kept by Thumbnails Folder is therefore
+  returned by `/wp-json/wp/v2/media/<id>`** (whether anonymous visitors can read
+  that item depends on the site; check on the target site). It discloses the
+  server layout.
 
 ## Requirements
 
-### 1. Layout and reuse
+### 1. Layout, reuse and source of truth
 
-- Thumbnails are written to `<cache>/<dirname(relative path)>/<name>-<W>x<H>.<ext>`,
-  where `W` and `H` are the dimensions WordPress computes for that size. Existing
-  files at that location are **reused, never regenerated or renamed**.
-- Size entries written to `_wp_attachment_metadata` use the core keys only
-  (`file`, `width`, `height`, `mime-type`, `filesize`) and no absolute path. An
-  existing `path` key written by another tool is tolerated and read as a hint,
-  after checking that it lies inside the cache.
+- Cache layout is the one above: `<cache>/<dirname(relative path)>/<name>-<W>x<H>.<ext>`.
+  `W` and `H` are the dimensions WordPress computes for that size.
+- For an existing size entry with a `path` written by Thumbnails Folder, the
+  file at that path is **reused** when it lies inside the cache, never
+  regenerated or renamed. Without `path`, the location is derived from the layout
+  and existing files are reused too.
+- For sizes generated by this plugin, the `_wp_attachment_metadata` entry holds
+  the core keys only (`file`, `width`, `height`, `mime-type`, `filesize`) and
+  **no absolute path**. The location is always derived, so the metadata stays
+  portable and discloses nothing.
 
 ### 2. URLs
 
-The cache must be inside the uploads directory so its files have a public URL.
-Where an attachment's original is in a source with a cache, the URLs returned
-by WordPress for its sizes (`image_downsize`, `wp_get_attachment_image_src`,
-`wp_calculate_image_srcset`, `wp_prepare_attachment_for_js` and the REST media
-response) point to the cache. URLs already under the cache are left alone, so
-that this plugin and another thumbnail tool can coexist during a migration.
+For attachments whose sizes live in the cache (created by this plugin or by
+Thumbnails Folder), the URLs returned by WordPress for sizes point to the cache:
+`image_downsize` and, through it, `wp_get_attachment_image_src`, the Media
+Library, the REST `source_url`; `wp_calculate_image_srcset`. URLs already in the
+cache are left alone, so both plugins can run together during a migration.
 
-### 3. Generation on first request
+### 3. Generation on demand, at render time
 
-As the README says, thumbnails are generated lazily. A request for a
-thumbnail that does not exist yet reaches WordPress as an ordinary not-found
-request; a handler recognises the cache URL pattern, generates the file with
-the WordPress image editor, stores it and answers with it. Later requests are
-served directly by the web server.
+Same model as Thumbnails Folder: when WordPress asks for a registered size of an
+attachment and the file does not exist, generate it with the WordPress image
+editor, store it, and return its URL. **There is no public handler that
+generates files from a requested URL.** This removes the main denial-of-service
+and enumeration surface: only registered sizes of real attachments can trigger
+work, and only from code paths that were already going to render that image.
 
-The handler is strict because it can be triggered by anyone:
+Safeguards: a lock per target file against concurrent generation, limits on
+image dimensions and memory, no generation when the size is not smaller than the
+original, and no write outside the canonical cache directory. The original is
+never modified: no `-scaled` or `-rotated` copy; EXIF orientation is applied to
+the thumbnail only. Optionally, sizes can also be generated at registration
+(open question).
 
-- the request is parsed with a fixed pattern and is **only a key**: the
-  attachment is looked up from the relative path (slice 022), and the output
-  file name and dimensions are computed from the attachment record and a
-  registered size, never from the request string;
-- only dimensions that match a **currently registered size** for that original
-  are generated, so a visitor cannot make the server create arbitrary sizes;
-- no path component may contain `..`, null bytes or a stream wrapper, and the
-  target must stay below the cache after canonicalisation;
-- generation is limited in image size and memory, takes a lock per target to
-  avoid concurrent duplicates, and unknown or unregistered originals answer 404;
-- the original is never modified: no `-scaled` or `-rotated` copy; EXIF
-  orientation is applied to the thumbnail only.
+### 4. Lifecycle and parity
 
-### 4. Lifecycle
+- Deleting an attachment deletes its files in the cache: those listed by `path`
+  when present, those derived from the layout otherwise, and never the original
+  (slice 022).
+- A purge command for the cache, equivalent to Thumbnails Folder's WP-CLI
+  command and Tools page, is a parity feature (see open questions).
+- When registered sizes change, missing sizes are generated on demand and
+  existing files are left alone.
+- A source's cache must be separate from its root (slice 021).
 
-- Removing an attachment created by this plugin deletes its cache files and
-  never the original (slice 022).
-- When registered sizes change, missing sizes are generated on demand; existing
-  files are not touched. A maintenance action to purge the cache can be added
-  later.
-- A source's cache must be separate from its root (slice 021), and the settings
-  page already shows its public URL prefix.
+### 5. Migration from Thumbnails Folder
+
+1. Enable the thumbnail handling of this plugin for the directories that tool
+   covered.
+2. Verify that existing thumbnail URLs still resolve without the old plugin.
+3. Deactivate the old plugin.
+
+Because the old plugin's metadata keeps working with this design (its `path` is
+honored, the layout is the same) no regeneration is needed. A one-off
+maintenance action can then **remove the absolute `path` keys** from stored
+metadata, which closes the REST disclosure above. Until then, a filter on the
+REST response can hide them.
+
+Attachments outside every configured source and cache would lose their thumbnail
+URLs when the old plugin is deactivated, so the settings page should warn about
+uncovered directories.
 
 ## Security
 
 Thumbnails are public derivatives by design, so only images the site accepts to
-publish may be given a public cache. Cache locations, hashing of generated
-names (when names are not mirrored), and writes follow the rules listed in
-[slice 021](021-allowed-base-directory.md). The generation handler raises the
-resource-exhaustion concern (R5 of the [audit](../IA/security-audit.md)), hence
-the registered-size allow-list, the limits and the locks above.
+publish may be given a public cache. Cache location and write rules follow
+[slice 021](021-allowed-base-directory.md). Because generation is driven by
+registered sizes and render-time requests, the resource-exhaustion concern (R5
+in the [audit](../IA/security-audit.md)) is limited to the locks and limits above.
 
 ## Non-goals
 
 - Private (non-public) files: they need the access endpoint planned separately.
-- Video posters and non-image previews.
+- Converting non-image files to previews (PDF, video posters) in this slice.
 - A thumbnail CDN or external storage.
 
 ## Acceptance criteria
 
-1. Existing thumbnail files at the mirrored location are reused and their URLs
-   keep working.
-2. A missing registered size is generated on first request and served directly
-   afterwards.
-3. A request for an unregistered size, an unknown file or a path outside the
-   cache creates nothing and answers 404.
-4. No absolute path is written to attachment metadata or returned by the REST
-   API.
+1. Existing thumbnail files in the cache (with or without a `path` key) are
+   reused and their URLs keep working with the old plugin deactivated.
+2. A missing registered size is generated at render time, stored in the cache and
+   served directly afterwards.
+3. No URL request alone makes the plugin generate a file.
+4. No absolute path is written to attachment metadata by this plugin, and the
+   migration action removes those written by Thumbnails Folder.
 5. The original file is never created, modified or deleted.
 6. A source on a read-only mount works when it has a writable cache.
+7. Deleting an attachment removes its thumbnails, wherever they were recorded.
 
 ## Open questions
-
-- Which features of Thumbnails Folder must be reproduced (configurable base
-  directory, which sizes, generation at upload time or on demand, regeneration
-  and cleanup tools, handling of uploads outside the photo directory)?
-- How to detect directories that were handled by the replaced tool but are not
-  covered by a source and cache, before it is deactivated?
 
 - Per-source cache directories (as configured today) or a single global cache
   mirrored on uploads-relative paths (as on the observed site)?
 - Generate sizes at registration as well as on demand?
-- How to migrate from Thumbnails Folder: read its `path` hints, or ignore them
-  and rely on the mirrored layout?
+- Which parity features are needed: purge command, a Tools page, handling of PDF
+  previews?
 - Which formats (WebP, AVIF) and which image editor (GD or Imagick) are
   supported?
