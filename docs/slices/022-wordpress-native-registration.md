@@ -34,6 +34,27 @@ created itself. So the Media Library shows its imports without dimensions or
 thumbnails, imports of an already registered file are duplicated, and the
 guid discloses a server path.
 
+## Replacing Bulk Media Register
+
+The README states that this plugin is designed to make Bulk Media Register
+unnecessary for date-based external directory workflows. Coexistence is
+therefore a transition, not a target:
+
+- everything that tool registered must keep working **after it is deactivated**:
+  its attachments are ordinary WordPress attachments and stay valid, and this
+  plugin must keep recognising them (requirement 3);
+- the features of that tool that users rely on (for example how the title, the
+  date or the parent post of an attachment are set at registration) must be
+  inventoried and either supported or explicitly dropped; this is an open
+  question below;
+- **adoption.** Because Remove is limited to attachments created by this
+  plugin, an attachment registered earlier by the replaced tool would become
+  unmanageable. Proposed policy: when an existing attachment is recognised and
+  its file is below an *enabled* source root, the plugin adds its provenance
+  meta (`_wp_media_helper_source_id`, `_wp_media_helper_source_path`) and
+  thereafter treats it as its own. Only meta is added; nothing else about the
+  attachment changes. The alternative is an explicit "adopt" action.
+
 ## Scope
 
 Files below the uploads directory (the allowed base, slice 021). Files outside
@@ -124,6 +145,11 @@ This closes weakness R6 of the [security audit](../IA/security-audit.md).
 6. No attachment field or REST response contains a server path.
 
 ## Open questions
+
+- Which behaviors of Bulk Media Register must be reproduced (title, dates,
+  parent post, subdirectories, batch size), and which can be dropped?
+- Adoption of recognised attachments: automatic when under an enabled source,
+  or explicit?
 
 - Should legacy absolute attachments be normalised in bulk (a one-off
   migration) or lazily, when touched? The plugin is at version 0.1.0, so few

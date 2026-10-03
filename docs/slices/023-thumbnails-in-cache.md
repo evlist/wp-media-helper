@@ -13,6 +13,25 @@ cache directory, so that originals can stay on a read-only or shared file
 system, and so that this plugin can replace tools such as Thumbnails Folder
 without changing existing thumbnail URLs.
 
+## Replacing Thumbnails Folder
+
+The README states that this plugin is designed to make Thumbnails Folder
+unnecessary. The migration must therefore be safe and ordered:
+
+1. enable this plugin's thumbnail handling for the directories the replaced tool
+   covered (each needs a source with a cache, or a cache covering the uploads
+   directories that tool handled);
+2. check that existing thumbnail URLs still resolve, by file reuse and URL
+   rewriting that do **not** rely on the replaced tool;
+3. only then deactivate the replaced tool.
+
+After step 3, this plugin alone resolves the URLs of sizes stored in the cache,
+including those of attachments it did not create (for example registered by
+Bulk Media Register), since core builds size URLs next to the original and
+nothing else would redirect them. Attachments outside every configured source
+and cache would lose their thumbnail URLs, so the settings page should warn
+about uncovered directories when migrating.
+
 ## Observed layout (real site, used as the compatibility target)
 
 For an original `uploads/photos/2026/eric/10/02/20261002_121549.jpg` the
@@ -123,6 +142,12 @@ the registered-size allow-list, the limits and the locks above.
 6. A source on a read-only mount works when it has a writable cache.
 
 ## Open questions
+
+- Which features of Thumbnails Folder must be reproduced (configurable base
+  directory, which sizes, generation at upload time or on demand, regeneration
+  and cleanup tools, handling of uploads outside the photo directory)?
+- How to detect directories that were handled by the replaced tool but are not
+  covered by a source and cache, before it is deactivated?
 
 - Per-source cache directories (as configured today) or a single global cache
   mirrored on uploads-relative paths (as on the observed site)?
