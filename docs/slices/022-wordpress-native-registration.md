@@ -130,13 +130,12 @@ therefore a transition, not a target:
   date or the parent post of an attachment are set at registration) must be
   inventoried and either supported or explicitly dropped; this is an open
   question below;
-- **adoption.** Because Remove is limited to attachments created by this
-  plugin, an attachment registered earlier by the replaced tool would become
-  unmanageable. Proposed policy: when an existing attachment is recognised and
-  its file is below an *enabled* source root, the plugin adds its provenance
-  meta (`_wp_media_helper_source_id`, `_wp_media_helper_source_path`) and
-  thereafter treats it as its own. Only meta is added; nothing else about the
-  attachment changes. The alternative is an explicit "adopt" action.
+- **adoption.** An attachment registered earlier by the replaced tool is already
+  fully manageable (attach, detach, remove). Adoption would only add this
+  plugin's provenance meta (`_wp_media_helper_source_id`,
+  `_wp_media_helper_source_path`), either automatically when the file is below an
+  *enabled* source root, or through an explicit "adopt" action. Nothing else about
+  the attachment would change.
 
 ## Interaction with source ownership
 
@@ -200,12 +199,20 @@ a source of false positives.
 
 ### 4. Removal
 
-*Remove* deletes only attachments **created by this plugin** (provenance meta
-present). For any other attachment the plugin does not offer removal; it only
-offers detaching from the current post. Removing an attachment never deletes
-the original file: a `wp_delete_file` filter refuses any path inside a source
-root, and the attachment's own thumbnails in the cache are deleted with it.
-This closes weakness R6 of the [security audit](../IA/security-audit.md).
+*Remove* deletes the attachments of the file **whichever tool created them**,
+provided the user may delete them and they are not attached to a post. It only
+removes the WordPress record: the original file is never deleted, so the
+operation is low-risk, and a `wp_delete_file` filter refuses every file deletion
+for the duration of the call. This closes weakness R6 of the
+[security audit](../IA/security-audit.md).
+
+Known consequences for attachments created by other tools: files they generated
+(sub-sizes, for example the thumbnails of Thumbnails Folder) stay on disk, since
+the filter refuses their deletion too, and posts that referred to the attachment
+by its ID (featured image, galleries) lose that reference, as with any removal
+of a media from the library. The URLs already written in post content keep
+working because the files remain. Cleaning up generated thumbnails belongs to
+[slice 023](023-thumbnails-in-cache.md).
 
 ## Security
 
@@ -242,9 +249,9 @@ This closes weakness R6 of the [security audit](../IA/security-audit.md).
 - Panel state (imported, attached here, attached elsewhere) is computed from the
   attachments found for the listed files, by exact path. The earlier fuzzy
   matching on file names has been removed.
-- Removal deletes only attachments created by this plugin. During the call a
-  `wp_delete_file` filter refuses every file deletion, and `_wp_attached_file` is
-  removed first, so no original file is ever deleted.
+- Removal applies to the attachments of the file whichever tool created them.
+  During the call a `wp_delete_file` filter refuses every file deletion, and
+  `_wp_attached_file` is removed first, so no original file is ever deleted.
 - Attachments created by earlier versions of this plugin are rewritten in the
   native form when they are next recognised on import or attach.
 
@@ -254,11 +261,11 @@ This closes weakness R6 of the [security audit](../IA/security-audit.md).
   the WordPress uploads directory can be registered). They would need an absolute
   representation and an access endpoint. This only matters when the allowed base
   directory has been moved out of uploads by the site owner.
-- Adoption of attachments created by other tools. Recognised attachments can be
-  attached and detached but not removed. The automatic adoption proposed above is
-  not done, because on a source covering WordPress's own upload folders it would
-  also capture native uploads; it stays to be decided (explicit action, or only for
-  attachments without sizes next to the original).
+- Adoption of attachments created by other tools (adding this plugin's
+  provenance meta to them). Recognised attachments can already be attached,
+  detached and removed, so adoption is now only about provenance. The automatic
+  adoption proposed above is not done, because on a source covering WordPress's own
+  upload folders it would also capture native uploads; it stays to be decided.
 - Recording the date source, GPX dates, a configurable date order.
 - Sub-sizes (slice 023).
 
@@ -270,8 +277,8 @@ This closes weakness R6 of the [security audit](../IA/security-audit.md).
 3. Registering a file that already has an attachment, whatever its origin,
    reuses it and creates no duplicate.
 4. The panel reports foreign attachments as *In WP media library*.
-5. *Remove* is refused for attachments not created by this plugin, and never
-   deletes an original file.
+5. *Remove* deletes the attachments of a file whichever tool created them, and
+   never deletes a file.
 6. No attachment field or REST response contains a server path.
 
 ## Open questions

@@ -497,16 +497,9 @@ class EditorMediaController {
 				continue;
 			}
 
-			// Removal only concerns attachments created by this plugin.
-			$owned = array_values( array_filter( $rows, static fn ( array $row ): bool => $row['owned'] ) );
-			if ( [] !== $rows && [] === $owned && [] === $detached ) {
-				$result['message'] = __( 'This media was not registered by this plugin, so it cannot be removed here.', 'wp-media-helper' );
-				$result['operation'] = 'protected_foreign';
-				$results[] = $result;
-				continue;
-			}
-
-			$removed = $this->removeOwnedRows( $owned );
+			// Removing an attachment never deletes a file, so it applies to the
+			// attachments of the file whichever tool created them.
+			$removed = $this->removeRows( $rows );
 			$result['success'] = true;
 			$result['is_imported'] = [] !== $registry->findByPath( $item['path'] );
 			$result['detached_ids'] = $detached;
@@ -519,8 +512,8 @@ class EditorMediaController {
 	}
 
 	/**
-	 * Deletes attachments created by this plugin, which are not attached to a
-	 * post, without ever deleting a file.
+	 * Deletes the attachments of a file, which are not attached to a post,
+	 * whichever tool created them, without ever deleting a file.
 	 *
 	 * `wp_delete_post()` deletes the attached file and its sub-sizes. The
 	 * `_wp_attached_file` meta is removed first so that core finds nothing to
@@ -530,7 +523,7 @@ class EditorMediaController {
 	 * @param array<int, array{id:int, parent:int, owned:bool}> $rows
 	 * @return int[]
 	 */
-	private function removeOwnedRows( array $rows ): array {
+	private function removeRows( array $rows ): array {
 		$removed = [];
 		$refuse = static fn (): string => '';
 		add_filter( 'wp_delete_file', $refuse, PHP_INT_MAX );

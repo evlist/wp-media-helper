@@ -138,8 +138,9 @@ every 30 seconds, and attachment lookups load every imported attachment
 ### R6 - Low: removal depends on WordPress internals to spare the original file
 
 Status: **fixed** by slice 022. During removal a `wp_delete_file` filter refuses
-every deletion, in addition to removing `_wp_attached_file` first, and only
-attachments created by this plugin can be removed.
+every deletion, in addition to removing `_wp_attached_file` first. Removal applies
+to the attachments of the file whichever tool created them, since it never deletes
+a file.
 
 `remove` deletes the attachment with `wp_delete_post( $id, true )`, after
 deleting `_wp_attached_file` so that core finds no file to delete. If another
