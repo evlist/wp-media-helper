@@ -30,7 +30,9 @@
 		}
 	};
 
-	const buildField = function ( index, key, slug, label, optional, description ) {
+	const allowedBase = ( window.wpMediaHelperSettings && window.wpMediaHelperSettings.allowedBase ) || '';
+
+	const buildField = function ( index, key, slug, label, optional, description, prefix ) {
 		const fieldId = 'wp-media-helper-source-' + slug + '-' + index;
 		const optionalTag = optional
 			? ' <span class="description">' + esc( __( '(optional)', 'wp-media-helper' ) ) + '</span>'
@@ -40,6 +42,7 @@
 			<tr>
 				<th scope="row"><label for="${ fieldId }">${ esc( label ) }${ optionalTag }</label></th>
 				<td>
+					${ prefix ? '<code class="wp-media-helper-root-prefix">' + esc( prefix ) + '</code>' : '' }
 					<input id="${ fieldId }" type="text" class="regular-text" name="sources[${ index }][${ key }]" value="" aria-describedby="${ fieldId }-description" />
 					<p class="description" id="${ fieldId }-description">${ description }</p>
 				</td>
@@ -67,11 +70,18 @@
 				'root',
 				__( 'Root directory', 'wp-media-helper' ),
 				false,
-				sprintf(
-					/* translators: %s: example directory path, wrapped in a code element. */
-					esc( __( 'Absolute path to the external media root, for example %s.', 'wp-media-helper' ) ),
-					'<code>/var/www/media</code>'
-				)
+				allowedBase
+					? sprintf(
+						/* translators: %s: example directory path relative to the base directory, wrapped in a code element. */
+						esc( __( 'Directory of the external media, relative to the base directory shown on the left, for example %s.', 'wp-media-helper' ) ),
+						'<code>nextcloud/photos</code>'
+					)
+					: sprintf(
+						/* translators: %s: example directory path, wrapped in a code element. */
+						esc( __( 'Absolute path to the external media root, for example %s.', 'wp-media-helper' ) ),
+						'<code>/var/www/media</code>'
+					),
+				allowedBase ? allowedBase.replace( /[\\/]+$/, '' ) + '/' : ''
 			),
 			buildField(
 				index,

@@ -45,6 +45,12 @@ class ExternalSourceSettingsPage {
 			true
 		);
 
+		wp_localize_script(
+			$handle,
+			'wpMediaHelperSettings',
+			[ 'allowedBase' => AllowedBase::resolve() ?? '' ]
+		);
+
 		wp_set_script_translations(
 			$handle,
 			'wp-media-helper',
@@ -61,6 +67,7 @@ class ExternalSourceSettingsPage {
 		$sources = null === $pending ? $this->loadSources() : $pending['sources'];
 		$maxEntries = null !== $pending && null !== $pending['max_entries'] ? $pending['max_entries'] : (string) $this->loadGeneralSettings()->getMaxEntries();
 		// Stored sources outside the allowed base are reported as a warning instead.
+		$allowedBase = AllowedBase::resolve();
 		$enforceBase = null !== $pending;
 		$validationErrors = $this->getValidationErrors( $sources, $enforceBase );
 		$notices = $this->buildErrorNotices( $sources, $enforceBase );
@@ -200,20 +207,23 @@ class ExternalSourceSettingsPage {
 									<tr>
 										<th scope="row"><label for="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Root directory', 'wp-media-helper' ); ?></label></th>
 										<td>
-											<input id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['root'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][root]" value="<?php echo esc_attr( (string) ( $source['root'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>-description" />
+											<?php if ( null !== $allowedBase ) : ?>
+												<code class="wp-media-helper-root-prefix"><?php echo esc_html( rtrim( $allowedBase, '/\\' ) . '/' ); ?></code>
+											<?php endif; ?>
+											<input id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['root'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][root]" value="<?php echo esc_attr( AllowedBase::toRelative( $allowedBase, (string) ( $source['root'] ?? '' ) ) ); ?>" aria-describedby="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>-description" />
 											<p class="description" id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>-description">
 												<?php
-												printf(
-													/* translators: %s: example directory path, wrapped in a code element. */
-													esc_html__( 'Absolute path to the external media root, for example %s.', 'wp-media-helper' ),
-													'<code>' . esc_html( ( AllowedBase::resolve() ?? '/var/www' ) . '/media' ) . '</code>'
-												);
-												if ( null !== AllowedBase::resolve() ) {
-													echo ' ';
+												if ( null !== $allowedBase ) {
 													printf(
-														/* translators: %s: allowed base directory path, wrapped in a code element. */
-														esc_html__( 'It must be a sub-directory of %s.', 'wp-media-helper' ),
-														'<code>' . esc_html( (string) AllowedBase::resolve() ) . '</code>'
+														/* translators: %s: example directory path relative to the base directory, wrapped in a code element. */
+														esc_html__( 'Directory of the external media, relative to the base directory shown on the left, for example %s.', 'wp-media-helper' ),
+														'<code>nextcloud/photos</code>'
+													);
+												} else {
+													printf(
+														/* translators: %s: example directory path, wrapped in a code element. */
+														esc_html__( 'Absolute path to the external media root, for example %s.', 'wp-media-helper' ),
+														'<code>/var/www/media</code>'
 													);
 												}
 												?>
@@ -323,6 +333,11 @@ class ExternalSourceSettingsPage {
 			.wp-media-helper-source .form-table th {
 				width: 190px;
 			}
+			.wp-media-helper-root-prefix {
+				display: inline-block;
+				margin-right: 0.25rem;
+				vertical-align: middle;
+			}
 			.is-invalid {
 				border-color: #d63638;
 				box-shadow: 0 0 0 1px #d63638;
@@ -386,7 +401,18 @@ class ExternalSourceSettingsPage {
 			$raw = [];
 		}
 
-		$submitted = array_values( $raw );
+		// The form asks for a path relative to the allowed base; the absolute path is stored.
+		$allowedBase = AllowedBase::resolve();
+		$submitted = array_map(
+			static function ( $source ) use ( $allowedBase ) {
+				if ( is_array( $source ) && isset( $source['root'] ) && is_string( $source['root'] ) ) {
+					$source['root'] = AllowedBase::toAbsolute( $allowedBase, $source['root'] );
+				}
+
+				return $source;
+			},
+			array_values( $raw )
+		);
 
 		$rawGeneral = wp_unslash( $_POST['general'] ?? [] );
 		$submittedMaxEntries = is_array( $rawGeneral ) && isset( $rawGeneral['max_entries'] ) && is_scalar( $rawGeneral['max_entries'] )

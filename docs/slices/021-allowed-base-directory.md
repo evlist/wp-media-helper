@@ -33,7 +33,16 @@ because the administrator edits both values. Two points reopened the question:
 - Sources already stored outside the base are **disabled at runtime** (they are
   ignored by the editor panel, bulk actions and indexing) and listed in a
   warning on the settings page. Stored data is not modified.
-- The root field's help text names the base directory.
+- The root field shows the base directory as a fixed prefix and asks only for
+  the path below it (for example `nextcloud/photos`), since the administrator
+  does not necessarily know the server's absolute layout. The absolute path is
+  still what is stored: it is rebuilt on save with `AllowedBase::toAbsolute()`
+  and shown back with `AllowedBase::toRelative()`.
+- A typed value starting with `/` is kept as an absolute path and validated as
+  such, so `..` or a path elsewhere is rejected rather than silently re-rooted,
+  and a stored root outside the base stays visible in full.
+- Without a base (restriction lifted), the field asks for an absolute path as
+  before.
 
 ## Public URLs
 
@@ -63,3 +72,4 @@ It can be revisited if the plugin starts serving files itself.
 3. The base is configurable only by constant or filter, and can be lifted.
 4. `..` and symbolic links cannot be used to escape the base.
 5. The settings page shows the public URL prefix of sources inside uploads.
+6. The form asks for a path relative to the base and stores the absolute path.

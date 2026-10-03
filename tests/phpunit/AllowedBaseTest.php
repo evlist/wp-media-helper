@@ -94,4 +94,36 @@ class AllowedBaseTest extends TestCase {
 		$this->assertFalse( $restricted->isRootAllowed( $this->outside ) );
 		$this->assertTrue( $this->settings( null )->isRootAllowed( $this->outside ) );
 	}
+
+	public function test_to_absolute_prefixes_relative_values_with_the_base(): void {
+		$this->assertSame( '/srv/uploads/nextcloud/photos', AllowedBase::toAbsolute( '/srv/uploads', 'nextcloud/photos' ) );
+		$this->assertSame( '/srv/uploads/nextcloud', AllowedBase::toAbsolute( '/srv/uploads/', ' nextcloud/ ' ) );
+		$this->assertSame( '/srv/uploads/../etc', AllowedBase::toAbsolute( '/srv/uploads', '../etc' ) );
+		$this->assertSame( '', AllowedBase::toAbsolute( '/srv/uploads', '   ' ) );
+	}
+
+	public function test_to_absolute_leaves_absolute_values_for_validation(): void {
+		$this->assertSame( '/srv/uploads/nextcloud', AllowedBase::toAbsolute( '/srv/uploads', '/srv/uploads/nextcloud' ) );
+		$this->assertSame( '/etc', AllowedBase::toAbsolute( '/srv/uploads', '/etc' ) );
+		$this->assertSame( 'photos', AllowedBase::toAbsolute( null, 'photos' ) );
+	}
+
+	public function test_a_typed_relative_path_validates_like_its_absolute_form(): void {
+		$base = $this->base . '/uploads';
+		$settings = $this->settings( $base );
+		$root = AllowedBase::toAbsolute( $base, 'nextcloud' );
+
+		$this->assertSame( [], $settings->validateSources( [ [ 'name' => 'A', 'root' => $root, 'thumbnail_cache' => $root ] ] ) );
+
+		$escaping = AllowedBase::toAbsolute( $base, '../uploads-other' );
+		$errors = $settings->validateSources( [ [ 'name' => 'B', 'root' => $escaping, 'thumbnail_cache' => $this->outside ] ] );
+		$this->assertArrayHasKey( 'root', $errors[0] );
+	}
+
+	public function test_to_relative_strips_the_base_when_the_root_is_inside_it(): void {
+		$this->assertSame( 'nextcloud/photos', AllowedBase::toRelative( '/srv/uploads', '/srv/uploads/nextcloud/photos' ) );
+		$this->assertSame( '/var/www/media', AllowedBase::toRelative( '/srv/uploads', '/var/www/media' ) );
+		$this->assertSame( '/srv/uploads-other/x', AllowedBase::toRelative( '/srv/uploads', '/srv/uploads-other/x' ) );
+		$this->assertSame( '/var/www/media', AllowedBase::toRelative( null, '/var/www/media' ) );
+	}
 }

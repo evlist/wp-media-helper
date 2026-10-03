@@ -39,6 +39,39 @@ class AllowedBase {
 	}
 
 	/**
+	 * Turns what the administrator typed into the absolute path that is stored.
+	 *
+	 * A value relative to $base is prefixed with it. A value starting with `/`
+	 * is taken as an absolute path, and is left for validation to accept or
+	 * reject, so a stored root outside the base stays visible instead of being
+	 * silently re-rooted. Without a base, the value is returned unchanged.
+	 */
+	public static function toAbsolute( ?string $base, string $input ): string {
+		$input = trim( $input );
+		if ( null === $base || '' === $input || str_starts_with( $input, '/' ) ) {
+			return $input;
+		}
+
+		$relative = trim( $input, '/\\' );
+
+		return '' === $relative ? rtrim( $base, '/\\' ) : rtrim( $base, '/\\' ) . '/' . $relative;
+	}
+
+	/**
+	 * Inverse of toAbsolute(): the part of $root below $base, or $root itself
+	 * when it is not inside the base (or when there is no base).
+	 */
+	public static function toRelative( ?string $base, string $root ): string {
+		if ( null === $base ) {
+			return $root;
+		}
+
+		$prefix = rtrim( $base, '/\\' ) . '/';
+
+		return str_starts_with( $root, $prefix ) ? substr( $root, strlen( $prefix ) ) : $root;
+	}
+
+	/**
 	 * True when $root exists and lies strictly below $base, once both are
 	 * canonicalised (so `..` and symbolic links cannot be used to escape).
 	 */

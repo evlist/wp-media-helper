@@ -83,6 +83,12 @@ directory (for example `wp-content/uploads/nextcloud`). A source whose root is
 outside it is rejected when saving, and a source already stored outside it is
 disabled and flagged with a warning on the settings page.
 
+In the settings screen the base directory is displayed in front of the *Root
+directory* field, and you only type the path below it (for example
+`nextcloud/photos`). The plugin still stores the absolute path. A value starting
+with `/` is treated as an absolute path and must itself be inside the base.
+When the restriction is lifted, the field asks for an absolute path again.
+
 With Docker, mount the directories you want to expose inside the uploads
 directory, read-only:
 
