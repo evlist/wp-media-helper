@@ -61,9 +61,17 @@ Checked in the WordPress trunk source:
 
 ## Requirements
 
-### 1. Layout, reuse and source of truth
+### 1. One global cache, layout, reuse and source of truth
 
-- Cache layout is the one above: `<cache>/<dirname(relative path)>/<name>-<W>x<H>.<ext>`.
+- There is **a single cache directory for the whole site** (a general setting,
+  by default `<uploads>/thumbnails`, the location Thumbnails Folder uses), not
+  one per source. It replaces the per-source "Thumbnail cache directory" field,
+  which becomes deprecated; the rule that a read-only source needs a writable
+  cache then refers to this setting. The cache must be inside the uploads
+  directory so its files have public URLs, and separate from every source root
+  (slice 021).
+- Cache layout is the one above: `<cache>/<dirname(relative path)>/<name>-<W>x<H>.<ext>`,
+  where the path is relative to uploads, so one cache serves all sources.
   `W` and `H` are the dimensions WordPress computes for that size.
 - For an existing size entry with a `path` written by Thumbnails Folder, the
   file at that path is **reused** when it lies inside the cache, never
@@ -82,21 +90,29 @@ Thumbnails Folder), the URLs returned by WordPress for sizes point to the cache:
 Library, the REST `source_url`; `wp_calculate_image_srcset`. URLs already in the
 cache are left alone, so both plugins can run together during a migration.
 
-### 3. Generation on demand, at render time
+### 3. Generation on demand at render time, and in the background
 
-Same model as Thumbnails Folder: when WordPress asks for a registered size of an
-attachment and the file does not exist, generate it with the WordPress image
-editor, store it, and return its URL. **There is no public handler that
+**At render time**, same model as Thumbnails Folder: when WordPress asks for a
+registered size of an attachment and the file does not exist, generate it with
+the WordPress image editor, store it, and return its URL. **There is no public handler that
 generates files from a requested URL.** This removes the main denial-of-service
 and enumeration surface: only registered sizes of real attachments can trigger
 work, and only from code paths that were already going to render that image.
 
-Safeguards: a lock per target file against concurrent generation, limits on
-image dimensions and memory, no generation when the size is not smaller than the
-original, and no write outside the canonical cache directory. The original is
-never modified: no `-scaled` or `-rotated` copy; EXIF orientation is applied to
-the thumbnail only. Optionally, sizes can also be generated at registration
-(open question).
+**In the background**, so that the first visitor does not wait: registering an
+attachment (slice 022) schedules a single WordPress cron event per attachment,
+staggered when many are registered at once, that generates the registered sizes
+within a bounded time budget and reschedules itself if work remains. Events are
+de-duplicated, and an attachment whose sizes already exist is skipped. Render-time
+generation remains the fallback when the background work has not run yet, so the
+result is the same either way. WordPress cron depends on site traffic unless a
+system cron triggers it; the README should say so.
+
+Safeguards for both: a lock per target file against concurrent generation, limits
+on image dimensions and memory, no generation when the size is not smaller than
+the original, and no write outside the canonical cache directory. The original
+is never modified: no `-scaled` or `-rotated` copy; EXIF orientation is applied
+to the thumbnail only.
 
 ### 4. Lifecycle and parity
 
@@ -104,7 +120,8 @@ the thumbnail only. Optionally, sizes can also be generated at registration
   when present, those derived from the layout otherwise, and never the original
   (slice 022).
 - A purge command for the cache, equivalent to Thumbnails Folder's WP-CLI
-  command and Tools page, is a parity feature (see open questions).
+  command and Tools page, is a parity feature, wanted but **not a priority**: it
+  can follow the first delivery of this slice.
 - When registered sizes change, missing sizes are generated on demand and
   existing files are left alone.
 - A source's cache must be separate from its root (slice 021).
@@ -144,8 +161,8 @@ in the [audit](../IA/security-audit.md)) is limited to the locks and limits abov
 
 1. Existing thumbnail files in the cache (with or without a `path` key) are
    reused and their URLs keep working with the old plugin deactivated.
-2. A missing registered size is generated at render time, stored in the cache and
-   served directly afterwards.
+2. A missing registered size is generated at render time, or earlier by the
+   background event, stored in the cache and served directly afterwards.
 3. No URL request alone makes the plugin generate a file.
 4. No absolute path is written to attachment metadata by this plugin, and the
    migration action removes those written by Thumbnails Folder.
@@ -155,10 +172,11 @@ in the [audit](../IA/security-audit.md)) is limited to the locks and limits abov
 
 ## Open questions
 
-- Per-source cache directories (as configured today) or a single global cache
-  mirrored on uploads-relative paths (as on the observed site)?
-- Generate sizes at registration as well as on demand?
-- Which parity features are needed: purge command, a Tools page, handling of PDF
-  previews?
+- How is the existing per-source `thumbnail_cache` setting migrated to the global
+  one (the plugin is at 0.1.0, so a simple replacement may be enough)?
+- What time budget and batch size for background generation, and what happens on
+  sites where WordPress cron is disabled?
+- Which parity features beyond the purge command are wanted, later: a Tools page,
+  handling of PDF previews?
 - Which formats (WebP, AVIF) and which image editor (GD or Imagick) are
   supported?

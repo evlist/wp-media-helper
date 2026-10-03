@@ -34,6 +34,51 @@ created itself. So the Media Library shows its imports without dimensions or
 thumbnails, imports of an already registered file are duplicated, and the
 guid discloses a server path.
 
+## Attachment date: possible sources
+
+The attachment date (`post_date` and `post_date_gmt`) decides where an item
+sits in the Media Library and in date queries. For photo, track and subtitle
+workflows several dates can describe a file, and the right one depends on the
+file type. This section only **lists** the possibilities; the priority order and
+whether it is configurable are still to be decided.
+
+| # | Source | Typical files | Notes |
+|---|--------|---------------|-------|
+| 1 | Capture date in the image metadata | JPEG, HEIC, TIFF | Core exposes it as `created_timestamp`, read from the IPTC creation date, else from the EXIF `DateTimeDigitized` field (not `DateTimeOriginal`). EXIF has no time zone: core stores the wall-clock time as if it were UTC (on the target site, a photo taken at 12:15:49 local time has `created_timestamp` 12:15:49 UTC), so the value must be re-read as site-local time, or corrected with an offset tag when one exists |
+| 2 | Creation date in the media container | Video (MP4, MOV), some audio | Core reads `created_timestamp` from the QuickTime or ASF metadata for video |
+| 3 | Date and time in the **file name** | Photos named `20261002_121549.jpg`, subtitles, exports | Often the only date for formats without metadata, and meaningful for subtitles. Needs a pattern per source or per type, for example `Ymd_His`, with the same placeholder style as the path and filter patterns. The time zone is the site's |
+| 4 | Date in the **GPX content** | GPX tracks | Start of the first track segment (`trk/trkseg/trkpt/time`), or the `metadata/time` element; the end time and the duration are also available. Routes and waypoints may have no time. Parsing needs a safe XML reader (no entities, no network, bounded size) |
+| 5 | Date of the **directory** | Files stored under a dated path | The source's path pattern already ties a directory to a date (for example `2026/10/02`) |
+| 6 | Date **requested in the panel** | Any | The date the editor selected when importing |
+| 7 | File **modification time** | Any | Cheap and always available, but changed by copies and synchronisation, so the least reliable |
+| 8 | **Registration time** | Any | What core and Bulk Media Register do by default |
+| 9 | A **fixed date** | Any | Set by the editor for a batch |
+| 10 | Other embedded dates | PDF (`CreationDate`), documents, subtitle headers | Possible later; core does not read them |
+
+Points to settle later: the priority per file type and whether it is a setting
+per source; what to do when the selected source of a given file yields nothing
+(fall back to the next one, and show which one was used); time-zone handling for
+sources 1, 3 and 4; and whether the chosen date should also be stored in the
+attachment metadata so it can be recomputed.
+
+## File names that need encoding
+
+Files are never renamed: renaming a source file is unsafe, and impossible on a
+read-only mount. `_wp_attached_file` keeps the real relative path. WordPress
+builds attachment URLs by appending that path to the uploads URL **without
+encoding** (checked in core), so names with spaces, `#`, `?`, `%` or non-ASCII
+characters give wrong or broken URLs. Decision: **register such files and
+percent-encode their URLs**, encoding each path segment (UTF-8, `/` kept) in:
+
+- the `guid`,
+- `wp_get_attachment_url` and, through it, every URL derived from it,
+- the thumbnail URLs of slice 023.
+
+The path stored in the database stays raw, so it is encoded exactly once, and a
+file literally named `a%20b.jpg` becomes `a%2520b.jpg`. The filter applies to
+attachments located in a configured source, so that URLs of unrelated
+attachments are not altered.
+
 ## What Bulk Media Register does (version 1.41, read from its source)
 
 - It works **inside the uploads directory** only (it lists and registers files
@@ -65,8 +110,8 @@ and uploads-only scope proposed here are the established model.
 | Folder structure kept | Implicit: files are registered in place |
 | Title from file name | Yes, as core and that tool do |
 | Metadata for images, audio, video | Yes (without writing files, see above) |
-| Attachment date | Proposed: the file's date (EXIF capture date for images, else modification time), as in date-based workflows; open question |
-| Renaming files whose names core would sanitise | **No**: the plugin never modifies a source. Such names are an open question |
+| Attachment date | Several possible sources, listed above; priority to be decided |
+| Renaming files whose names core would sanitise | **No**: the plugin never modifies a source; URLs are encoded instead (see above) |
 | Sub-sizes at registration | Delegated to [slice 023](023-thumbnails-in-cache.md) |
 | Extension, text and exclusion filters | Covered by the panel filters (slices 018, 019) |
 | Email report and CSV | Out of scope |
@@ -184,12 +229,10 @@ This closes weakness R6 of the [security audit](../IA/security-audit.md).
 
 ## Open questions
 
-- Attachment date: file date (EXIF capture date, else modification time),
-  registration time, or a per-source setting?
-- File names that `sanitize_file_name()` would change (spaces, accents,
-  characters such as `#` or `%` that break an unencoded URL, since
-  `wp_get_attachment_url()` does not encode): register them with an encoded URL,
-  skip them with a message, or both?
+- Attachment date: which priority order per file type, whether it is a setting,
+  and how time zones are handled (see the list above).
+- Should the encoding filter also apply to attachments outside the configured
+  sources that contain characters needing encoding?
 - Adoption of recognised attachments: automatic when under an enabled source,
   or explicit?
 
