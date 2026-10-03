@@ -275,14 +275,14 @@ class EditorMediaController {
 			static fn(): ?string => AllowedBase::resolve()
 		);
 
-		// A source whose root is outside the allowed base is treated as disabled.
+		// A source whose root or thumbnail cache is outside the allowed base is treated as disabled.
 		return array_values( array_filter( $settings->getAll(), static function ( $source ) use ( $settings ): bool {
 			return is_array( $source )
 				&& ! empty( $source['id'] )
 				&& ! empty( $source['name'] )
 				&& ! empty( $source['root'] )
 				&& filter_var( $source['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN )
-				&& $settings->isRootAllowed( (string) $source['root'] );
+				&& $settings->isSourceAllowed( $source );
 		} ) );
 	}
 

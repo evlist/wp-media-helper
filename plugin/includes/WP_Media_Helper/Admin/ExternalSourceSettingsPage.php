@@ -74,9 +74,11 @@ class ExternalSourceSettingsPage {
 		$disabledSources = null === $pending ? $this->findDisabledSourceNames( $sources ) : [];
 		$exposedUrls = [];
 		foreach ( $sources as $source ) {
-			$url = is_array( $source ) ? $this->publicUrlFor( (string) ( $source['root'] ?? '' ) ) : null;
-			if ( null !== $url ) {
-				$exposedUrls[] = $url;
+			foreach ( [ 'root', 'thumbnail_cache' ] as $field ) {
+				$url = is_array( $source ) && '' !== trim( (string) ( $source[ $field ] ?? '' ) ) ? $this->publicUrlFor( (string) $source[ $field ] ) : null;
+				if ( null !== $url ) {
+					$exposedUrls[] = $url;
+				}
 			}
 		}
 
@@ -108,7 +110,7 @@ class ExternalSourceSettingsPage {
 						<?php
 						printf(
 							/* translators: %s: allowed base directory path. */
-							esc_html__( 'Their root directory is not inside %s. Move them there, or ask the site owner to change the allowed base directory.', 'wp-media-helper' ),
+							esc_html__( 'Their root directory or thumbnail cache directory is not inside %s. Move them there, or ask the site owner to change the allowed base directory.', 'wp-media-helper' ),
 							'<code>' . esc_html( (string) AllowedBase::resolve() ) . '</code>'
 						);
 						?>
@@ -273,16 +275,32 @@ class ExternalSourceSettingsPage {
 									<tr>
 										<th scope="row"><label for="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Thumbnail cache directory', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
 										<td>
-											<input id="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text" name="sources[<?php echo esc_attr( $index ); ?>][thumbnail_cache]" value="<?php echo esc_attr( (string) ( $source['thumbnail_cache'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>-description" />
+											<?php if ( null !== $allowedBase ) : ?>
+												<code class="wp-media-helper-root-prefix"><?php echo esc_html( rtrim( $allowedBase, '/\\' ) . '/' ); ?></code>
+											<?php endif; ?>
+											<input id="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['thumbnail_cache'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][thumbnail_cache]" value="<?php echo esc_attr( AllowedBase::toRelative( $allowedBase, (string) ( $source['thumbnail_cache'] ?? '' ) ) ); ?>" aria-describedby="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>-description" />
 											<p class="description" id="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>-description">
 												<?php
-												printf(
-													/* translators: %s: example directory path, wrapped in a code element. */
-													esc_html__( 'Writable directory storing thumbnails, for example %s. Required only when the source directory is read-only.', 'wp-media-helper' ),
-													'<code>/var/www/media-cache</code>'
-												);
+												if ( null !== $allowedBase ) {
+													printf(
+														/* translators: %s: example directory path relative to the base directory, wrapped in a code element. */
+														esc_html__( 'Writable directory storing thumbnails, relative to the base directory shown on the left, for example %s. It must be separate from the root directory. Required only when the source directory is read-only.', 'wp-media-helper' ),
+														'<code>nextcloud-cache</code>'
+													);
+												} else {
+													printf(
+														/* translators: %s: example directory path, wrapped in a code element. */
+														esc_html__( 'Writable directory storing thumbnails, for example %s. It must be separate from the root directory. Required only when the source directory is read-only.', 'wp-media-helper' ),
+														'<code>/var/www/media-cache</code>'
+													);
+												}
 												?>
 											</p>
+											<?php if ( isset( $validationErrors[ $index ]['thumbnail_cache'] ) ) : ?>
+												<p class="description wp-media-helper-field-error">
+													<?php echo esc_html( $validationErrors[ $index ]['thumbnail_cache'] ); ?>
+												</p>
+											<?php endif; ?>
 										</td>
 									</tr>
 								</tbody>
@@ -405,8 +423,10 @@ class ExternalSourceSettingsPage {
 		$allowedBase = AllowedBase::resolve();
 		$submitted = array_map(
 			static function ( $source ) use ( $allowedBase ) {
-				if ( is_array( $source ) && isset( $source['root'] ) && is_string( $source['root'] ) ) {
-					$source['root'] = AllowedBase::toAbsolute( $allowedBase, $source['root'] );
+				foreach ( [ 'root', 'thumbnail_cache' ] as $field ) {
+					if ( is_array( $source ) && isset( $source[ $field ] ) && is_string( $source[ $field ] ) ) {
+						$source[ $field ] = AllowedBase::toAbsolute( $allowedBase, $source[ $field ] );
+					}
 				}
 
 				return $source;
@@ -514,7 +534,7 @@ class ExternalSourceSettingsPage {
 	}
 
 	/**
-	 * Names of enabled sources whose root is outside the allowed base directory.
+	 * Names of enabled sources whose root or thumbnail cache is outside the allowed base directory.
 	 * Such sources are ignored by the editor panel until their root is fixed.
 	 *
 	 * @param array<int, array<string, mixed>> $sources
@@ -528,7 +548,7 @@ class ExternalSourceSettingsPage {
 				continue;
 			}
 			$root = trim( (string) ( $source['root'] ?? '' ) );
-			if ( '' !== $root && file_exists( $root ) && ! $settings->isRootAllowed( $root ) ) {
+			if ( '' !== $root && file_exists( $root ) && ! $settings->isSourceAllowed( $source ) ) {
 				$names[] = (string) ( $source['name'] ?? $root );
 			}
 		}
@@ -542,9 +562,9 @@ class ExternalSourceSettingsPage {
 	 */
 	private function publicUrlFor( string $root ): ?string {
 		$uploads = wp_upload_dir( null, false );
-		$realRoot = realpath( $root );
+		$realRoot = AllowedBase::resolveDirectory( $root );
 		$realBase = is_array( $uploads ) && ! empty( $uploads['basedir'] ) ? realpath( (string) $uploads['basedir'] ) : false;
-		if ( false === $realRoot || false === $realBase || ! PathConfinement::isWithin( $realBase, $realRoot ) ) {
+		if ( null === $realRoot || false === $realBase || ! PathConfinement::isWithin( $realBase, $realRoot ) ) {
 			return null;
 		}
 

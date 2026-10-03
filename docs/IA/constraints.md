@@ -58,8 +58,8 @@ sources with existing attachments are tracked in
   sites set `DISALLOW_FILE_MODS` / `DISALLOW_FILE_EDIT`. On a single site
   without those restrictions an administrator can already execute PHP, so no
   setting can stop a malicious one.
-- Every source `root` must therefore be a **sub-directory of an allowed base
-  directory**, which is the WordPress uploads directory by default. This keeps
+- Every source `root` and `thumbnail_cache` must therefore be a
+  **sub-directory of an allowed base directory**, which is the WordPress uploads directory by default. This keeps
   the settings page from becoming a way to browse the rest of the file system
   for administrators who are not otherwise trusted with it.
 - The allowed base is defined **outside the admin UI**, by the site owner in
@@ -70,9 +70,14 @@ sources with existing attachments are tracked in
   `false` lifts the restriction for installations that need roots elsewhere.
 - Containment is checked on canonical paths (`realpath()`), strictly below the
   base, so `..` segments and symbolic links cannot escape it.
+- The thumbnail cache is a write location, so it matters at least as much as
+  the root. It may not exist yet, but its parent must, and it must stay
+  separate from the source root. Code that writes thumbnails must derive file
+  names from hashes (never from client input), write only below the canonical
+  cache directory, and re-check the base at write time.
 - The check is made when settings are validated and saved, and again whenever
-  sources are loaded for the editor. A stored source whose root is outside the
-  base (for example after an upgrade, or after the base was changed) is treated
+  sources are loaded for the editor. A stored source whose root or cache is
+  outside the base (for example after an upgrade, or after the base was changed) is treated
   as disabled and reported with a warning on the settings page; the stored
   configuration is left untouched.
 - Rejecting `../` inside `path_pattern` is still not done: the pattern is

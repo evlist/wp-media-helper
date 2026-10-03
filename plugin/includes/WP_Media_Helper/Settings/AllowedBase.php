@@ -72,6 +72,42 @@ class AllowedBase {
 	}
 
 	/**
+	 * Canonical path of a directory that exists, or that can be created because
+	 * its parent exists (`..` segments and symbolic links are resolved on the
+	 * parent). Returns null when neither holds.
+	 */
+	public static function resolveDirectory( string $path ): ?string {
+		$path = rtrim( trim( $path ), '/\\' );
+		if ( '' === $path || str_contains( $path, "\0" ) ) {
+			return null;
+		}
+
+		$real = realpath( $path );
+		if ( false !== $real ) {
+			return $real;
+		}
+
+		$name = basename( $path );
+		$parent = realpath( dirname( $path ) );
+		if ( false === $parent || '' === $name || '.' === $name || '..' === $name ) {
+			return null;
+		}
+
+		return rtrim( $parent, '/\\' ) . '/' . $name;
+	}
+
+	/**
+	 * Like contains(), for a directory that may not exist yet (a cache that
+	 * will be created on first use).
+	 */
+	public static function containsDirectory( string $base, string $path ): bool {
+		$realBase = realpath( $base );
+		$resolved = self::resolveDirectory( $path );
+
+		return false !== $realBase && null !== $resolved && PathConfinement::isWithin( $realBase, $resolved );
+	}
+
+	/**
 	 * True when $root exists and lies strictly below $base, once both are
 	 * canonicalised (so `..` and symbolic links cannot be used to escape).
 	 */

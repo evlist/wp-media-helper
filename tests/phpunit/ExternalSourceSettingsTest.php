@@ -409,7 +409,7 @@ class ExternalSourceSettingsTest extends TestCase {
 	}
 
 	public function test_accepts_existing_writable_thumbnail_cache(): void {
-		$cache = $this->tmpRoot . '/cache';
+		$cache = $this->tmpRoot . '-cache';
 		mkdir( $cache );
 
 		$settings = new ExternalSourceSettings(
@@ -440,7 +440,7 @@ class ExternalSourceSettingsTest extends TestCase {
 			[
 				'name' => 'Cached',
 				'root' => $this->tmpRoot,
-				'thumbnail_cache' => $this->tmpRoot . '/not-yet-created',
+				'thumbnail_cache' => $this->tmpRoot . '-not-yet-created',
 			],
 		] );
 
@@ -570,5 +570,34 @@ class ExternalSourceSettingsTest extends TestCase {
 		] );
 
 		$this->assertSame( [], $notices );
+	}
+
+	public function test_rejects_thumbnail_cache_inside_or_equal_to_or_containing_the_root(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		foreach ( [ $this->tmpRoot, $this->tmpRoot . '/cache', dirname( $this->tmpRoot ) ] as $cache ) {
+			$errors = $settings->validateSources( [
+				[ 'name' => 'Cached', 'root' => $this->tmpRoot, 'thumbnail_cache' => $cache ],
+			] );
+
+			$this->assertArrayHasKey( 'thumbnail_cache', $errors[0] );
+			$this->assertStringContainsString( 'separate', $errors[0]['thumbnail_cache'] );
+		}
+	}
+
+	public function test_rejects_relative_thumbnail_cache_paths(): void {
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {}
+		);
+
+		$errors = $settings->validateSources( [
+			[ 'name' => 'Cached', 'root' => $this->tmpRoot, 'thumbnail_cache' => 'cache' ],
+		] );
+
+		$this->assertStringContainsString( 'absolute', $errors[0]['thumbnail_cache'] );
 	}
 }

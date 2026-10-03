@@ -6,6 +6,7 @@ namespace WP_Media_Helper\Settings;
 
 use Closure;
 use InvalidArgumentException;
+use WP_Media_Helper\MediaSource\PathConfinement;
 
 class ExternalSourceSettings {
 
@@ -35,6 +36,32 @@ class ExternalSourceSettings {
 		$this->loader      = $loader;
 		$this->saver       = $saver;
 		$this->allowedBase = $allowedBase;
+	}
+
+	/**
+	 * Whether a source may be used: its root, and its thumbnail cache when it
+	 * has one, are inside the allowed base directory.
+	 *
+	 * @param array<string, mixed> $source
+	 */
+	public function isSourceAllowed( array $source ): bool {
+		if ( ! $this->isRootAllowed( (string) ( $source['root'] ?? '' ) ) ) {
+			return false;
+		}
+
+		$cache = trim( (string) ( $source['thumbnail_cache'] ?? '' ) );
+
+		return '' === $cache || $this->isCacheAllowed( $cache );
+	}
+
+	/**
+	 * Whether a thumbnail cache directory (which may not exist yet) is inside
+	 * the allowed base directory.
+	 */
+	public function isCacheAllowed( string $cache ): bool {
+		$base = null === $this->allowedBase ? null : ( $this->allowedBase )();
+
+		return null === $base || AllowedBase::containsDirectory( $base, $cache );
 	}
 
 	/**
@@ -114,7 +141,7 @@ class ExternalSourceSettings {
 
 			$thumbnailCache = trim( (string) ( $source['thumbnail_cache'] ?? '' ) );
 			if ( '' !== $thumbnailCache ) {
-				$cacheError = $this->validateThumbnailCache( $thumbnailCache );
+				$cacheError = $this->validateThumbnailCache( $thumbnailCache, $enforceAllowedBase, $root );
 				if ( null !== $cacheError ) {
 					$entryErrors['thumbnail_cache'] = $cacheError;
 				}
@@ -257,7 +284,7 @@ class ExternalSourceSettings {
 
 		$thumbnailCache = trim( (string) ( $source['thumbnail_cache'] ?? '' ) );
 		if ( '' !== $thumbnailCache ) {
-			$cacheError = $this->validateThumbnailCache( $thumbnailCache );
+			$cacheError = $this->validateThumbnailCache( $thumbnailCache, true, $root );
 			if ( null !== $cacheError ) {
 				throw new InvalidArgumentException(
 					sprintf(
@@ -375,7 +402,30 @@ class ExternalSourceSettings {
 	/**
 	 * Checks that a thumbnail cache directory is writable, or can be created.
 	 */
-	private function validateThumbnailCache( string $cache ): ?string {
+	private function validateThumbnailCache( string $cache, bool $enforceAllowedBase = true, string $root = '' ): ?string {
+		if ( ! str_starts_with( $cache, '/' ) ) {
+			return __( 'Thumbnail cache directory must be an absolute path.', 'wp-media-helper' );
+		}
+
+		if ( $enforceAllowedBase && ! $this->isCacheAllowed( $cache ) ) {
+			$base = null === $this->allowedBase ? '' : (string) ( $this->allowedBase )();
+
+			return sprintf(
+				/* translators: %s: allowed base directory path. */
+				__( 'Thumbnail cache directory must be a sub-directory of %s.', 'wp-media-helper' ),
+				$base
+			);
+		}
+
+		// Thumbnails stored in the source would be listed as media, and a cache
+		// containing the source would let cleanup or writes reach the originals.
+		$realCache = AllowedBase::resolveDirectory( $cache );
+		$realRoot = '' === $root ? false : realpath( $root );
+		if ( null !== $realCache && false !== $realRoot
+			&& ( $realCache === $realRoot || PathConfinement::isWithin( $realRoot, $realCache ) || PathConfinement::isWithin( $realCache, $realRoot ) ) ) {
+			return __( 'Thumbnail cache directory must be separate from the root directory.', 'wp-media-helper' );
+		}
+
 		if ( file_exists( $cache ) ) {
 			if ( ! is_dir( $cache ) ) {
 				return __( 'Thumbnail cache path is not a directory.', 'wp-media-helper' );

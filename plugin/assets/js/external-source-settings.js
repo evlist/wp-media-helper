@@ -113,11 +113,18 @@
 				'cache',
 				__( 'Thumbnail cache directory', 'wp-media-helper' ),
 				true,
-				sprintf(
-					/* translators: %s: example directory path, wrapped in a code element. */
-					esc( __( 'Writable directory storing thumbnails, for example %s. Required only when the source directory is read-only.', 'wp-media-helper' ) ),
-					'<code>/var/www/media-cache</code>'
-				)
+				allowedBase
+					? sprintf(
+						/* translators: %s: example directory path relative to the base directory, wrapped in a code element. */
+						esc( __( 'Writable directory storing thumbnails, relative to the base directory shown on the left, for example %s. It must be separate from the root directory. Required only when the source directory is read-only.', 'wp-media-helper' ) ),
+						'<code>nextcloud-cache</code>'
+					)
+					: sprintf(
+						/* translators: %s: example directory path, wrapped in a code element. */
+						esc( __( 'Writable directory storing thumbnails, for example %s. It must be separate from the root directory. Required only when the source directory is read-only.', 'wp-media-helper' ) ),
+						'<code>/var/www/media-cache</code>'
+					),
+				allowedBase ? allowedBase.replace( /[\\/]+$/, '' ) + '/' : ''
 			),
 		].join( '' );
 

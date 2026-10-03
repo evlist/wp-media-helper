@@ -70,7 +70,7 @@ All settings are managed on the plugin's **Settings** page
 | **Path pattern** | Optional. Pattern used to derive the directory for a given date and source. Supports placeholders such as `{date:Y}`, `{date:m}`, `{date:d}` and `{source}`. If left empty, the resolver falls back to the source root directly, which is useful for static media sources that do not depend on the date. |
 | **Filter pattern** | Optional. Pattern used to further filter filenames after the target directory has been resolved. Supports placeholders such as `{date:Ymd}`. Defaults to an empty filter. |
 | **Maximum entries per page** | Number of media items shown per page in the editor panel, and the maximum number of items accepted by a single bulk action. Whole number between 1 and 500, default 100. |
-| **Thumbnail cache directory** | Optional. Writable path where thumbnails for external media files are stored. Required when external directories are read-only. Thumbnails are generated lazily on first request. |
+| **Thumbnail cache directory** | Optional. Writable directory where thumbnails for external media files are stored, located inside the same allowed base directory as the roots and separate from the source root. Required when external directories are read-only. Thumbnails are generated lazily on first request. |
 
 Each external directory can define its own path pattern and optional filter
 pattern. This makes it possible to target different user trees without scanning
@@ -78,13 +78,17 @@ large directory hierarchies.
 
 ## Allowed base directory
 
-Every external source root must be a sub-directory of the WordPress uploads
-directory (for example `wp-content/uploads/nextcloud`). A source whose root is
-outside it is rejected when saving, and a source already stored outside it is
-disabled and flagged with a warning on the settings page.
+Every external source root, and every thumbnail cache directory, must be a
+sub-directory of the WordPress uploads directory (for example
+`wp-content/uploads/nextcloud`). A source whose root or cache is outside it is
+rejected when saving, and a source already stored outside it is disabled and
+flagged with a warning on the settings page. A thumbnail cache may not exist
+yet (it is created on first use) but its parent must, and it must be separate
+from the source root: it can be neither inside it, equal to it, nor contain it,
+otherwise thumbnails would be listed as media.
 
 In the settings screen the base directory is displayed in front of the *Root
-directory* field, and you only type the path below it (for example
+directory* and *Thumbnail cache directory* fields, and you only type the path below it (for example
 `nextcloud/photos`). The plugin still stores the absolute path. A value starting
 with `/` is treated as an absolute path and must itself be inside the base.
 When the restriction is lifted, the field asks for an absolute path again.
@@ -114,8 +118,9 @@ add_filter( 'wp_media_helper_allowed_base', static fn () => '/srv/media' );
 
 Web servers normally serve the uploads directory, so **anything mounted there
 can be downloaded by anyone who knows or guesses its URL**, even though the
-plugin itself never exposes these URLs. The settings page lists the public URL
-prefix of each source. If the files are private, block HTTP access to them in
+plugin itself never exposes these URLs. The same holds for the thumbnail cache,
+which would publish thumbnails of private images. The settings page lists the
+public URL prefix of each source and cache. If the files are private, block HTTP access to them in
 the web-server configuration:
 
 ```apache
