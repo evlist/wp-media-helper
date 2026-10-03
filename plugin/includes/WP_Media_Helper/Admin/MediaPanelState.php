@@ -131,93 +131,16 @@ class MediaPanelState {
 	}
 
 	/**
+	 * Items are matched to attachments by exact file identity, never by file
+	 * name: two files with the same name in different directories are different
+	 * media. The paths given here are the paths of the listed items.
+	 *
 	 * @param array<int, array<string, mixed>> $items
 	 * @param array<int, string> $importedPaths
 	 * @return array<int, array<string, mixed>>
 	 */
-	public static function pathSignatureCandidates( string $path ): array {
-		$trimmed = trim( $path );
-		if ( '' === $trimmed ) {
-			return [];
-		}
-
-		$basename = basename( $trimmed );
-		$signature = preg_replace( '/_[0-9]+(?=\.[^.]+$)/', '', $basename );
-		$withoutSuffix = is_string( $signature ) ? $signature : $basename;
-		$originalWithoutSuffix = preg_replace( '/_[0-9]+(?=\.[^.]+$)/', '', $trimmed );
-		$withoutSuffixPath = is_string( $originalWithoutSuffix ) ? $originalWithoutSuffix : $trimmed;
-
-		$candidates = array_values( array_filter( [
-			$trimmed,
-			md5( $trimmed ),
-			$basename,
-			md5( $basename ),
-			$withoutSuffix,
-			md5( $withoutSuffix ),
-			$withoutSuffixPath,
-			md5( $withoutSuffixPath ),
-		], static fn ( $value ) => is_string( $value ) && '' !== $value ) );
-
-		return array_values( array_unique( $candidates ) );
-	}
-
-	/**
-	 * @return bool True when two paths refer to the same media item, even if WordPress renamed the uploaded file.
-	 */
-	public static function pathMatches( string $leftPath, string $rightPath ): bool {
-		$leftPath = trim( $leftPath );
-		$rightPath = trim( $rightPath );
-		if ( '' === $leftPath || '' === $rightPath ) {
-			return false;
-		}
-
-		if ( $leftPath === $rightPath ) {
-			return true;
-		}
-
-		$leftCandidates = self::pathSignatureCandidates( $leftPath );
-		$rightCandidates = self::pathSignatureCandidates( $rightPath );
-		$known = [];
-		foreach ( $rightCandidates as $candidate ) {
-			$known[ $candidate ] = true;
-		}
-
-		foreach ( $leftCandidates as $candidate ) {
-			if ( isset( $known[ $candidate ] ) ) {
-				return true;
-			}
-		}
-
-		return false;
-	}
-
 	public static function setImportState( array $items, array $importedPaths ): array {
-		$known = [];
-		foreach ( $importedPaths as $path ) {
-			if ( ! is_string( $path ) ) {
-				continue;
-			}
-			foreach ( self::pathSignatureCandidates( $path ) as $candidate ) {
-				$known[ $candidate ] = true;
-			}
-		}
-
-		foreach ( $items as $index => $item ) {
-			if ( ! is_array( $item ) ) {
-				continue;
-			}
-
-			$path = (string) ( $item['path'] ?? $item['name'] ?? '' );
-			$items[ $index ]['is_imported'] = false;
-			foreach ( self::pathSignatureCandidates( $path ) as $candidate ) {
-				if ( isset( $known[ $candidate ] ) ) {
-					$items[ $index ]['is_imported'] = true;
-					break;
-				}
-			}
-		}
-
-		return $items;
+		return self::setFlag( $items, $importedPaths, 'is_imported' );
 	}
 
 	/**
@@ -226,29 +149,24 @@ class MediaPanelState {
 	 * @return array<int, array<string, mixed>>
 	 */
 	public static function setAttachmentState( array $items, array $attachedPaths ): array {
-		$known = [];
-		foreach ( $attachedPaths as $path ) {
-			if ( ! is_string( $path ) ) {
-				continue;
-			}
-			foreach ( self::pathSignatureCandidates( $path ) as $candidate ) {
-				$known[ $candidate ] = true;
-			}
-		}
+		return self::setFlag( $items, $attachedPaths, 'is_attached_to_current_post' );
+	}
 
+	/**
+	 * @param array<int, array<string, mixed>> $items
+	 * @param array<string, array{post_id:int}> $otherPostByPath keyed by the path of the listed item
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function setOtherPostState( array $items, array $otherPostByPath ): array {
 		foreach ( $items as $index => $item ) {
 			if ( ! is_array( $item ) ) {
 				continue;
 			}
 
 			$path = (string) ( $item['path'] ?? $item['name'] ?? '' );
-			$items[ $index ]['is_attached_to_current_post'] = false;
-			foreach ( self::pathSignatureCandidates( $path ) as $candidate ) {
-				if ( isset( $known[ $candidate ] ) ) {
-					$items[ $index ]['is_attached_to_current_post'] = true;
-					break;
-				}
-			}
+			$info = $otherPostByPath[ $path ] ?? null;
+			$items[ $index ]['is_attached_to_other_post'] = is_array( $info );
+			$items[ $index ]['other_post_id'] = is_array( $info ) ? (int) ( $info['post_id'] ?? 0 ) : 0;
 		}
 
 		return $items;
@@ -256,19 +174,11 @@ class MediaPanelState {
 
 	/**
 	 * @param array<int, array<string, mixed>> $items
-	 * @param array<string, array{post_id:int}> $otherPostByPath keyed by raw source path
+	 * @param array<int, string> $paths
 	 * @return array<int, array<string, mixed>>
 	 */
-	public static function setOtherPostState( array $items, array $otherPostByPath ): array {
-		$known = [];
-		foreach ( $otherPostByPath as $path => $info ) {
-			if ( ! is_string( $path ) || ! is_array( $info ) ) {
-				continue;
-			}
-			foreach ( self::pathSignatureCandidates( $path ) as $candidate ) {
-				$known[ $candidate ] = $info;
-			}
-		}
+	private static function setFlag( array $items, array $paths, string $flag ): array {
+		$known = array_fill_keys( array_filter( $paths, 'is_string' ), true );
 
 		foreach ( $items as $index => $item ) {
 			if ( ! is_array( $item ) ) {
@@ -276,15 +186,7 @@ class MediaPanelState {
 			}
 
 			$path = (string) ( $item['path'] ?? $item['name'] ?? '' );
-			$items[ $index ]['is_attached_to_other_post'] = false;
-			$items[ $index ]['other_post_id'] = 0;
-			foreach ( self::pathSignatureCandidates( $path ) as $candidate ) {
-				if ( isset( $known[ $candidate ] ) ) {
-					$items[ $index ]['is_attached_to_other_post'] = true;
-					$items[ $index ]['other_post_id'] = (int) $known[ $candidate ]['post_id'];
-					break;
-				}
-			}
+			$items[ $index ][ $flag ] = isset( $known[ $path ] );
 		}
 
 		return $items;

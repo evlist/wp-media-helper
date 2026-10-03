@@ -3,7 +3,7 @@
 
 # Slice 022: WordPress-native registration and recognition
 
-Status: **proposed** (design only, not implemented).
+Status: **implemented**, except what is listed under "Not implemented yet".
 
 ## Goal
 
@@ -221,6 +221,47 @@ This closes weakness R6 of the [security audit](../IA/security-audit.md).
 - Generating sub-sizes (slice 023).
 - Changing attachments created by other tools beyond attaching and detaching.
 
+## Implementation notes
+
+- `UploadsPath` computes the uploads-relative path (the `_wp_attached_file`
+  value), encodes URLs, and lists the values under which an attachment may be
+  recorded (relative, and the absolute forms of older versions).
+- `AttachmentRegistry` finds attachments with a few exact queries on
+  `_wp_attached_file` (the database comparison ignores case, so the result is
+  verified in PHP), and flags those created by this plugin.
+- `AttachmentRegistrar` registers a file with `wp_insert_attachment()`, reading
+  metadata with `wp_getimagesize()`, `wp_read_image_metadata()` and the core
+  audio and video readers. It never calls `wp_generate_attachment_metadata()`.
+- `AttachmentDate` chooses the date. **Default order, provisional**: image
+  capture date (re-read as site time), video or audio creation date, a date in the
+  file name (`20261002_121549`, `2026-10-02`, ...), file modification time, then
+  now. GPX content, directory date and the other sources of the list above are
+  not used yet.
+- `AttachmentUrls` encodes the URL of attachments located in a configured
+  source (`wp_get_attachment_url`), and the `guid` is written encoded.
+- Panel state (imported, attached here, attached elsewhere) is computed from the
+  attachments found for the listed files, by exact path. The earlier fuzzy
+  matching on file names has been removed.
+- Removal deletes only attachments created by this plugin. During the call a
+  `wp_delete_file` filter refuses every file deletion, and `_wp_attached_file` is
+  removed first, so no original file is ever deleted.
+- Attachments created by earlier versions of this plugin are rewritten in the
+  native form when they are next recognised on import or attach.
+
+### Not implemented yet
+
+- Files outside the uploads directory are **refused** (message: only files inside
+  the WordPress uploads directory can be registered). They would need an absolute
+  representation and an access endpoint. This only matters when the allowed base
+  directory has been moved out of uploads by the site owner.
+- Adoption of attachments created by other tools. Recognised attachments can be
+  attached and detached but not removed. The automatic adoption proposed above is
+  not done, because on a source covering WordPress's own upload folders it would
+  also capture native uploads; it stays to be decided (explicit action, or only for
+  attachments without sizes next to the original).
+- Recording the date source, GPX dates, a configurable date order.
+- Sub-sizes (slice 023).
+
 ## Acceptance criteria
 
 1. A registered file below uploads has a relative `_wp_attached_file`, a URL
@@ -242,9 +283,8 @@ This closes weakness R6 of the [security audit](../IA/security-audit.md).
 - Adoption of recognised attachments: automatic when under an enabled source,
   or explicit?
 
-- Should legacy absolute attachments be normalised in bulk (a one-off
-  migration) or lazily, when touched? The plugin is at version 0.1.0, so few
-  such attachments should exist.
+- Legacy absolute attachments are normalised lazily, when next recognised
+  (decided and implemented; the plugin is at version 0.1.0).
 - Should recognition also be offered for attachments whose file is below a
   source root but registered with a different case or Unicode normalisation of
   the path?

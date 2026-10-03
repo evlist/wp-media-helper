@@ -5,6 +5,8 @@
 namespace WP_Media_Helper\Admin;
 
 use DateTimeImmutable;
+use WP_Media_Helper\MediaSource\AttachmentRegistrar;
+use WP_Media_Helper\MediaSource\AttachmentRegistry;
 use WP_Media_Helper\MediaSource\PathConfinement;
 use WP_Media_Helper\Settings\AllowedBase;
 use WP_Media_Helper\Settings\ExternalSourceSettings;
@@ -383,47 +385,13 @@ class EditorMediaController {
 	}
 
 	/**
-	 * Creates a WordPress attachment entry without copying the original file into uploads.
-	 *
-	 * @return int|\WP_Error
-	 */
-	public function registerVirtualAttachment( string $sourceId, string $path ) {
-		$basename = basename( $path );
-		$filetype = wp_check_filetype( $basename, null );
-		$mimeType = is_array( $filetype ) && ! empty( $filetype['type'] ) ? $filetype['type'] : 'application/octet-stream';
-
-		$attachmentId = wp_insert_post( [
-			'post_type' => 'attachment',
-			'post_status' => 'inherit',
-			'post_title' => $basename,
-			'post_name' => sanitize_title( $basename ),
-			'post_mime_type' => $mimeType,
-			'guid' => $path,
-			'post_content' => '',
-			'post_parent' => 0,
-		], true );
-
-		if ( is_wp_error( $attachmentId ) ) {
-			return $attachmentId;
-		}
-
-		if ( empty( $attachmentId ) ) {
-			return new \WP_Error( 'insert_attachment_failed', 'Unable to register the media attachment.' );
-		}
-
-		update_post_meta( (int) $attachmentId, '_wp_media_helper_source_id', $sourceId );
-		update_post_meta( (int) $attachmentId, '_wp_media_helper_source_path', $path );
-		update_post_meta( (int) $attachmentId, '_wp_attached_file', $path );
-
-		return (int) $attachmentId;
-	}
-
-	/**
 	 * @param array<int, array{id:string, path:string, source_id?:string}> $items
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function processBulkItems( string $sourceId, string $action, array $items, int $postId = 0 ): array {
 		$results = [];
+		$registry = new AttachmentRegistry();
+		$registrar = new AttachmentRegistrar( $registry );
 		$activeSources = in_array( $action, [ 'import', 'attach' ], true ) ? $this->getActiveSources() : [];
 		foreach ( $items as $item ) {
 			$itemSourceId = (string) ( $item['source_id'] ?? $sourceId );
@@ -437,9 +405,9 @@ class EditorMediaController {
 			];
 
 			if ( in_array( $action, [ 'attach', 'detach', 'remove' ], true ) ) {
-				$otherPostId = $this->findOtherPostAttachment( $itemSourceId, $item['path'], $postId );
+				$otherPostId = self::findOtherPostAttachment( $registry->findByPath( $item['path'] ), $postId );
 				if ( 0 !== $otherPostId ) {
-					$result['message'] = 'This media is attached to another post.';
+					$result['message'] = __( 'This media is attached to another post.', 'wp-media-helper' );
 					$result['operation'] = 'protected_other_post';
 					$results[] = $result;
 					continue;
@@ -456,19 +424,24 @@ class EditorMediaController {
 					continue;
 				}
 
-				$filetype = wp_check_filetype( basename( $confined['path'] ) );
-				if ( empty( $filetype['type'] ) ) {
-					$result['message'] = __( 'This file type is not allowed.', 'wp-media-helper' );
-					$results[] = $result;
-					continue;
-				}
-
 				$itemSourceId = (string) $confined['source']['id'];
 				$item['path'] = $confined['path'];
 				$result['path'] = $confined['path'];
 
-				$existing = $this->findVirtualAttachments( $itemSourceId, $item['path'] );
-				$attachmentId = $existing[0] ?? $this->registerVirtualAttachment( $itemSourceId, $item['path'] );
+				// Reuse the attachment of this file, whichever tool created it.
+				$existing = $registry->findByPath( $item['path'] );
+				if ( [] !== $existing ) {
+					$attachmentId = $existing[0]['id'];
+					$relative = $registry->relativeKey( $item['path'] );
+					foreach ( $existing as $row ) {
+						// Attachments created by older versions of this plugin move to the native form.
+						if ( $row['owned'] && null !== $relative ) {
+							$registry->normalizeLegacy( $row['id'], $relative );
+						}
+					}
+				} else {
+					$attachmentId = $registrar->register( $itemSourceId, $item['path'] );
+				}
 				if ( is_wp_error( $attachmentId ) ) {
 					$result['message'] = $attachmentId->get_error_message();
 					$results[] = $result;
@@ -494,7 +467,7 @@ class EditorMediaController {
 					], true );
 					if ( is_wp_error( $updated ) || empty( $updated ) ) {
 						$result['success'] = false;
-						$result['message'] = is_wp_error( $updated ) ? $updated->get_error_message() : 'Unable to attach the media to the current post.';
+						$result['message'] = is_wp_error( $updated ) ? $updated->get_error_message() : __( 'Unable to attach the media to the current post.', 'wp-media-helper' );
 						$results[] = $result;
 						continue;
 					}
@@ -507,41 +480,38 @@ class EditorMediaController {
 				continue;
 			}
 
-			if ( 'detach' === $action ) {
-				$detached = $this->detachVirtualAttachments( $itemSourceId, $item['path'], $postId );
-				if ( is_wp_error( $detached ) ) {
-					$result['message'] = $detached->get_error_message();
-					$results[] = $result;
-					continue;
-				}
-
-				$result['success'] = true;
-				$result['is_imported'] = [] !== $this->findVirtualAttachments( $itemSourceId, $item['path'] );
-				$result['detached_ids'] = $detached;
-				$result['operation'] = [] === $detached ? 'no_change' : 'detached';
-				$results[] = $result;
-				continue;
-			}
-
-			$detached = $this->detachVirtualAttachments( $itemSourceId, $item['path'], $postId );
+			$rows = $registry->findByPath( $item['path'] );
+			$detached = $this->detachRows( $rows, $postId );
 			if ( is_wp_error( $detached ) ) {
 				$result['message'] = $detached->get_error_message();
 				$results[] = $result;
 				continue;
 			}
 
-			$removed = $this->removeVirtualAttachment( $itemSourceId, $item['path'] );
-			if ( is_wp_error( $removed ) ) {
-				$result['message'] = $removed->get_error_message();
+			if ( 'detach' === $action ) {
+				$result['success'] = true;
+				$result['is_imported'] = [] !== $registry->findByPath( $item['path'] );
+				$result['detached_ids'] = $detached;
+				$result['operation'] = [] === $detached ? 'no_change' : 'detached';
 				$results[] = $result;
 				continue;
 			}
 
+			// Removal only concerns attachments created by this plugin.
+			$owned = array_values( array_filter( $rows, static fn ( array $row ): bool => $row['owned'] ) );
+			if ( [] !== $rows && [] === $owned && [] === $detached ) {
+				$result['message'] = __( 'This media was not registered by this plugin, so it cannot be removed here.', 'wp-media-helper' );
+				$result['operation'] = 'protected_foreign';
+				$results[] = $result;
+				continue;
+			}
+
+			$removed = $this->removeOwnedRows( $owned );
 			$result['success'] = true;
-			$result['is_imported'] = [] !== $this->findVirtualAttachments( $itemSourceId, $item['path'] );
+			$result['is_imported'] = [] !== $registry->findByPath( $item['path'] );
 			$result['detached_ids'] = $detached;
-			$result['removed_ids'] = array_values( array_unique( array_map( 'intval', $removed ) ) );
-			$result['operation'] = [] !== $detached ? 'detached_and_removed' : ( [] === $removed ? 'no_change' : 'removed_from_library' );
+			$result['removed_ids'] = $removed;
+			$result['operation'] = [] !== $detached ? ( [] === $removed ? 'detached' : 'detached_and_removed' ) : ( [] === $removed ? 'no_change' : 'removed_from_library' );
 			$results[] = $result;
 		}
 
@@ -549,47 +519,58 @@ class EditorMediaController {
 	}
 
 	/**
-	 * Removes the WordPress-side attachment record without deleting the original source file.
+	 * Deletes attachments created by this plugin, which are not attached to a
+	 * post, without ever deleting a file.
 	 *
-	 * @return int[]|\WP_Error
+	 * `wp_delete_post()` deletes the attached file and its sub-sizes. The
+	 * `_wp_attached_file` meta is removed first so that core finds nothing to
+	 * delete, and a `wp_delete_file` filter refuses every deletion for the
+	 * duration of the call, in case another plugin restores that value.
+	 *
+	 * @param array<int, array{id:int, parent:int, owned:bool}> $rows
+	 * @return int[]
 	 */
-	public function removeVirtualAttachment( string $sourceId, string $path ) {
-		$matches = $this->findVirtualAttachments( $sourceId, $path );
-		if ( [] === $matches ) {
-			return [];
-		}
-
+	private function removeOwnedRows( array $rows ): array {
 		$removed = [];
-		foreach ( $matches as $attachmentId ) {
-			if ( 0 !== (int) get_post_field( 'post_parent', $attachmentId ) ) {
-				continue;
-			}
+		$refuse = static fn (): string => '';
+		add_filter( 'wp_delete_file', $refuse, PHP_INT_MAX );
 
-			if ( ! current_user_can( 'delete_post', (int) $attachmentId ) ) {
-				continue;
-			}
+		try {
+			foreach ( $rows as $row ) {
+				$attachmentId = (int) $row['id'];
+				if ( 0 !== (int) get_post_field( 'post_parent', $attachmentId ) ) {
+					continue;
+				}
+				if ( ! current_user_can( 'delete_post', $attachmentId ) ) {
+					continue;
+				}
 
-			delete_post_meta( (int) $attachmentId, '_wp_attached_file' );
-			wp_delete_post( (int) $attachmentId, true );
-			$removed[] = $attachmentId;
+				delete_post_meta( $attachmentId, '_wp_attached_file' );
+				wp_delete_post( $attachmentId, true );
+				$removed[] = $attachmentId;
+			}
+		} finally {
+			remove_filter( 'wp_delete_file', $refuse, PHP_INT_MAX );
 		}
 
 		return $removed;
 	}
 
 	/**
-	 * Removes the association between matching attachments and the current post.
+	 * Removes the association between attachments and the current post.
 	 *
+	 * @param array<int, array{id:int, parent:int, owned:bool}> $rows
 	 * @return int[]|\WP_Error
 	 */
-	public function detachVirtualAttachments( string $sourceId, string $path, int $postId ) {
+	private function detachRows( array $rows, int $postId ) {
 		$detached = [];
-		foreach ( $this->findVirtualAttachments( $sourceId, $path ) as $attachmentId ) {
+		foreach ( $rows as $row ) {
+			$attachmentId = (int) $row['id'];
 			if ( $postId !== (int) get_post_field( 'post_parent', $attachmentId ) ) {
 				continue;
 			}
 
-			if ( ! current_user_can( 'edit_post', (int) $attachmentId ) ) {
+			if ( ! current_user_can( 'edit_post', $attachmentId ) ) {
 				continue;
 			}
 
@@ -598,7 +579,7 @@ class EditorMediaController {
 				'post_parent' => 0,
 			], true );
 			if ( is_wp_error( $updated ) || empty( $updated ) ) {
-				return is_wp_error( $updated ) ? $updated : new \WP_Error( 'detach_attachment_failed', 'Unable to detach the media from the current post.' );
+				return is_wp_error( $updated ) ? $updated : new \WP_Error( 'detach_attachment_failed', __( 'Unable to detach the media from the current post.', 'wp-media-helper' ) );
 			}
 
 			$detached[] = $attachmentId;
@@ -608,88 +589,20 @@ class EditorMediaController {
 	}
 
 	/**
-	 * Returns the ID of the post a matching attachment is protected by, or 0
-	 * when no matching attachment is attached to a post other than $postId.
+	 * Returns the ID of the post an attachment of the file is protected by, or 0
+	 * when none is attached to a post other than $postId.
+	 *
+	 * @param array<int, array{id:int, parent:int, owned:bool}> $rows
 	 */
-	private function findOtherPostAttachment( string $sourceId, string $path, int $postId ): int {
-		foreach ( $this->findVirtualAttachments( $sourceId, $path ) as $attachmentId ) {
-			$parent = (int) get_post_field( 'post_parent', $attachmentId );
+	public static function findOtherPostAttachment( array $rows, int $postId ): int {
+		foreach ( $rows as $row ) {
+			$parent = (int) $row['parent'];
 			if ( 0 !== $parent && $parent !== $postId ) {
 				return $parent;
 			}
 		}
 
 		return 0;
-	}
-
-	/**
-	 * IDs of the attachments created by this plugin, with their post meta
-	 * loaded in a single query so per-attachment lookups hit the cache.
-	 *
-	 * @return int[]
-	 */
-	private function getVirtualAttachmentIds(): array {
-		$attachments = get_posts( [
-			'post_type' => 'attachment',
-			'post_status' => 'inherit',
-			'posts_per_page' => -1,
-			'fields' => 'ids',
-			'meta_key' => '_wp_media_helper_source_path',
-			'no_found_rows' => true,
-			'update_post_term_cache' => false,
-		] );
-
-		if ( empty( $attachments ) || is_wp_error( $attachments ) ) {
-			return [];
-		}
-
-		$attachments = array_map( 'intval', $attachments );
-		update_meta_cache( 'post', $attachments );
-
-		return $attachments;
-	}
-
-	/**
-	 * @return int[]
-	 */
-	private function findVirtualAttachments( string $sourceId, string $path ): array {
-		$attachments = $this->getVirtualAttachmentIds();
-		if ( [] === $attachments ) {
-			return [];
-		}
-
-		$matches = [];
-		foreach ( $attachments as $attachmentId ) {
-			$attachmentId = (int) $attachmentId;
-			$attachedFile = get_attached_file( $attachmentId, true );
-			$sourcePath = get_post_meta( $attachmentId, '_wp_media_helper_source_path', true );
-			$metaSourceId = get_post_meta( $attachmentId, '_wp_media_helper_source_id', true );
-
-			if ( ! is_string( $sourcePath ) || '' === $sourcePath ) {
-				continue;
-			}
-
-			if ( '' !== $sourceId && (string) $metaSourceId !== $sourceId ) {
-				continue;
-			}
-
-			$checks = [];
-			if ( is_string( $attachedFile ) && '' !== $attachedFile ) {
-				$checks[] = $attachedFile;
-			}
-			if ( is_string( $sourcePath ) && '' !== $sourcePath ) {
-				$checks[] = $sourcePath;
-			}
-
-			foreach ( $checks as $candidatePath ) {
-				if ( MediaPanelState::pathMatches( $path, $candidatePath ) ) {
-					$matches[] = $attachmentId;
-					break;
-				}
-			}
-		}
-
-		return array_values( array_unique( $matches ) );
 	}
 
 	public function handle(): void {
@@ -844,77 +757,36 @@ class EditorMediaController {
 	}
 
 	/**
+	 * Which listed files already have an attachment, and where it is attached.
+	 * Paths in the result are the listed paths, so they match the items exactly.
+	 *
 	 * @param string[] $candidatePaths
 	 * @return array{imported_paths:string[], attached_paths:string[], other_post_by_path:array<string, array{post_id:int}>}
 	 */
 	private function resolveAttachmentStates( array $candidatePaths, int $postId ): array {
-		$known = [];
-		foreach ( $candidatePaths as $path ) {
-			if ( ! is_string( $path ) || '' === trim( $path ) ) {
-				continue;
-			}
-			foreach ( MediaPanelState::pathSignatureCandidates( $path ) as $candidate ) {
-				$known[ $candidate ] = true;
-			}
-		}
-
-		if ( [] === $known ) {
-			return [ 'imported_paths' => [], 'attached_paths' => [], 'other_post_by_path' => [] ];
-		}
-
-		$attachments = $this->getVirtualAttachmentIds();
-		if ( [] === $attachments ) {
-			return [ 'imported_paths' => [], 'attached_paths' => [], 'other_post_by_path' => [] ];
-		}
-
 		$imported = [];
 		$attached = [];
 		$otherPostByPath = [];
-		foreach ( $attachments as $attachmentId ) {
-			$attachmentId = (int) $attachmentId;
-			$path = get_attached_file( $attachmentId, true );
-			$sourcePath = get_post_meta( $attachmentId, '_wp_media_helper_source_path', true );
-			if ( ! is_string( $sourcePath ) || '' === $sourcePath ) {
-				continue;
-			}
 
-			$checks = [];
-			if ( is_string( $path ) && '' !== $path ) {
-				$checks[] = $path;
-			}
-			if ( is_string( $sourcePath ) && '' !== $sourcePath ) {
-				$checks[] = $sourcePath;
-			}
-
-			$matches = false;
-			foreach ( $checks as $candidatePath ) {
-				foreach ( MediaPanelState::pathSignatureCandidates( $candidatePath ) as $candidate ) {
-					if ( isset( $known[ $candidate ] ) ) {
-						$matches = true;
-						break;
-					}
-				}
-				if ( $matches ) {
+		foreach ( ( new AttachmentRegistry() )->statesFor( $candidatePaths ) as $path => $rows ) {
+			$path = (string) $path;
+			$imported[] = $path;
+			foreach ( $rows as $row ) {
+				$parent = (int) $row['parent'];
+				if ( 0 !== $postId && $postId === $parent ) {
+					$attached[] = $path;
+					unset( $otherPostByPath[ $path ] );
 					break;
 				}
-			}
-
-			if ( ! $matches ) {
-				continue;
-			}
-
-			$imported[] = $sourcePath;
-			$parent = (int) get_post_field( 'post_parent', $attachmentId );
-			if ( 0 !== $postId && $postId === $parent ) {
-				$attached[] = $sourcePath;
-			} elseif ( 0 !== $parent ) {
-				$otherPostByPath[ $sourcePath ] = [ 'post_id' => $parent ];
+				if ( 0 !== $parent ) {
+					$otherPostByPath[ $path ] = [ 'post_id' => $parent ];
+				}
 			}
 		}
 
 		return [
-			'imported_paths' => array_values( array_unique( $imported ) ),
-			'attached_paths' => array_values( array_unique( $attached ) ),
+			'imported_paths' => $imported,
+			'attached_paths' => $attached,
 			'other_post_by_path' => $otherPostByPath,
 		];
 	}

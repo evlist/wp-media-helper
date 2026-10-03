@@ -202,12 +202,16 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertFalse( $items[1]['is_imported'] );
 	}
 
-	public function test_set_import_state_matches_wordpress_renamed_uploads(): void {
+	public function test_set_import_state_matches_exact_paths_only(): void {
 		$items = MediaPanelState::setImportState( [
-			[ 'id' => 'a', 'path' => '/tmp/source/20260810-morning.png', 'name' => '20260810-morning.png', 'type' => 'png', 'is_imported' => false ],
-		], [ '/wp-content/uploads/2026/08/20260810-morning_1.png' ] );
+			[ 'id' => 'a', 'path' => '/uploads/photos/2026/morning.png', 'name' => 'morning.png' ],
+			[ 'id' => 'b', 'path' => '/uploads/photos/2027/morning.png', 'name' => 'morning.png' ],
+			[ 'id' => 'c', 'path' => '/uploads/photos/2026/morning_1.png', 'name' => 'morning_1.png' ],
+		], [ '/uploads/photos/2026/morning.png' ] );
 
 		$this->assertTrue( $items[0]['is_imported'] );
+		$this->assertFalse( $items[1]['is_imported'], 'Same file name in another directory is another file.' );
+		$this->assertFalse( $items[2]['is_imported'], 'A numeric suffix is not a renamed copy.' );
 	}
 
 	public function test_set_attachment_state_marks_items_attached_to_the_current_post(): void {
@@ -248,11 +252,6 @@ class MediaPanelStateTest extends TestCase {
 		$filtered = MediaPanelState::filterByAttachmentScope( $items, [ 'unattached', 'current' ] );
 
 		$this->assertSame( [ 'a', 'c' ], array_column( $filtered, 'id' ) );
-	}
-
-	public function test_path_matches_handles_wordpress_renamed_uploads(): void {
-		$this->assertTrue( MediaPanelState::pathMatches( '/tmp/source/20260810-morning.png', '/wp-content/uploads/2026/08/20260810-morning_1.png' ) );
-		$this->assertFalse( MediaPanelState::pathMatches( '/tmp/source/20260810-morning.png', '/tmp/source/20260811-morning.png' ) );
 	}
 
 	public function test_normalize_bulk_items_discards_invalid_items_and_duplicates(): void {
@@ -487,5 +486,16 @@ class MediaPanelStateTest extends TestCase {
 		foreach ( [ '', 'tomorrow', '2026-13-01', '2026-02-30', '26-08-10', '2026-08-10 12:00', '../../etc' ] as $invalid ) {
 			$this->assertSame( '2000-01-01', MediaPanelState::normalizeDate( $invalid, '2000-01-01' ) );
 		}
+	}
+
+	public function test_find_other_post_attachment_ignores_the_current_post_and_unattached_files(): void {
+		$rows = [
+			[ 'id' => 1, 'parent' => 0, 'owned' => false ],
+			[ 'id' => 2, 'parent' => 7, 'owned' => true ],
+		];
+
+		$this->assertSame( 0, \WP_Media_Helper\Admin\EditorMediaController::findOtherPostAttachment( $rows, 7 ) );
+		$this->assertSame( 7, \WP_Media_Helper\Admin\EditorMediaController::findOtherPostAttachment( $rows, 8 ) );
+		$this->assertSame( 0, \WP_Media_Helper\Admin\EditorMediaController::findOtherPostAttachment( [], 8 ) );
 	}
 }

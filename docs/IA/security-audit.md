@@ -81,6 +81,12 @@ exposure on those servers.
 
 ### R3 - Medium: public attachment metadata discloses file names and server paths
 
+Status: **fixed for new registrations** by [slice 022](../slices/022-wordpress-native-registration.md):
+the `guid` is a URL, the provenance meta holds a relative path, and no stored
+metadata holds a server path. Attachments from earlier versions are rewritten
+when next recognised. File names and titles remain public, as for any
+attachment.
+
 Importing creates an attachment whose `guid` is the absolute file-system path
 and whose title is the file name. Attachments with no parent are normally
 readable anonymously through the REST media endpoint (*to verify*), so
@@ -116,6 +122,10 @@ no rate limit.
 
 ### R5 - Low to medium: resource exhaustion by authenticated users
 
+Status: attachment lookups are now exact queries on `_wp_attached_file`, in
+chunks, instead of loading every imported attachment. The scan itself and forced
+refreshes are unchanged.
+
 `max_entries` bounds responses and bulk size, not the work done to produce
 them: a scan reads the whole resolved directory tree, each editor tab polls
 every 30 seconds, and attachment lookups load every imported attachment
@@ -126,6 +136,10 @@ every 30 seconds, and attachment lookups load every imported attachment
   attachments by indexed meta value, and share one lookup per request.
 
 ### R6 - Low: removal depends on WordPress internals to spare the original file
+
+Status: **fixed** by slice 022. During removal a `wp_delete_file` filter refuses
+every deletion, in addition to removing `_wp_attached_file` first, and only
+attachments created by this plugin can be removed.
 
 `remove` deletes the attachment with `wp_delete_post( $id, true )`, after
 deleting `_wp_attached_file` so that core finds no file to delete. If another
