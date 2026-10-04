@@ -41,7 +41,7 @@ tool. Sections are updated in place; the findings of this audit are listed first
 | `wp_media_helper_media_panel_state` (listing) | `edit_posts` | `wp_media_helper_media_panel` | Hidden files only for `wp_media_helper_can_see_hidden_files`. See R4 |
 | `wp_media_helper_bulk_media` | `upload_files` for import/attach; `edit_post` per attachment for attach/detach/remove; `wp_media_helper_can_hide_files` for hide/show | same | Paths resolved to a file of an active source by ownership; maximum number of items |
 | `wp_media_helper_panel_mode`, `wp_media_helper_save_filter` | `edit_posts` | same | Values whitelisted |
-| `wp_media_helper_thumbnail` (preview, GET) | `upload_files` | same, in the URL | Path resolved to an image of an active source, not hidden, size and memory limits. See R12 and R14 |
+| `wp_media_helper_thumbnail` (preview, GET) | `upload_files` | same, in the URL | Path resolved to an image of an active source, not hidden, size and memory limits. See R13 and R14 |
 | `wp_media_helper_test_name_pattern` | `manage_options` | own nonce | Nothing stored; patterns limited (length, wildcards) |
 | `admin_post_*`: save sources, rescan, use uploads, reset | `manage_options` | one per action | Reset also needs the word `RESET` |
 | WP-Cron events (index run, maintenance, thumbnails) | none (internal) | — | Bounded by a time budget; the index run holds a lock |
@@ -233,23 +233,24 @@ thumbnail cache are in [slice 021](../slices/021-allowed-base-directory.md).
   post dates remain after the plugin is deleted. The Reset section (slice 027's companion tool)
   removes them on demand, and a routine for `uninstall.php` could reuse it.
 
-### R12 - High: previews of files that were never imported are publicly downloadable
+### R12 - Low: the thumbnail cache must be protected like the sources
 
-The panel previews are stored in the thumbnail cache, `uploads/thumbnails/<path of the file>-150x150.<ext>`,
-which the web server serves. The URL is predictable: it follows the path of the original, and
-camera names contain a date and a time. Anyone who can guess or learn the path of a **private**
-image of a source (not imported, not published) can fetch its 150 px preview, **without
-logging in**, once a user has listed it in the panel. The preview endpoint itself needs a
-session, but what it writes does not. Slice 023 states that only images the site accepts to
-publish may be given a public cache; the panel previews break that rule.
+Sources are under the uploads directory, so their originals are as public as the web server
+makes them (R1). The previews of the panel and the sizes of imported images are stored in
+`uploads/thumbnails`, at a URL that follows the path of the original: anyone who can guess one
+can guess the other, and the original is the more revealing of the two. The cache therefore adds no
+exposure of its own.
 
-- Status: *open*, to decide.
-- Recommendations: store the panel previews in a directory that is not served (and send them
-  through the authenticated endpoint) and keep the public cache for imported attachments;
-  or, as a smaller step, make the first delivery with previews only for imported files; or
-  block HTTP access to `uploads/thumbnails` for sites that keep private sources.
-- Hiding a file deletes its previews (slice 027), which limits the exposure for files known to
-  be private.
+It matters only when R1 is mitigated by denying HTTP access to the **source directories**: the
+cache directory must be denied too, or the previews stay public while the originals are not. The
+README says to block both; the settings page lists the public URL of each source (the cache is
+listed in the README rule, not on the page).
+
+- Status: *documented*, same class as R1. A first version of this audit rated it *high*, as a
+  new exposure; that was wrong, since it is the same exposure as the originals.
+- Recommendation: add the cache directory to the rules that deny access to private sources, and
+  list its public URL on the settings page next to those of the sources.
+- Hiding a file deletes its previews (slice 027).
 
 ### R13 - Low to medium: previews are generated on request by any user who can upload
 
@@ -331,9 +332,8 @@ first candidates.
 
 ## Priorities after this audit
 
-1. **R12** (previews of private files in a public cache): decide the design, since it
-   contradicts the promise of slice 023.
-2. R19 (a screen for excluded directories) and R4 (require `upload_files` for the listing).
+1. R19 (a screen for excluded directories) and R4 (require `upload_files` for the listing).
+2. R12: show the public URL of the thumbnail cache on the settings page, with the sources'.
 3. R13 and R14 (throttle, identifiers instead of paths in preview URLs).
 4. Integration tests of the endpoints above with the WordPress test suite.
 
