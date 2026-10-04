@@ -280,4 +280,29 @@ class IndexScannerTest extends TestCase {
 		$this->assertSame( 'photos/a.jpg', $moved->key( '/srv/new-site/uploads/photos/a.jpg' ) );
 		$this->assertSame( '/mnt/media/a.jpg', $moved->key( '/mnt/media/a.jpg' ) );
 	}
+
+	public function test_excluded_trees_are_skipped_and_forgotten_when_an_exclusion_appears(): void {
+		$this->pass();
+		$this->assertSame( [ '20261002_121549.jpg' ], $this->day( '2026-10-02' ) );
+
+		// A source before this one now owns 2026/10/02: a full pass drops what was indexed there.
+		$this->pass( true, [ 'exclusions' => [ $this->root . '/2026/10/02' ] ] );
+		$this->assertSame( [], $this->day( '2026-10-02' ) );
+		$this->assertSame( [ '20261003-subtitles.vtt' ], $this->day( '2026-10-03' ) );
+	}
+
+	public function test_a_first_scan_never_enters_an_excluded_tree_even_when_asked_by_a_hint(): void {
+		$exclusions = [ 'exclusions' => [ $this->root . '/2026/10/02' ] ];
+		$this->pass( false, $exclusions );
+		$this->assertSame( [], $this->day( '2026-10-02' ) );
+
+		$this->scanner()->scan( $this->source( $exclusions ), 99, new ScanBudget( 30 ), true, [ $this->root . '/2026/10/02' ] );
+		$this->assertSame( [], $this->day( '2026-10-02' ) );
+	}
+
+	public function test_a_source_entirely_owned_by_another_lists_nothing(): void {
+		$this->pass( false, [ 'exclusions' => [ $this->root ] ] );
+
+		$this->assertSame( 0, $this->store->countFiles( 's' ) );
+	}
 }

@@ -5,6 +5,7 @@
 namespace WP_Media_Helper\Index;
 
 use WP_Media_Helper\MediaSource\FileDates;
+use WP_Media_Helper\Settings\SourceOwnership;
 
 /**
  * Decides when each source is scanned, and runs the passes.
@@ -57,7 +58,8 @@ class IndexManager {
 	public function prepare( array $source ): array {
 		$id    = (string) ( $source['id'] ?? '' );
 		$state = $this->state->get( $id );
-		$hash  = FileDates::configHash( $source );
+		// Reordering the sources or changing a state changes the exclusions, and so what the index may hold.
+		$hash  = FileDates::configHash( $source ) . SourceOwnership::fingerprint( $source );
 		$root  = (string) ( $source['root'] ?? '' );
 
 		$changed = false;

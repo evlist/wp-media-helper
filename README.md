@@ -71,7 +71,8 @@ All settings are managed on the plugin's **Settings** page
 | **Name date pattern** | Optional. How a date is written in file names, for example `{date:Ymd}` or `IMG_{date:Ymd}_{date:His}`. Letters: `Y` year, `m` month, `d` day, `H` hour, `i` minute, `s` second. Forms such as `20261002_121549` or `2026-10-02` are recognised without a pattern. A name with a date alone is placed at 12:00. |
 | **Files without a date in their name** | Whether to use the modification time of the file (on by default). When off, such a file is not placed on any day. |
 | **Maximum entries per page** | Number of media items shown per page in the editor panel, and the maximum number of items accepted by a single bulk action. Whole number between 1 and 500, default 100. |
-| **Thumbnail cache directory** | Optional. Writable directory where thumbnails for external media files are stored, located inside the same allowed base directory as the roots and separate from the source root. Required when external directories are read-only. Thumbnails are generated lazily on first request. |
+| **State** and order | The sources are an **ordered list**; each file belongs to the first source whose directory contains it, so put narrow sources (`photos`) before broad ones (`uploads`). *Active*: its files are listed and can be imported. *Disabled*: ignored as if it did not exist, its files fall to the sources that follow. *Excluded*: lists nothing, and no other source lists its files either. |
+| **Thumbnail cache directory** | Optional. Writable directory where thumbnails for external media files are stored, located inside the same allowed base directory as the roots. It may lie inside a source root (it is never listed) but it cannot be, or contain, a root. Required when an active external directory is read-only. Thumbnails are generated lazily on first request. |
 
 See [Dates in WP Media Helper](docs/IA/date-model.md) for how the panel date, the
 patterns, the attachment date and the dates of the files relate, and why a date in a
@@ -87,10 +88,11 @@ Every external source root, and every thumbnail cache directory, must be a
 sub-directory of the WordPress uploads directory (for example
 `wp-content/uploads/nextcloud`). A source whose root or cache is outside it is
 rejected when saving, and a source already stored outside it is disabled and
-flagged with a warning on the settings page. A thumbnail cache may not exist
-yet (it is created on first use) but its parent must, and it must be separate
-from the source root: it can be neither inside it, equal to it, nor contain it,
-otherwise thumbnails would be listed as media.
+flagged with a warning on the settings page. A root may be the uploads directory
+itself (type `.`). A thumbnail cache may not exist yet (it is created on first use)
+but its parent must. Caches are never listed as media, even inside a source root,
+and a cache cannot be or contain a root. Two sources cannot have the same root;
+a source whose directory is inside an earlier source's is flagged as shadowed.
 
 In the settings screen the base directory is displayed in front of the *Root
 directory* and *Thumbnail cache directory* fields, and you only type the path below it (for example

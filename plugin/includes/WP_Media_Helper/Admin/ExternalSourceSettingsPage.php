@@ -10,6 +10,8 @@ use WP_Media_Helper\Index\DayIndex;
 use WP_Media_Helper\Settings\AllowedBase;
 use WP_Media_Helper\Settings\ExternalSourceSettings;
 use WP_Media_Helper\Settings\GeneralSettings;
+use WP_Media_Helper\Settings\SourceOwnership;
+use WP_Media_Helper\Settings\SourceState;
 
 class ExternalSourceSettingsPage {
 
@@ -68,6 +70,7 @@ class ExternalSourceSettingsPage {
 		$validationErrors = $this->getValidationErrors( $sources, $enforceBase );
 		$notices = $this->buildErrorNotices( $sources, $enforceBase );
 		$disabledSources = null === $pending ? $this->findDisabledSourceNames( $sources ) : [];
+		$shadowed = SourceOwnership::shadowed( $sources );
 		$exposedUrls = [];
 		foreach ( $sources as $source ) {
 			foreach ( [ 'root', 'thumbnail_cache' ] as $field ) {
@@ -123,6 +126,28 @@ class ExternalSourceSettingsPage {
 				</div>
 			<?php endif; ?>
 
+			<?php if ( [] !== $shadowed ) : ?>
+				<div class="notice notice-warning">
+					<p><strong><?php esc_html_e( 'Some sources can never list a file.', 'wp-media-helper' ); ?></strong>
+						<?php esc_html_e( 'Their directory is inside the directory of an earlier source, which owns it. Move them before that source, or remove them.', 'wp-media-helper' ); ?>
+					</p>
+					<ul class="ul-disc">
+						<?php foreach ( $shadowed as $shadowIndex => $ownerName ) : ?>
+							<li>
+								<?php
+								printf(
+									/* translators: 1: name of the source that never lists a file, 2: name of the earlier source that owns its directory. */
+									esc_html__( '%1$s (owned by %2$s)', 'wp-media-helper' ),
+									esc_html( (string) ( $sources[ $shadowIndex ]['name'] ?? '' ) ),
+									esc_html( $ownerName )
+								);
+								?>
+							</li>
+						<?php endforeach; ?>
+					</ul>
+				</div>
+			<?php endif; ?>
+
 			<?php if ( [] !== $exposedUrls ) : ?>
 				<div class="notice notice-info">
 					<p><strong><?php esc_html_e( 'These directories are inside the uploads directory.', 'wp-media-helper' ); ?></strong>
@@ -164,7 +189,8 @@ class ExternalSourceSettingsPage {
 				</table>
 
 				<h2><?php esc_html_e( 'External media sources', 'wp-media-helper' ); ?></h2>
-				<p class="description"><?php esc_html_e( 'Add one or more directories that should be included in the external media workflow.', 'wp-media-helper' ); ?></p>
+				<p class="description"><?php esc_html_e( 'Add one or more directories that should be included in the external media workflow. The order matters: a file belongs to the first source whose directory contains it, so put the most specific directories first (for example uploads/photos before uploads). The thumbnail cache directories are never listed.', 'wp-media-helper' ); ?></p>
+				<p class="description"><?php esc_html_e( 'Active: its files are listed and can be imported. Disabled: ignored as if it did not exist, its files are handled by the sources that follow. Excluded: not listed, and no other source lists its files either.', 'wp-media-helper' ); ?></p>
 
 				<p id="wp-media-helper-no-source" class="wp-media-helper-empty-state"<?php echo [] === $sources ? '' : ' hidden'; ?>>
 					<?php esc_html_e( 'No external source is configured. The plugin uses the WordPress media library only.', 'wp-media-helper' ); ?>
@@ -177,7 +203,7 @@ class ExternalSourceSettingsPage {
 				</div>
 
 				<template id="wp-media-helper-source-template">
-					<?php $this->renderSource( '__INDEX__', [ 'enabled' => true ], [], $allowedBase, false ); ?>
+					<?php $this->renderSource( '__INDEX__', [ 'state' => SourceState::ACTIVE ], [], $allowedBase, false ); ?>
 				</template>
 
 				<p class="submit">
@@ -210,15 +236,19 @@ class ExternalSourceSettingsPage {
 				padding-bottom: 0.75rem;
 				border-bottom: 1px solid #f0f0f1;
 			}
+			.wp-media-helper-source-header strong {
+				margin-right: auto;
+			}
+			.wp-media-helper-priority {
+				color: #646970;
+			}
 			.wp-media-helper-toggle {
 				display: inline-flex;
 				align-items: center;
 				gap: 0.4rem;
 				font-weight: 600;
 			}
-			.wp-media-helper-remove-source {
-				margin-left: auto;
-			}
+
 			.wp-media-helper-source .form-table th {
 				width: 190px;
 			}
@@ -415,7 +445,7 @@ class ExternalSourceSettingsPage {
 		$settings = $this->makeReadOnlySettings();
 		$names = [];
 		foreach ( $sources as $source ) {
-			if ( ! is_array( $source ) || ! filter_var( $source['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN ) ) {
+			if ( ! is_array( $source ) || SourceState::ACTIVE !== SourceState::of( $source ) ) {
 				continue;
 			}
 			$root = trim( (string) ( $source['root'] ?? '' ) );
@@ -443,11 +473,6 @@ class ExternalSourceSettingsPage {
 	}
 
 	/**
-	 * Where the index of a source stands, as a sentence.
-	 *
-	 * @param array<string, mixed> $source
-	 */
-	/**
 	 * Renders one source card. Used for the stored sources and, with __INDEX__ as
 	 * index, for the template cloned by the "Add source" button, so both always match.
 	 *
@@ -461,11 +486,17 @@ class ExternalSourceSettingsPage {
 
 			<div class="wp-media-helper-source-header">
 				<strong><?php echo esc_html( (string) ( $source['name'] ?? '' ) ?: __( 'New source', 'wp-media-helper' ) ); ?></strong>
+				<span class="wp-media-helper-priority" title="<?php esc_attr_e( 'Priority: the first source owns the files inside its directory.', 'wp-media-helper' ); ?>">#<span class="wp-media-helper-priority-number"><?php echo esc_html( is_int( $index ) ? (string) ( $index + 1 ) : '' ); ?></span></span>
 				<label class="wp-media-helper-toggle">
-					<input type="hidden" name="sources[<?php echo esc_attr( $index ); ?>][enabled]" value="0" />
-					<input type="checkbox" name="sources[<?php echo esc_attr( $index ); ?>][enabled]" value="1" <?php checked( ! empty( $source['enabled'] ) ); ?> />
-					<?php esc_html_e( 'Enabled', 'wp-media-helper' ); ?>
+					<span class="screen-reader-text"><?php esc_html_e( 'State', 'wp-media-helper' ); ?></span>
+					<select name="sources[<?php echo esc_attr( $index ); ?>][state]">
+						<option value="<?php echo esc_attr( SourceState::ACTIVE ); ?>" <?php selected( SourceState::of( $source ), SourceState::ACTIVE ); ?>><?php esc_html_e( 'Active', 'wp-media-helper' ); ?></option>
+						<option value="<?php echo esc_attr( SourceState::DISABLED ); ?>" <?php selected( SourceState::of( $source ), SourceState::DISABLED ); ?>><?php esc_html_e( 'Disabled', 'wp-media-helper' ); ?></option>
+						<option value="<?php echo esc_attr( SourceState::EXCLUDED ); ?>" <?php selected( SourceState::of( $source ), SourceState::EXCLUDED ); ?>><?php esc_html_e( 'Excluded', 'wp-media-helper' ); ?></option>
+					</select>
 				</label>
+				<button type="button" class="button-link wp-media-helper-move-source" data-direction="-1" aria-label="<?php esc_attr_e( 'Move up', 'wp-media-helper' ); ?>">&uarr;</button>
+				<button type="button" class="button-link wp-media-helper-move-source" data-direction="1" aria-label="<?php esc_attr_e( 'Move down', 'wp-media-helper' ); ?>">&darr;</button>
 				<button type="button" class="button-link-delete wp-media-helper-remove-source"><?php esc_html_e( 'Remove', 'wp-media-helper' ); ?></button>
 			</div>
 
@@ -622,6 +653,11 @@ class ExternalSourceSettingsPage {
 		<?php
 	}
 
+	/**
+	 * Where the index of a source stands, as a sentence.
+	 *
+	 * @param array<string, mixed> $source
+	 */
 	private function indexStatus( array $source ): string {
 		$status = DayIndex::forWordPress()->manager()->status( $source );
 

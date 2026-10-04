@@ -23,6 +23,16 @@
 		}
 	};
 
+	// The order of the cards is the priority order, and the form is submitted in that order.
+	const renumber = function () {
+		container.querySelectorAll( '.wp-media-helper-source' ).forEach( function ( card, position ) {
+			const number = card.querySelector( '.wp-media-helper-priority-number' );
+			if ( number ) {
+				number.textContent = String( position + 1 );
+			}
+		} );
+	};
+
 	// The markup of a new source comes from the same PHP code as the stored ones.
 	addButton.addEventListener( 'click', function () {
 		if ( ! template ) {
@@ -33,9 +43,28 @@
 		holder.innerHTML = template.innerHTML.split( '__INDEX__' ).join( String( nextIndex++ ) );
 		container.appendChild( holder.firstElementChild );
 		refreshEmptyState();
+		renumber();
 	} );
 
 	container.addEventListener( 'click', function ( event ) {
+		if ( event.target.classList.contains( 'wp-media-helper-move-source' ) ) {
+			const moving = event.target.closest( '.wp-media-helper-source' );
+			if ( ! moving ) {
+				return;
+			}
+
+			if ( '-1' === event.target.dataset.direction ) {
+				if ( moving.previousElementSibling ) {
+					container.insertBefore( moving, moving.previousElementSibling );
+				}
+			} else if ( moving.nextElementSibling ) {
+				container.insertBefore( moving.nextElementSibling, moving );
+			}
+			renumber();
+
+			return;
+		}
+
 		if ( ! event.target.classList.contains( 'wp-media-helper-remove-source' ) ) {
 			return;
 		}
@@ -60,6 +89,7 @@
 		if ( window.confirm( message ) ) {
 			card.remove();
 			refreshEmptyState();
+			renumber();
 		}
 	} );
 } )( window.wp );

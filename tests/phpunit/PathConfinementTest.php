@@ -78,13 +78,26 @@ class PathConfinementTest extends TestCase {
 		$this->assertSame( $this->root . '/2026/photo.jpg', $resolved['path'] );
 	}
 
-	public function test_a_client_cannot_claim_a_path_belongs_to_another_source(): void {
+	public function test_the_owner_is_the_first_source_whose_tree_holds_the_file_whatever_the_client_claims(): void {
+		mkdir( $this->root . '/photos', 0755, true );
+		touch( $this->root . '/photos/a.jpg' );
 		$sources = [
-			[ 'id' => 'other', 'root' => $this->outside ],
-			[ 'id' => 'main', 'root' => $this->root ],
+			[ 'id' => 'photos', 'root' => $this->root . '/photos', 'exclusions' => [] ],
+			[ 'id' => 'uploads', 'root' => $this->root, 'exclusions' => [ $this->root . '/photos' ] ],
 		];
 
-		$this->assertNull( PathConfinement::resolveFileInSources( $sources, 'other', $this->root . '/2026/photo.jpg' ) );
-		$this->assertNull( PathConfinement::resolveFileInSources( $sources, 'unknown', $this->root . '/2026/photo.jpg' ) );
+		// Claiming 'uploads' for a file of 'photos' does not make 'uploads' its owner.
+		$this->assertSame( 'photos', PathConfinement::resolveFileInSources( $sources, 'uploads', $this->root . '/photos/a.jpg' )['source']['id'] );
+		$this->assertSame( 'uploads', PathConfinement::resolveFileInSources( $sources, 'photos', $this->root . '/2026/photo.jpg' )['source']['id'] );
+		$this->assertNull( PathConfinement::resolveFileInSources( $sources, 'uploads', $this->outside . '/secret.txt' ) );
+	}
+
+	public function test_a_file_owned_by_a_source_that_is_not_active_is_refused(): void {
+		// 'photos' is excluded or disabled upstream: only 'uploads' is listed, and it excludes that tree.
+		mkdir( $this->root . '/photos', 0755, true );
+		touch( $this->root . '/photos/a.jpg' );
+		$sources = [ [ 'id' => 'uploads', 'root' => $this->root, 'exclusions' => [ $this->root . '/photos' ] ] ];
+
+		$this->assertNull( PathConfinement::resolveFileInSources( $sources, 'uploads', $this->root . '/photos/a.jpg' ) );
 	}
 }

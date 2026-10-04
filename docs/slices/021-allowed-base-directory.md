@@ -76,12 +76,13 @@ only below the canonical cache directory with a fixed image extension, and
 re-checked against the allowed base at write time, not only when settings are
 saved.
 
-## Planned amendment
+## Amendment (slice 024, implemented)
 
-[Slice 024](024-source-priority-and-ownership.md) proposes to let a root equal the
-base itself and a cache lie inside a root (it is then excluded automatically),
-with an ordered list of sources where each file has a single owner. The rules
-above describe the current implementation.
+[Slice 024](024-source-priority-and-ownership.md) lets a root equal the base
+itself and a cache lie inside a root (it is then excluded automatically), with an
+ordered list of sources where each file has a single owner. Where the rules above
+say that the base itself is not allowed, or that the cache must be separate from the
+root, slice 024 applies instead: a root cannot be inside or equal to a cache.
 
 ## Non-goals
 

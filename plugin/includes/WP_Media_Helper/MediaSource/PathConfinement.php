@@ -4,6 +4,8 @@
 
 namespace WP_Media_Helper\MediaSource;
 
+use WP_Media_Helper\Settings\SourceOwnership;
+
 /**
  * Keeps client-supplied file paths inside the roots of configured sources.
  *
@@ -34,12 +36,15 @@ class PathConfinement {
 	}
 
 	/**
-	 * Finds the configured source whose root contains $path.
+	 * Finds the source that owns $path: the first of the active sources, in priority
+	 * order, whose root contains it and whose `exclusions` (trees owned by earlier
+	 * sources, thumbnail caches) do not.
 	 *
-	 * When $sourceId is not empty only that source is considered, so a client
-	 * cannot claim a path belongs to a source it does not.
+	 * $sourceId is only a hint from the client. The owner is always the real one, so
+	 * a client cannot import a file of one source by claiming it belongs to another;
+	 * a file whose owner is not active is refused, since no active source owns it.
 	 *
-	 * @param array<int, array<string, mixed>> $sources Active configured sources.
+	 * @param array<int, array<string, mixed>> $sources Active sources with their exclusions, in priority order.
 	 * @return array{source: array<string, mixed>, path: string}|null
 	 */
 	public static function resolveFileInSources( array $sources, string $sourceId, string $path ): ?array {
@@ -47,14 +52,17 @@ class PathConfinement {
 			if ( ! is_array( $source ) ) {
 				continue;
 			}
-			if ( '' !== $sourceId && (string) ( $source['id'] ?? '' ) !== $sourceId ) {
+
+			$resolved = self::resolveFileWithinRoot( (string) ( $source['root'] ?? '' ), $path );
+			if ( null === $resolved ) {
 				continue;
 			}
 
-			$resolved = self::resolveFileWithinRoot( (string) ( $source['root'] ?? '' ), $path );
-			if ( null !== $resolved ) {
-				return [ 'source' => $source, 'path' => $resolved ];
+			if ( SourceOwnership::isExcluded( $resolved, (array) ( $source['exclusions'] ?? [] ) ) ) {
+				continue;
 			}
+
+			return [ 'source' => $source, 'path' => $resolved ];
 		}
 
 		return null;

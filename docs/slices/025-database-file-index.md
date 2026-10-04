@@ -187,7 +187,9 @@ Code in `plugin/includes/WP_Media_Helper/Index/` and
 Choices made while implementing:
 
 - **Rows are per source** (unique on source and path). Two sources whose roots
-  overlap each index the file; ownership comes with slice 024.
+  overlap used to each index the file; slice 024 now keeps the owned trees out of the
+  scan and forces a full pass when the exclusions change (they are part of the
+  configuration hash).
 - **A directory read less than two seconds after it changed is stored without a
   time**, so the next pass reads it again: a file added in the same second as the
   scan would otherwise be missed until the next full pass.

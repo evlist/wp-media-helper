@@ -54,7 +54,7 @@ class AllowedBase {
 
 		$relative = trim( $input, '/\\' );
 
-		return '' === $relative ? rtrim( $base, '/\\' ) : rtrim( $base, '/\\' ) . '/' . $relative;
+		return '' === $relative || '.' === $relative ? rtrim( $base, '/\\' ) : rtrim( $base, '/\\' ) . '/' . $relative;
 	}
 
 	/**
@@ -67,6 +67,10 @@ class AllowedBase {
 		}
 
 		$prefix = rtrim( $base, '/\\' ) . '/';
+
+		if ( rtrim( $root, '/\\' ) === rtrim( $base, '/\\' ) ) {
+			return '.';
+		}
 
 		return str_starts_with( $root, $prefix ) ? substr( $root, strlen( $prefix ) ) : $root;
 	}
@@ -108,13 +112,13 @@ class AllowedBase {
 	}
 
 	/**
-	 * True when $root exists and lies strictly below $base, once both are
+	 * True when $root exists and is $base or lies below it, once both are
 	 * canonicalised (so `..` and symbolic links cannot be used to escape).
 	 */
 	public static function contains( string $base, string $root ): bool {
 		$realBase = realpath( $base );
 		$realRoot = realpath( $root );
 
-		return false !== $realBase && false !== $realRoot && PathConfinement::isWithin( $realBase, $realRoot );
+		return false !== $realBase && false !== $realRoot && ( $realRoot === rtrim( $realBase, '/\\' ) || PathConfinement::isWithin( $realBase, $realRoot ) );
 	}
 }

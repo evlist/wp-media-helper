@@ -18,8 +18,9 @@ class ActiveSources {
 	}
 
 	/**
-	 * Enabled sources whose root and thumbnail cache are inside the allowed base
-	 * directory. A source outside it is treated as disabled.
+	 * The sources that list files, in priority order, each with the directories it
+	 * must not enter (see SourceOwnership). A source outside the allowed base
+	 * directory is treated as disabled.
 	 *
 	 * @return array<int, array<string, mixed>>
 	 */
@@ -32,14 +33,7 @@ class ActiveSources {
 			return [];
 		}
 
-		return array_values( array_filter( $sources, static function ( $source ) use ( $settings ): bool {
-			return is_array( $source )
-				&& ! empty( $source['id'] )
-				&& ! empty( $source['name'] )
-				&& ! empty( $source['root'] )
-				&& filter_var( $source['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN )
-				&& $settings->isSourceAllowed( $source );
-		} ) );
+		return SourceOwnership::listing( $sources, static fn ( array $source ): bool => $settings->isSourceAllowed( $source ) );
 	}
 
 	/**

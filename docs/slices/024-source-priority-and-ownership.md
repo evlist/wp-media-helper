@@ -3,7 +3,7 @@
 
 # Slice 024: Source priority, ownership and states
 
-Status: **proposed** (design only, not implemented). It amends some rules of
+Status: **implemented** (see "Implementation notes" at the end). It amends some rules of
 [slice 021](021-allowed-base-directory.md) and constrains slices
 [022](022-wordpress-native-registration.md) and
 [023](023-thumbnails-in-cache.md).
@@ -160,3 +160,29 @@ by skipping owned trees.
 - Whether an Excluded root must exist on disk, and whether it must be inside the
   allowed base (it lists nothing, but it reserves a tree).
 - How to present reordering (drag and drop or buttons) in the settings page.
+
+## Implementation notes
+
+- `SourceState` holds the three states; a source saved with only an `enabled` flag is
+  read as Active (true) or Disabled (false), and the next save writes `state`.
+- `SourceOwnership::listing()` turns the ordered configuration into the active sources
+  with their `exclusions`: canonical roots of earlier Active/Excluded sources and the
+  thumbnail caches that lie inside the root (the whole root when it is owned by
+  something else). `ActiveSources::all()` returns that list, so listing, scanning,
+  hints, import and attach all use the same ownership.
+- The scanner skips excluded directories while walking and forgets what it had
+  indexed there. The exclusions fingerprint is part of the index configuration hash,
+  so reordering or changing a state starts a full pass of the sources concerned.
+- `PathConfinement::resolveFileInSources()` ignores the client's `source_id`: the owner
+  is the first active source that contains the file outside its exclusions, and a
+  file nobody lists is refused (also when its owner is Excluded or Disabled).
+- A root may be the allowed base (typed `.` in the form). Two sources cannot share a
+  root. A cache cannot be or contain a root; it may be inside one.
+- A read-only root needs a thumbnail cache only for an Active source.
+- The settings page shows the priority number, up/down buttons, a state menu and a
+  warning for shadowed sources.
+- Decided on the open questions: an Excluded source's root must exist and be inside
+  the allowed base, like any other (simplest rule); states are Active / Disabled /
+  Excluded; reordering uses buttons.
+- Not done: the index directory exclusion (the index is in the database) and the global
+  thumbnail cache (slice 023): every configured cache directory is excluded for now.

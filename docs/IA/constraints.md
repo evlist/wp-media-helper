@@ -71,11 +71,12 @@ sources with existing attachments are tracked in
   would move the trust boundary nowhere, because it would be changed through the
   same `manage_options` surface. Setting the constant or the filter result to
   `false` lifts the restriction for installations that need roots elsewhere.
-- Containment is checked on canonical paths (`realpath()`), strictly below the
-  base, so `..` segments and symbolic links cannot escape it.
+- Containment is checked on canonical paths (`realpath()`): a root is the base
+  itself or below it (slice 024), so `..` segments and symbolic links cannot escape it.
 - The thumbnail cache is a write location, so it matters at least as much as
-  the root. It may not exist yet, but its parent must, and it must stay
-  separate from the source root. Code that writes thumbnails must derive file
+  the root. It may not exist yet, but its parent must. It may lie inside a
+  source root (ownership excludes it from every listing) but it cannot be or
+  contain a root (slice 024). Code that writes thumbnails must derive file
   names from hashes (never from client input), write only below the canonical
   cache directory, and re-check the base at write time.
 - The check is made when settings are validated and saved, and again whenever
@@ -101,7 +102,7 @@ can `edit_posts` (for example Contributors), so everything they receive is
 untrusted input.
 
 - A client-supplied file path is only accepted when `PathConfinement`
-  resolves it (`realpath()`) to a regular file below the root of an *enabled
+  resolves it (`realpath()`) to a regular file below the root of an *active
   configured source*. The client may name a source id, but cannot make a path
   belong to a source whose root does not contain it. This does not conflict
   with the trusted-admin model above: the admin chooses the roots, while

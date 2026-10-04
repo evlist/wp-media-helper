@@ -52,7 +52,7 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertIsArray( $saved );
 		$this->assertSame( 'nextcloud-main', $saved[0]['id'] );
 		$this->assertSame( 'Nextcloud Main', $saved[0]['name'] );
-		$this->assertTrue( $saved[0]['enabled'] );
+		$this->assertSame( 'active', $saved[0]['state'] );
 		$this->assertSame( $this->tmpRoot, $saved[0]['root'] );
 		$this->assertSame( '{date:Y}/{date:m}/{date:d}', $saved[0]['path_pattern'] );
 		$this->assertSame( '{date:Ymd}', $saved[0]['filter_pattern'] );
@@ -161,9 +161,10 @@ class ExternalSourceSettingsTest extends TestCase {
 			}
 		);
 
+		mkdir( $this->tmpRoot . '/sub', 0755, true );
 		$settings->saveAll( [
 			[ 'name' => 'Nextcloud Main', 'root' => $this->tmpRoot ],
-			[ 'name' => 'Nextcloud-Main', 'root' => $this->tmpRoot ],
+			[ 'name' => 'Nextcloud-Main', 'root' => $this->tmpRoot . '/sub' ],
 		] );
 
 		$this->assertSame( 'nextcloud-main', $saved[0]['id'] );
@@ -578,14 +579,37 @@ class ExternalSourceSettingsTest extends TestCase {
 			static function ( array $value ): void {}
 		);
 
-		foreach ( [ $this->tmpRoot, $this->tmpRoot . '/cache', dirname( $this->tmpRoot ) ] as $cache ) {
+		// A cache inside a root is fine (it is excluded from the listing); a cache that is
+		// or contains a root is not.
+		$this->assertSame( [], $settings->validateSources( [
+			[ 'name' => 'Cached', 'root' => $this->tmpRoot, 'thumbnail_cache' => $this->tmpRoot . '/cache' ],
+		] ) );
+
+		foreach ( [ $this->tmpRoot, dirname( $this->tmpRoot ) ] as $cache ) {
 			$errors = $settings->validateSources( [
 				[ 'name' => 'Cached', 'root' => $this->tmpRoot, 'thumbnail_cache' => $cache ],
 			] );
 
 			$this->assertArrayHasKey( 'thumbnail_cache', $errors[0] );
-			$this->assertStringContainsString( 'separate', $errors[0]['thumbnail_cache'] );
+			$this->assertStringContainsString( 'cannot be, or contain', $errors[0]['thumbnail_cache'] );
 		}
+	}
+
+	public function test_two_sources_cannot_share_a_root_but_roots_can_be_nested(): void {
+		mkdir( $this->tmpRoot . '/sub', 0755, true );
+		$settings = new ExternalSourceSettings( static fn(): mixed => [], static function ( array $value ): void {} );
+
+		$errors = $settings->validateSources( [
+			[ 'name' => 'A', 'root' => $this->tmpRoot, 'thumbnail_cache' => '/tmp/wp-media-helper-cache' ],
+			[ 'name' => 'B', 'root' => $this->tmpRoot, 'thumbnail_cache' => '/tmp/wp-media-helper-cache' ],
+		] );
+		$this->assertArrayNotHasKey( 0, $errors );
+		$this->assertArrayHasKey( 'root', $errors[1] );
+
+		$this->assertSame( [], $settings->validateSources( [
+			[ 'name' => 'A', 'root' => $this->tmpRoot . '/sub', 'thumbnail_cache' => '/tmp/wp-media-helper-cache' ],
+			[ 'name' => 'B', 'root' => $this->tmpRoot, 'thumbnail_cache' => '/tmp/wp-media-helper-cache' ],
+		] ) );
 	}
 
 	public function test_rejects_relative_thumbnail_cache_paths(): void {
@@ -622,8 +646,26 @@ class ExternalSourceSettingsTest extends TestCase {
 
 	public function test_a_source_unchecked_in_the_form_is_disabled(): void {
 		// The form sends 0 for the hidden field, then 1 when the box is checked.
-		$this->assertFalse( $this->normalize( [ 'enabled' => '0' ] )['enabled'] );
-		$this->assertTrue( $this->normalize( [ 'enabled' => '1' ] )['enabled'] );
+		$this->assertSame( 'disabled', $this->normalize( [ 'enabled' => '0' ] )['state'] );
+		$this->assertSame( 'active', $this->normalize( [ 'enabled' => '1' ] )['state'] );
+	}
+
+	public function test_the_state_is_kept_and_a_source_saved_before_the_states_existed_is_migrated(): void {
+		$this->assertSame( 'excluded', $this->normalize( [ 'state' => 'excluded' ] )['state'] );
+		$this->assertSame( 'disabled', $this->normalize( [ 'state' => 'disabled' ] )['state'] );
+		$this->assertSame( 'active', $this->normalize( [ 'state' => 'bogus' ] )['state'] );
+		$this->assertSame( 'disabled', \WP_Media_Helper\Settings\SourceState::of( [ 'enabled' => false ] ) );
+		$this->assertSame( 'active', \WP_Media_Helper\Settings\SourceState::of( [ 'enabled' => true ] ) );
+	}
+
+	public function test_a_read_only_source_needs_a_cache_only_when_it_lists_files(): void {
+		$settings = new ExternalSourceSettings( static fn(): mixed => [], static function ( array $value ): void {} );
+		$readOnly = static fn ( string $state ): array => [ 'name' => 'Ro', 'root' => '/', 'state' => $state ];
+
+		if ( ! is_writable( '/' ) ) {
+			$this->assertArrayHasKey( 'thumbnail_cache', $settings->validateSources( [ $readOnly( 'active' ) ] )[0] ?? [] );
+		}
+		$this->assertArrayNotHasKey( 'thumbnail_cache', $settings->validateSources( [ $readOnly( 'excluded' ) ] )[0] ?? [] );
 	}
 
 	public function test_a_name_date_pattern_must_say_where_the_year_month_and_day_are(): void {

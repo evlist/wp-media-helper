@@ -8,6 +8,7 @@ use DateTimeZone;
 use WP_Media_Helper\Admin\MediaPanelState;
 use WP_Media_Helper\MediaSource\FileDates;
 use WP_Media_Helper\MediaSource\PathConfinement;
+use WP_Media_Helper\Settings\SourceOwnership;
 
 /**
  * Walks the tree of a source and keeps the index up to date.
@@ -21,7 +22,8 @@ use WP_Media_Helper\MediaSource\PathConfinement;
  * A run works through a queue of directories kept in the index, within a budget, so
  * a first scan of a large tree is split in resumable runs. Symbolic links are
  * ignored, nothing outside the source root is entered, and files whose name starts
- * with a dot are skipped.
+ * with a dot are skipped. Directories owned by another source are skipped, not
+ * filtered afterwards, so a broad source never walks the tree of a narrower one.
  */
 class IndexScanner {
 
@@ -55,7 +57,7 @@ class IndexScanner {
 	/**
 	 * Runs one pass over a source until its queue is empty or the budget is used up.
 	 *
-	 * @param array<string, mixed> $source           The source: `id`, `root`, `filter_pattern`, `mtime_fallback`.
+	 * @param array<string, mixed> $source           The source: `id`, `root`, `filter_pattern`, `mtime_fallback`, and `exclusions` (canonical directories it must not enter).
 	 * @param int                  $run              Identifies the pass; a pass that did not finish is resumed with the same value.
 	 * @param bool                 $full             Re-read every directory, and recompute every date.
 	 * @param string[]|null        $startDirectories Canonical directories to start from instead of the root (hints).
@@ -67,6 +69,11 @@ class IndexScanner {
 			return new ScanResult( true, 0 );
 		}
 
+		$exclusions = [];
+		foreach ( (array) ( $source['exclusions'] ?? [] ) as $excluded ) {
+			$exclusions[] = rtrim( (string) $excluded, '/\\' );
+		}
+
 		$now    = $this->now();
 		$rootId = $this->store->saveDirectory( $sourceId, $this->keys->key( $root ), 0, $now );
 
@@ -74,7 +81,7 @@ class IndexScanner {
 			$this->store->queueDirectory( $rootId, $run );
 		} else {
 			foreach ( $startDirectories as $directory ) {
-				$this->queueChain( $sourceId, $root, $rootId, $directory, $run, $now );
+				$this->queueChain( $sourceId, $root, $rootId, $directory, $run, $now, $exclusions );
 			}
 		}
 
@@ -83,6 +90,7 @@ class IndexScanner {
 			'root'      => $root,
 			'run'       => $run,
 			'full'      => $full,
+			'exclusions' => $exclusions,
 			'patterns'  => FileDates::patterns( $source ),
 			'fallback'  => FileDates::usesMtimeFallback( $source ),
 			'stats'     => [ 'read' => 0, 'unchanged' => 0, 'added' => 0, 'updated' => 0, 'missing' => 0 ],
@@ -111,12 +119,15 @@ class IndexScanner {
 
 	/**
 	 * Queues a directory below the root, creating the rows of the directories above it.
-	 * The directory must be canonical: a path with `..` or a link in it is refused.
+	 * The directory must be canonical: a path with `..` or a link in it is refused,
+	 * and so is one inside an excluded directory.
+	 *
+	 * @param string[] $exclusions
 	 */
-	private function queueChain( string $sourceId, string $root, int $rootId, string $directory, int $run, int $now ): void {
+	private function queueChain( string $sourceId, string $root, int $rootId, string $directory, int $run, int $now, array $exclusions ): void {
 		$directory = rtrim( $directory, '/\\' );
 		$real      = realpath( $directory );
-		if ( false === $real || $real !== $directory || ! is_dir( $real ) || ! $this->isInsideRoot( $real, $root ) ) {
+		if ( false === $real || $real !== $directory || ! is_dir( $real ) || ! $this->isInsideRoot( $real, $root ) || SourceOwnership::isExcluded( $real, $exclusions ) ) {
 			return;
 		}
 
@@ -145,7 +156,7 @@ class IndexScanner {
 		$id       = (int) $directory['id'];
 		$absolute = $this->keys->absolute( (string) $directory['path'] );
 
-		if ( is_link( $absolute ) || ! is_dir( $absolute ) || ! $this->isInsideRoot( $absolute, (string) $context['root'] ) ) {
+		if ( is_link( $absolute ) || ! is_dir( $absolute ) || ! $this->isInsideRoot( $absolute, (string) $context['root'] ) || SourceOwnership::isExcluded( $absolute, $context['exclusions'] ) ) {
 			$this->markSubtreeMissing( $directory, $now );
 			$this->store->markScanned( $id, $run, null, $now );
 
@@ -187,7 +198,10 @@ class IndexScanner {
 				continue;
 			}
 			if ( is_dir( $path ) ) {
-				$subdirectories[ $name ] = $path;
+				// Trees owned by another source, and the thumbnail caches, are not entered.
+				if ( ! SourceOwnership::isExcluded( $path, $context['exclusions'] ) ) {
+					$subdirectories[ $name ] = $path;
+				}
 			} elseif ( is_file( $path ) ) {
 				$stat = @stat( $path ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
 				if ( false !== $stat ) {

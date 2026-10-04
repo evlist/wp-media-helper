@@ -41,9 +41,10 @@ class AllowedBaseTest extends TestCase {
 		);
 	}
 
-	public function test_contains_accepts_only_strict_sub_directories(): void {
+	public function test_contains_accepts_the_base_itself_and_its_sub_directories(): void {
 		$this->assertTrue( AllowedBase::contains( $this->base . '/uploads', $this->inside ) );
-		$this->assertFalse( AllowedBase::contains( $this->base . '/uploads', $this->base . '/uploads' ) );
+		$this->assertTrue( AllowedBase::contains( $this->base . '/uploads', $this->base . '/uploads' ) );
+		$this->assertFalse( AllowedBase::contains( $this->base . '/uploads', $this->base ) );
 		$this->assertFalse( AllowedBase::contains( $this->base . '/uploads', $this->outside ) );
 		$this->assertFalse( AllowedBase::contains( $this->base . '/uploads', $this->base . '/uploads/missing' ) );
 	}
@@ -53,6 +54,11 @@ class AllowedBaseTest extends TestCase {
 
 		symlink( $this->outside, $this->base . '/uploads/escape' );
 		$this->assertFalse( AllowedBase::contains( $this->base . '/uploads', $this->base . '/uploads/escape' ) );
+	}
+
+	public function test_the_base_is_typed_as_a_dot_and_shown_as_one(): void {
+		$this->assertSame( '/var/www/uploads', AllowedBase::toAbsolute( '/var/www/uploads', '.' ) );
+		$this->assertSame( '.', AllowedBase::toRelative( '/var/www/uploads', '/var/www/uploads' ) );
 	}
 
 	public function test_resolve_returns_null_outside_wordpress(): void {
