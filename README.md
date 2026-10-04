@@ -72,6 +72,10 @@ All settings are managed on the plugin's **Settings** page
 | **Maximum entries per page** | Number of media items shown per page in the editor panel, and the maximum number of items accepted by a single bulk action. Whole number between 1 and 500, default 100. |
 | **Thumbnail cache directory** | Optional. Writable directory where thumbnails for external media files are stored, located inside the same allowed base directory as the roots and separate from the source root. Required when external directories are read-only. Thumbnails are generated lazily on first request. |
 
+See [Dates in WP Media Helper](docs/IA/date-model.md) for how the panel date, the
+patterns, the attachment date and the dates of the files relate, and why a date in a
+folder name can be misleading.
+
 Each external directory can define its own path pattern and optional filter
 pattern. This makes it possible to target different user trees without scanning
 large directory hierarchies.

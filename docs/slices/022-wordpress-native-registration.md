@@ -36,6 +36,9 @@ guid discloses a server path.
 
 ## Attachment date: possible sources
 
+How the attachment date relates to the panel date and to folder layouts is
+described in [Dates in WP Media Helper](../IA/date-model.md).
+
 The attachment date (`post_date` and `post_date_gmt`) decides where an item
 sits in the Media Library and in date queries. For photo, track and subtitle
 workflows several dates can describe a file, and the right one depends on the
