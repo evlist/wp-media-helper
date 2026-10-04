@@ -861,7 +861,8 @@
 														} )
 														: null,
 													wp.element.createElement( 'div', { style: { minWidth: 0 } },
-														wp.element.createElement( 'strong', { style: { fontSize: '12px' } }, item.name ),
+														// The full path of the file, to tell apart files that share a name.
+														wp.element.createElement( 'strong', { style: { fontSize: '12px' }, title: item.path }, item.name ),
 														wp.element.createElement( 'div', { style: { marginTop: '0.15rem', textTransform: 'uppercase', color: '#50575e', fontSize: '10px' } }, item.type )
 													)
 												)
