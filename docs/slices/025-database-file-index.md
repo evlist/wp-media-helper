@@ -3,7 +3,7 @@
 
 # Slice 025: Database file index and incremental discovery
 
-Status: **proposed** (design only, not implemented). Followed by
+Status: **implemented**. Followed by
 [slice 026](026-name-date-patterns-and-embedded-dates.md) and
 [slice 027](027-hidden-files.md). Builds on
 [slice 024](024-source-priority-and-ownership.md) for ownership.
@@ -166,6 +166,70 @@ the fixture script of the development container, measuring: first scan time and
 the number of runs it needs, a no-change refresh, a refresh after adding files in
 a deep directory, and the response time of a day's list.
 
+## Implementation notes
+
+Code in `plugin/includes/WP_Media_Helper/Index/` and
+`MediaSource/{NamePattern,FileDates}.php`:
+
+- `Schema` creates the tables with `dbDelta()` (versioned by an option checked on
+  each load) and deletes the JSON files of the previous index.
+- `IndexStore` and `WpdbIndexStore`: the only SQL, plain and portable, values
+  always prepared, and the columns of the user never written by a scan.
+- `IndexScanner`: the incremental, resumable walk (below). `ScanBudget` limits a run
+  in time and in directories.
+- `IndexManager` and `ScanState`: when passes start, pending requests, the
+  settings the stored dates depend on (a change triggers a full pass; a change of
+  root clears the source), forgetting removed sources, retention.
+- `DayIndex`: the list of a day, with the hints; `MediaPanelState` uses it.
+- `Cron`: the hooks run by WordPress cron, with a lock.
+- `NamePattern` and `FileDates`: the effective-date rule; `AttachmentDate` uses it.
+
+Choices made while implementing:
+
+- **Rows are per source** (unique on source and path). Two sources whose roots
+  overlap each index the file; ownership comes with slice 024.
+- **A directory read less than two seconds after it changed is stored without a
+  time**, so the next pass reads it again: a file added in the same second as the
+  scan would otherwise be missed until the next full pass.
+- **Hints cover the day before, the day and the day after**, to catch folders named
+  in another time zone. A source without path pattern is scanned from its root only
+  until its first pass has finished.
+- **Dot files and `Thumbs.db` / `desktop.ini` are skipped.** Without this, the
+  modification-time fallback would list them.
+- **Files that WordPress cannot register are still listed** (the panel already
+  shows other types); the type filter applies.
+- A full pass recomputes every date; an incremental pass only touches changed
+  directories, so a changed pattern or fallback setting triggers a full pass.
+- The *Refresh* button reads the hinted directories again and asks for an
+  incremental pass of the whole source in the background.
+- **Fixed while doing this:** unchecking *Enabled* in the settings form had no effect
+  (an unchecked box sends nothing and the code read that as enabled). The form now
+  sends a hidden `0` first.
+- **Not done:** no `uninstall.php` yet (see the open question). The tables stay
+  after the plugin is deleted.
+
+## Measurements
+
+`tests/benchmark/index-benchmark.php` builds a synthetic tree (default: 5,000
+directories, 110,000 files, year/month/day) and measures the index. Results on
+in-memory SQLite, which is a lower bound for time on a MySQL server (the number
+of SQL queries is the portable figure):
+
+| Measure | Result |
+|---------|--------|
+| First scan, 5,180 directories and 110,000 files | 9 s in 6 runs of 1,000 directories; 36,000 queries |
+| Pass with no change | 2 s; 0 directories read, 5,180 unchanged; 10,600 queries (two per directory) |
+| After adding 5 files in a deep directory | 1 directory read, 5 files added; same cost as the pass above |
+| Hint scan of 3 directories | 8 ms, 32 queries |
+| List of one day (22 files) | 0.3 ms, 1 query |
+| Full pass | 5 s; 5,180 directories read; 31,000 queries |
+| Memory | about 2 MB |
+
+On MySQL, expect a no-change pass of about ten thousand queries to take a few
+seconds to a few tens of seconds depending on latency; this is the cost of the
+periodic pass and is paid in the background, in runs bounded by the time budget. It
+has not been measured on MySQL, nor on a network file system.
+
 ## Non-goals
 
 - Reading embedded dates, several name patterns and a user date (slice 026).
@@ -185,11 +249,15 @@ a deep directory, and the response time of a day's list.
 5. A full re-read happens on a schedule and on demand.
 6. No JSON index file remains and the index holds no server path.
 7. The attachment date uses the same rule and order.
-8. The benchmark above is documented, with its results.
+8. The benchmark above is documented, with its results (done, on SQLite).
 
 ## Open questions
 
-- Retention of missing files, and whether uninstall removes the tables.
-- Whether the day's neighbours (the day before and after) are included in the
-  synchronous hint, to cover time-zone edges.
-- Scan budget and the schedule of the full re-read.
+- Decided: retention of missing files is 30 days; the day's neighbours are
+  included in the hint; the scan budget is 15 seconds per run; incremental passes
+  every 30 minutes and a full pass weekly (constants of `IndexManager` and `Cron`).
+- Whether uninstall removes the tables. It is left out for now because the index
+  will also hold user data (slice 027), which must not be dropped silently.
+- Reducing the queries of a pass with no change further (a single query per
+  directory would halve them).
+- Measuring on MySQL and on a network mount.

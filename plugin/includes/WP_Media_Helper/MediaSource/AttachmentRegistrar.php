@@ -19,9 +19,10 @@ class AttachmentRegistrar {
 	/**
 	 * @param string $sourceId      Source that owns the file.
 	 * @param string $canonicalPath Canonical path of a regular file inside a source root.
+	 * @param array<string, mixed>|null $source The source: its name pattern and modification-time setting give the date.
 	 * @return int|\WP_Error Attachment ID.
 	 */
-	public function register( string $sourceId, string $canonicalPath ) {
+	public function register( string $sourceId, string $canonicalPath, ?array $source = null ) {
 		$uploads = $this->registry->uploads();
 		$relative = $this->registry->relativeKey( $canonicalPath );
 		if ( null === $uploads || null === $relative ) {
@@ -45,7 +46,8 @@ class AttachmentRegistrar {
 			$basename,
 			false === $mtime ? null : (int) $mtime,
 			wp_timezone(),
-			time()
+			time(),
+			$source
 		);
 
 		$attachmentId = wp_insert_attachment(

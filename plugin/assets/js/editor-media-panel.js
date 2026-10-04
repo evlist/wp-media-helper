@@ -69,6 +69,15 @@
 		);
 	};
 
+	// Reasons sent by the server are codes: show them as sentences.
+	const describeReason = function ( reason ) {
+		if ( 'index-incomplete' === reason ) {
+			return __( 'The files are still being indexed: the list may be incomplete.', 'wp-media-helper' );
+		}
+
+		return reason ? __( 'Refresh required: ', 'wp-media-helper' ) + reason : __( 'Refresh required.', 'wp-media-helper' );
+	};
+
 	const getCurrentPostId = function () {
 		return Number( wp.data.select( 'core/editor' ).getCurrentPostId() || 0 );
 	};
@@ -685,7 +694,7 @@
 					null,
 					status === 'stale'
 						? wp.element.createElement( Notice, { status: 'warning', isDismissible: false },
-							reason ? __( 'Refresh required: ', 'wp-media-helper' ) + reason : __( 'Refresh required.', 'wp-media-helper' ) )
+							describeReason( reason ) )
 						: null
 				),
 				wp.element.createElement(

@@ -4,8 +4,10 @@
 # Dates in WP Media Helper
 
 This document describes how dates work **in the current version** (0.1.0, after
-slice 022), where each one comes from, and why they do not always agree. It ends
-with options under consideration, none of which is decided.
+slices 022 and 025), where each one comes from, and why they do not always agree.
+It ends with options and decisions for the next slices. Slice 025 changed how a
+day selects its files: the earlier behavior, in which the path and filter patterns
+alone selected the files, is gone.
 
 ## Summary
 
@@ -13,8 +15,9 @@ Several different things are called "date". They are independent:
 
 | Notion | What it is | Where it lives | Set by | Used for |
 |--------|------------|----------------|--------|----------|
-| **Panel date** | The calendar day the editor wants media for | Post meta `wp_media_helper_date` (per post), `Y-m-d`, no time, no time zone | The date control of the panel | Deciding **where to look**: the directory and the file name filter |
-| **Directory and file name dates** | The date written in a folder layout or in file names | The file system | Whatever put the files there (Nextcloud client, WordPress upload, you) | Matched against the panel date through the path and filter patterns |
+| **Panel date** | The calendar day the editor wants media for | Post meta `wp_media_helper_date` (per post), `Y-m-d`, no time, no time zone | The date control of the panel | Selecting the files whose **effective date** falls on that day |
+| **Effective date of a file** | The date the index gives a file: the date in its name, else its modification time | Index (`effective_date`, `effective_day`, `date_source`) | The plugin, when it indexes the file (slice 025) | Listing a file under a day |
+| **Directory dates** | The date written in a folder layout | The file system | Whatever put the files there (Nextcloud client, WordPress upload, you) | Only as a **hint** of where to look first, through the path pattern |
 | **Attachment date** | The date of the media in the WordPress library | `post_date` and `post_date_gmt` of the attachment | The plugin, at registration (slice 022) | Sorting and date queries in the Media Library |
 | **File dates** | Capture date (EXIF/IPTC), creation date of a video, modification time, a date inside the file name | In the files | The camera, the device, the file system | Inputs to the attachment date |
 
@@ -37,58 +40,75 @@ the article**, and the **date WordPress puts in its own upload folders**.
 
 ## 2. From the panel date to a list of files
 
-For each source, the panel date is turned into a directory and a filename filter
-by two patterns:
+Each file of a source is **indexed** with an effective date (slice 025), and a day
+is a query on that index: the files whose effective date falls on the panel day.
 
-- the **path pattern** gives the directory below the source root, for example
-  `{date:Y}/{date:m}/{date:d}`;
-- the **filter pattern** keeps the files whose name **contains** a string, for
-  example `{date:Ymd}`.
+The effective date of a file is, in this order:
 
-`{date:...}` accepts any PHP date format, and `{source}` is the source id. An
-empty path pattern means the whole source root, scanned recursively; an empty
-filter keeps every file.
+1. a date written in its **name**: first the source's *name date pattern* (for
+   example `{date:Ymd}`, `IMG_{date:Ymd}_{date:His}`), then the generic forms
+   (`20261002_121549`, `2026-10-02`, `2026-10-02 12.15.49`). The time is read when
+   there is one; a date alone is placed at 12:00:00 site time;
+2. the **modification time** of the file, unless the source turns this fallback off,
+   in which case the file is placed on no day.
+
+Dates embedded in the files (EXIF, video, GPX) and dates set by the user are not
+used yet (slice 026). The dates are site time.
 
 What this means in practice:
 
-- **The files themselves are not examined.** Nothing reads their EXIF data, their
-  modification time or their content to decide whether they belong to the
-  requested day. The date only decides where to look and which names to keep. A
-  source without path pattern but with the filter `{date:Ymd}` finds files by the
-  date written in their names.
-- The list can therefore contain files whose own date differs from the panel date
-  (see section 4).
+- **The folder a file is in no longer decides its day.** A file is listed under the
+  day of its effective date wherever it sits in the source.
+- The **path pattern** is only a hint, saying where new files of a day are likely to
+  be. The directories it resolves for the requested day, the day before and the day
+  after are checked at once, briefly, so that a file just added to today's folder
+  appears immediately. A source without a path pattern is scanned from its root until
+  its first pass has finished.
+- The list can still contain files whose capture date differs from the panel date,
+  because no embedded date is read yet (see section 4).
 - Each listed item carries a `date` field, but it is **the requested panel date**,
-  not a date of the file. The panel does not use it.
+  not the date of the file. The panel does not use it.
 - The date structure of a response also has a `date_range`; it is always empty
   today.
 
 ### Index and freshness
 
-The list of a source for a day is cached in a file named
-`<source id>-<YYYYMMDD>.json` in the plugin's index folder. It is reused as long as
-the **modification time of the resolved directory** is not newer than the cache.
-That time changes when entries are added to or removed from that directory, but
-not when a file appears in one of its sub-directories, and the scan is recursive.
-The *Refresh* button forces a new scan, and an open panel re-checks every 30
-seconds.
+The index holds, per file, the dates found, the effective date and which source gave
+it. It is updated by passes over the tree, run in the background:
+
+- an **incremental** pass does not read a directory whose modification time has not
+  changed, so a pass over an unchanged tree costs about one `stat` per directory, and
+  a file added in a sub-directory is found because that directory changed;
+- a **full** pass re-reads every directory (weekly, and on demand with *Re-scan
+  now*), because a directory time is only a hint: some file systems do not update
+  it, and an edit in place does not change it;
+- the first scan of a source is split in runs of 15 seconds, resumes by itself, and
+  until it has finished once the panel warns that the list may be incomplete;
+- changing the name pattern or the modification-time setting of a source triggers a
+  full pass, so every stored date is recomputed.
+
+The *Refresh* button reads the hinted directories again and asks for an incremental
+pass over the whole source; an open panel re-checks every 30 seconds.
 
 ## 3. The attachment date
 
-It is set once, when a file is registered in the Media Library (slice 022), in
-this **provisional** order:
+It is set once, when a file is registered in the Media Library (slice 022). Since
+slice 025 it follows the same rule as the index for the name and the modification
+time, and the date in the **name comes first**, in this order:
 
-1. the image capture date: core's `created_timestamp`, read from the IPTC creation
-   date, else from the EXIF `DateTimeDigitized` field (not `DateTimeOriginal`);
-2. the creation date of a video or audio file, when the container has one;
-3. a date written in the file name, such as `20261002_121549`, `2026-10-02` or
-   `2026-10-02 12.15.49`. The time is read when the name has one; a date alone
+1. a date written in the file name, such as `20261002_121549`, `2026-10-02` or
+   `2026-10-02 12.15.49` (the source's name date pattern first). It is the user's own
+   statement of the day, which also covers files without metadata and videos
+   assembled by a tool that writes unrelated metadata. The time is read when the name has one; a date alone
    is given the **median time of the day, 12:00:00 site time**. Its date in GMT is
    then the same day for any site time zone within twelve hours of UTC (midnight
    would give the previous GMT day east of UTC), and it sorts in the middle of the
    day. East of UTC+12, such as New Zealand in summer, only the GMT date differs;
    the site date is always the one in the name;
-4. the modification time of the file;
+2. the image capture date: core's `created_timestamp`, read from the IPTC creation
+   date, else from the EXIF `DateTimeDigitized` field (not `DateTimeOriginal`);
+3. the creation date of a video or audio file, when the container has one;
+4. the modification time of the file, unless the source turns the fallback off;
 5. the current time.
 
 Time zones: EXIF carries no time zone, and core stores the local wall-clock time as
@@ -111,102 +131,75 @@ Other points:
 - The attachment date is independent of the panel date and of the folder the file
   is in. The Media Library sorts by it.
 
-## 4. Why a date in a path can be misleading
+## 4. Where the folder, the name and the real date disagree
 
-A path pattern assumes that folders are organised by the date of the media. That
-holds only when whatever created the folders did so.
+The index no longer relies on the folder a file is in, but a folder layout still
+says something about dates, and the three can disagree:
 
-| Layout | Who decides the folder | Date used |
-|--------|------------------------|-----------|
-| Nextcloud auto-upload into date folders | The Nextcloud client | According to its settings, normally the date of the photo. This is what the date patterns were designed for. |
+| Layout | Who decides the folder | Date it carries |
+|--------|------------------------|-----------------|
+| Nextcloud auto-upload into date folders | The Nextcloud client | According to its settings, normally the date of the photo. This is what the path pattern hint is meant for. |
 | WordPress upload into `uploads/YYYY/MM` | WordPress (option *Organize my uploads into month- and year-based folders*) | **The date of the post the media is attached to** (except for a page), otherwise **the day of the upload**. Never the date of the photo. This was checked in the WordPress source. |
 | WordPress upload without that option | Nobody | None: everything is in `uploads/` |
 | Files registered in place by another tool | Wherever they were | None imposed |
 | Your own organisation | You | Whatever you chose |
 
-Consequences:
+Consequences with the effective-date rule of slice 025:
 
 - A photo taken on 2026-09-30 and uploaded on 2026-10-02 through WordPress lands in
-  `uploads/2026/10`. With the pattern `{date:Y}/{date:m}/{date:d}` it is **not**
-  found for 2026-09-30 (the day it was taken) and is found, by a month pattern, for
-  October. Its attachment date, set from the capture, will say 2026-09-30.
-- With a pattern down to the day, the folder date and the panel date match only if
-  the folder date is the capture date. Uploads made through WordPress are in the
-  wrong folder for the purpose.
-- Time zones add edge cases: the device or Nextcloud client may name folders and
-  files in its own time zone, the panel date and the attachment date use the site
-  time zone, so a photo taken near midnight can sit one day away.
-- The same media can therefore have three different dates: the folder it is in,
-  the date in its name, and the attachment date.
+  `uploads/2026/10`, and its name (for example `IMG_1234.jpg`) has no date. Until
+  embedded dates are read (slice 026) its effective date is its **modification
+  time**, which is usually the upload day, so it is listed under 2026-10-02 although
+  its attachment date, set from the capture when it is registered, says 2026-09-30.
+  Photos named by the phone (`20260930_101500.jpg`) are placed correctly.
+- A path pattern down to the day no longer hides such a file: it is found by the
+  background passes, wherever it is. The pattern only makes new files of a day show
+  up faster.
+- Time zones add edge cases: a device may name files in its own time zone, the panel
+  date and the attachment date use the site time zone, so a photo taken near midnight
+  can sit one day away. The hints include the neighbouring days for that reason.
+- The same media can therefore still have three dates: the one in its name, its
+  modification time, and the attachment date.
 
-Practical rule today: use a date-based path pattern only for sources organised by
-capture date. For sources that WordPress itself fills, use an empty path pattern
-and a date filter on the file name, or accept that the list reflects the upload
-month.
+Practical rule today: name files with their date, or wait for embedded dates
+(slice 026). The modification-time fallback can be turned off per source if it
+places files on misleading days.
 
 ## 5. Known limitations of the current version
 
-- No filtering on the real date of a file, only on folder and file names.
-- The freshness check of the index ignores changes in sub-directories.
+- Dates embedded in files (EXIF, video, GPX) are not read by the index, only by the
+  attachment date, and the user cannot set a date: slice 026.
+- A file's source of date is stored in the index but not shown, and the order is
+  fixed.
+- Modification times can be changed by copies and synchronisation.
+- A date in a file name is recognised by the source's pattern and the generic forms
+  only; there is a single pattern per source (slice 026 adds a list).
 - The `date` of a listed item is the requested date, not the date of the file.
-- The source of the attachment date is not recorded, and its order is not
-  configurable.
 - The panel date is stored per post, not per user.
-- A date in a file name has a fixed set of recognised patterns, without a per-source
-  pattern.
+- The attachment date is computed when a file is registered and never updated.
 
-## 6. Options under consideration (not decided)
+## 6. Decisions and options
 
-**A. Keep the panel date as "where to look", and say so.** Rename the control and
-the settings so that a date means a folder or a file name, not the date of the
-media, and document the patterns that match each layout. No code change beyond
-wording.
+**Decided and implemented (slice 025).** Discovery is separate from selection: an
+index in the database, filled by incremental, resumable passes, answers the day of
+the panel by the effective date of the files. The path pattern is a hint. The
+fallback to the modification time is on by default, with a per-source opt-out. A
+date in a name is read with its time when present, and a date alone is placed at
+12:00:00.
 
-**B. Index the real date of each file.** The persistent index already described in
-the README would also hold each file's *effective date*, computed by the same rules
-as the attachment date (capture date, name, modification time...). A day would then
-select the files whose effective date is that day, wherever they are, which fixes
-the WordPress upload case. The directory pattern becomes an optimisation to avoid
-scanning everything. Costs: reading metadata at indexing time (EXIF is cheap, GPX
-needs parsing), invalidation by modification time, and the time zone rules.
+**Decided for the next slices** ([026](../slices/026-name-date-patterns-and-embedded-dates.md),
+[027](../slices/027-hidden-files.md)): several name patterns per source with presets,
+embedded dates (EXIF at discovery, video and GPX later), a date set by the user,
+default order *user date, name, embedded date, modification time*, global hiding of
+files, and the target library of about 5,000 directories and 110,000 files.
 
-**C. A date range or a tolerance.** Select a day plus or minus a number of days, or
-an interval. The response already has a `date_range` field, unused.
+**Still open.**
 
-**D. A per-source "date semantics".** Each source declares whether its dates mean
-*folder*, *file name* or *file date*, which also decides how the panel date is
-applied to it.
-
-### Details agreed so far
-
-- **Name patterns read the time when present, and use 12:00:00 otherwise.**
-  Implemented for the attachment date. The same rule will apply to the date used
-  to select files, so that a file named with a date alone is placed at the middle
-  of that day.
-- Decided for the next slices ([025](../slices/025-database-file-index.md),
-  [026](../slices/026-name-date-patterns-and-embedded-dates.md),
-  [027](../slices/027-hidden-files.md)): separating the **discovery** of files (a scan, made
-  incremental by remembering directories and their modification times) from the
-  **selection** of a day (a query on an index). The index becomes a database table
-  holding, per file, the candidate dates, an effective date and its source, and
-  user metadata such as a hidden flag, which cannot live in the attachment meta of a
-  file that is not imported. The path pattern becomes a hint saying which directories
-  to check first. Default order of the effective date: a date forced by the user,
-  the date in the name, the embedded date, the modification time. The modification time is a fallback
-  that is on by default, with a per-source opt-out. Hidden files are global to the
-  site. Several name patterns can be set per source, with presets for
-  common devices. The target library has about 5,000 directories and more than
-  110,000 files, so the first scan must be resumable and the next ones incremental.
-- Open: when the name gives a day without a time and the embedded metadata gives a
-  time on the same day, whether to refine the median time with the embedded one
-  (and keep 12:00:00 when the days differ, as for a video edited later).
-
-### Questions
-
-- Which semantics do you want by default for a source: folder, file name, or the
-  real date of the file?
-- Should the attachment date and the date used by the panel always come from the
-  same rules, so that what the panel shows for a day is what the library sorts by?
-- Is a tolerance or a range needed for photos taken around midnight?
-- Should the source of the attachment date be recorded, so that it can be shown or
-  recomputed?
+- When the name gives a day without a time and the embedded metadata gives a time
+  on the same day, whether to refine the median time with the embedded one (and keep
+  12:00:00 when the days differ, as for a video assembled later).
+- A date range or a tolerance, for photos taken around midnight (the response
+  already has an unused `date_range`).
+- Whether the attachment date should be recomputed when the index learns a better
+  date.
+- Whether the source of the attachment date should be recorded.

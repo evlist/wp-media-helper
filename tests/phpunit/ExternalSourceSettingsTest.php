@@ -600,4 +600,40 @@ class ExternalSourceSettingsTest extends TestCase {
 
 		$this->assertStringContainsString( 'absolute', $errors[0]['thumbnail_cache'] );
 	}
+
+	private function normalize( array $source ): array {
+		$saved = null;
+		$settings = new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ) use ( &$saved ): void {
+				$saved = $value;
+			}
+		);
+		$settings->saveAll( [ array_merge( [ 'name' => 'Photos', 'root' => $this->tmpRoot, 'thumbnail_cache' => '/tmp/wp-media-helper-cache' ], $source ) ] );
+
+		return $saved[0];
+	}
+
+	public function test_the_modification_time_fallback_is_on_unless_turned_off(): void {
+		$this->assertTrue( $this->normalize( [] )['mtime_fallback'] );
+		$this->assertTrue( $this->normalize( [ 'mtime_fallback' => '1' ] )['mtime_fallback'] );
+		$this->assertFalse( $this->normalize( [ 'mtime_fallback' => '0' ] )['mtime_fallback'] );
+	}
+
+	public function test_a_source_unchecked_in_the_form_is_disabled(): void {
+		// The form sends 0 for the hidden field, then 1 when the box is checked.
+		$this->assertFalse( $this->normalize( [ 'enabled' => '0' ] )['enabled'] );
+		$this->assertTrue( $this->normalize( [ 'enabled' => '1' ] )['enabled'] );
+	}
+
+	public function test_a_name_date_pattern_must_say_where_the_year_month_and_day_are(): void {
+		$settings = new ExternalSourceSettings( static fn(): mixed => [], static function ( array $value ): void {} );
+		$check = fn( string $pattern ): array => $settings->validateSources( [ [ 'name' => 'A', 'root' => $this->tmpRoot, 'filter_pattern' => $pattern, 'thumbnail_cache' => '/tmp/wp-media-helper-cache' ] ] );
+
+		$this->assertSame( [], $check( '{date:Ymd}' ) );
+		$this->assertSame( [], $check( 'IMG_{date:Y-m-d}_{date:His}' ) );
+		$this->assertArrayHasKey( 'filter_pattern', $check( '{date:Ym}' )[0] );
+		$this->assertArrayHasKey( 'filter_pattern', $check( '{date:y-m-d}' )[0] );
+		$this->assertArrayHasKey( 'filter_pattern', $check( 'no date here' )[0] );
+	}
 }

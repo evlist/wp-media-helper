@@ -8,8 +8,7 @@ use DateTimeImmutable;
 use WP_Media_Helper\MediaSource\AttachmentRegistrar;
 use WP_Media_Helper\MediaSource\AttachmentRegistry;
 use WP_Media_Helper\MediaSource\PathConfinement;
-use WP_Media_Helper\Settings\AllowedBase;
-use WP_Media_Helper\Settings\ExternalSourceSettings;
+use WP_Media_Helper\Settings\ActiveSources;
 use WP_Media_Helper\Settings\GeneralSettings;
 
 class EditorMediaController {
@@ -271,21 +270,7 @@ class EditorMediaController {
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function getActiveSources(): array {
-		$settings = new ExternalSourceSettings(
-			static fn(): mixed => get_option( ExternalSourceSettings::optionKey(), [] ),
-			static function ( array $value ): void {},
-			static fn(): ?string => AllowedBase::resolve()
-		);
-
-		// A source whose root or thumbnail cache is outside the allowed base is treated as disabled.
-		return array_values( array_filter( $settings->getAll(), static function ( $source ) use ( $settings ): bool {
-			return is_array( $source )
-				&& ! empty( $source['id'] )
-				&& ! empty( $source['name'] )
-				&& ! empty( $source['root'] )
-				&& filter_var( $source['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN )
-				&& $settings->isSourceAllowed( $source );
-		} ) );
+		return ActiveSources::all();
 	}
 
 	public function handleSaveFilter(): void {
@@ -440,7 +425,7 @@ class EditorMediaController {
 						}
 					}
 				} else {
-					$attachmentId = $registrar->register( $itemSourceId, $item['path'] );
+					$attachmentId = $registrar->register( $itemSourceId, $item['path'], $confined['source'] );
 				}
 				if ( is_wp_error( $attachmentId ) ) {
 					$result['message'] = $attachmentId->get_error_message();

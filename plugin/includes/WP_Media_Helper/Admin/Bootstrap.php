@@ -4,9 +4,14 @@
 
 namespace WP_Media_Helper\Admin;
 
+use WP_Media_Helper\Index\Cron;
+use WP_Media_Helper\Index\Schema;
+
 class Bootstrap {
 
 	public static function init(): void {
+		Schema::maybeUpgrade();
+		Cron::register();
 		new ExternalSourceSettingsPage();
 		new EditorPanel();
 		new EditorMediaController();

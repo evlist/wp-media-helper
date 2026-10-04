@@ -34,8 +34,9 @@
   roots, each with its own path pattern and optional filename filter pattern.
 - External media discovery should use a persistent local index and targeted
   refreshes rather than scanning every configured root on each page load. The index
-  is planned to be a database table rather than files
-  ([slice 025](../slices/025-database-file-index.md)).
+  is a database table
+  ([slice 025](../slices/025-database-file-index.md)), updated incrementally and
+  in the background.
 - Directory modification times may be used as invalidation hints, but must not
   be treated as authoritative filesystem change notifications.
 - The UI must prevent selection and confirmation while relevant external media
@@ -84,7 +85,7 @@ sources with existing attachments are tracked in
   configuration is left untouched.
 - `path_pattern` is not syntactically rejected for `..`, but the resolved
   directory is verified with `realpath()` to be the root or inside it before
-  anything is scanned (`SourceIndexer`), so `..` and symbolic links cannot make
+  anything is scanned (`IndexScanner`), so `..` and symbolic links cannot make
   the scan leave the root. The scanner also verifies that every file it returns
   is inside the scanned directory.
 - Files under the uploads directory are normally served by the web server. The

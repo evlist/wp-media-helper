@@ -6,11 +6,11 @@ namespace WP_Media_Helper\Admin;
 
 use DateTimeInterface;
 use InvalidArgumentException;
-use WP_Media_Helper\MediaSource\TargetedRefreshCoordinator;
+use WP_Media_Helper\Index\DayIndex;
 
 class MediaPanelState {
 
-	private TargetedRefreshCoordinator $coordinator;
+	private ?DayIndex $dayIndex;
 	private const IMAGE_EXTENSIONS = [ 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg' ];
 	private const VIDEO_EXTENSIONS = [ 'mp4', 'mov', 'webm', 'avi', 'm4v' ];
 
@@ -257,11 +257,21 @@ class MediaPanelState {
 		return false !== $parsed && $parsed->format( 'Y-m-d' ) === $value ? $value : $fallback;
 	}
 
-	public function __construct( ?TargetedRefreshCoordinator $coordinator = null ) {
-		$this->coordinator = $coordinator ?? new TargetedRefreshCoordinator();
+	public function __construct( ?DayIndex $dayIndex = null ) {
+		$this->dayIndex = $dayIndex;
+	}
+
+	private function dayIndex(): DayIndex {
+		if ( null === $this->dayIndex ) {
+			$this->dayIndex = DayIndex::forWordPress();
+		}
+
+		return $this->dayIndex;
 	}
 
 	/**
+	 * The files of a source for a day, from the index.
+	 *
 	 * @param array<string, mixed> $source
 	 * @return array{
 	 *   source_id:string,
@@ -276,32 +286,13 @@ class MediaPanelState {
 	 * }
 	 */
 	public function resolve( array $source, DateTimeInterface $date, ?string $context = null, ?DateTimeInterface $dateEnd = null ): array {
-		$sourceId = (string) ( $context ?? $source['id'] ?? '' );
-		if ( '' === $sourceId ) {
-			throw new InvalidArgumentException( 'Source identifier is required for media panel state.' );
-		}
-
-		$result = $this->coordinator->resolve( $source, $date, $sourceId );
-		$status = $result['refresh_required'] ? 'stale' : 'fresh';
-		$dateValue = $date->format( 'Y-m-d' );
-
-		return [
-			'source_id' => $sourceId,
-			'date' => $dateValue,
-			'date_range' => null === $dateEnd ? null : [
-				'start' => $date->format( 'Y-m-d' ),
-				'end' => $dateEnd->format( 'Y-m-d' ),
-			],
-			'status' => $status,
-			'refresh_required' => $result['refresh_required'],
-			'stale' => $result['stale'],
-			'reason' => $result['reason'],
-			'files' => self::enrichFiles( $result['files'], $sourceId, $dateValue ),
-			'directory' => $result['directory'],
-		];
+		return $this->state( $source, $date, $context, $dateEnd, false );
 	}
 
 	/**
+	 * Like resolve(), for the *Refresh* button: the directories the path pattern points to
+	 * are read again, and a pass over the whole source is requested.
+	 *
 	 * @param array<string, mixed> $source
 	 * @return array{
 	 *   source_id:string,
@@ -316,28 +307,35 @@ class MediaPanelState {
 	 * }
 	 */
 	public function requestRefresh( array $source, DateTimeInterface $date, ?string $context = null, ?DateTimeInterface $dateEnd = null ): array {
+		return $this->state( $source, $date, $context, $dateEnd, true );
+	}
+
+	/**
+	 * @param array<string, mixed> $source
+	 * @return array<string, mixed>
+	 */
+	private function state( array $source, DateTimeInterface $date, ?string $context, ?DateTimeInterface $dateEnd, bool $force ): array {
 		$sourceId = (string) ( $context ?? $source['id'] ?? '' );
 		if ( '' === $sourceId ) {
-			throw new InvalidArgumentException( 'Source identifier is required for media panel refresh.' );
+			throw new InvalidArgumentException( 'Source identifier is required for media panel state.' );
 		}
 
-		$result = $this->coordinator->resolve( $source, $date, $sourceId, true );
-		$status = $result['refresh_required'] ? 'stale' : 'fresh';
+		$result    = $this->dayIndex()->forDay( array_merge( $source, [ 'id' => $sourceId ] ), $date, $force );
 		$dateValue = $date->format( 'Y-m-d' );
 
 		return [
 			'source_id' => $sourceId,
 			'date' => $dateValue,
 			'date_range' => null === $dateEnd ? null : [
-				'start' => $date->format( 'Y-m-d' ),
+				'start' => $dateValue,
 				'end' => $dateEnd->format( 'Y-m-d' ),
 			],
-			'status' => $status,
+			'status' => $result['refresh_required'] ? 'stale' : 'fresh',
 			'refresh_required' => $result['refresh_required'],
 			'stale' => $result['stale'],
 			'reason' => $result['reason'],
 			'files' => self::enrichFiles( $result['files'], $sourceId, $dateValue ),
-			'directory' => $result['directory'],
+			'directory' => '',
 		];
 	}
 }

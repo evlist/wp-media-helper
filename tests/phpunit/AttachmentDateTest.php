@@ -18,7 +18,7 @@ class AttachmentDateTest extends TestCase {
 
 	public function test_capture_date_is_reread_as_site_local_time(): void {
 		// Core stored the local wall-clock time 12:15:49 as if it were UTC.
-		$date = AttachmentDate::resolve( 1790943349, null, 'x.jpg', null, $this->paris, $this->now );
+		$date = AttachmentDate::resolve( 1790943349, null, 'photo.jpg', null, $this->paris, $this->now );
 
 		$this->assertSame( AttachmentDate::SOURCE_CAPTURE, $date['source'] );
 		$this->assertSame( '2026-10-02 12:15:49', $date['local'] );
@@ -26,7 +26,7 @@ class AttachmentDateTest extends TestCase {
 	}
 
 	public function test_media_creation_date_is_a_real_instant(): void {
-		$date = AttachmentDate::resolve( null, 1790936149, 'x.mp4', null, $this->paris, $this->now );
+		$date = AttachmentDate::resolve( null, 1790936149, 'clip.mp4', null, $this->paris, $this->now );
 
 		$this->assertSame( AttachmentDate::SOURCE_MEDIA, $date['source'] );
 		$this->assertSame( '2026-10-02 12:15:49', $date['local'] );
@@ -59,10 +59,26 @@ class AttachmentDateTest extends TestCase {
 		$this->assertSame( AttachmentDate::SOURCE_NOW, $date['source'] );
 	}
 
-	public function test_capture_date_wins_over_the_file_name(): void {
-		$date = AttachmentDate::resolve( 1790943349, null, '20200101_000000.jpg', null, $this->paris, $this->now );
+	public function test_the_file_name_wins_over_the_metadata(): void {
+		// A video assembled later by a tool that writes unrelated metadata, renamed by the user.
+		$date = AttachmentDate::resolve( 1790943349, 1790936149, '20200101_000000.mp4', null, $this->paris, $this->now );
 
-		$this->assertSame( '2026-10-02 12:15:49', $date['local'] );
+		$this->assertSame( AttachmentDate::SOURCE_FILENAME, $date['source'] );
+		$this->assertSame( '2020-01-01 00:00:00', $date['local'] );
+	}
+
+	public function test_the_modification_time_fallback_can_be_turned_off_for_a_source(): void {
+		$mtime = ( new DateTimeImmutable( '2026-09-01 08:00:00', $this->paris ) )->getTimestamp();
+
+		$date = AttachmentDate::resolve( null, null, 'trace.gpx', $mtime, $this->paris, $this->now, [ 'mtime_fallback' => false ] );
+
+		$this->assertSame( AttachmentDate::SOURCE_NOW, $date['source'] );
+	}
+
+	public function test_the_pattern_of_the_source_is_tried_before_the_generic_one(): void {
+		$date = AttachmentDate::resolve( null, null, 'trip-02.10.2026 at 18-30.jpg', null, $this->paris, $this->now, [ 'filter_pattern' => '{date:d.m.Y} at {date:H-i}' ] );
+
+		$this->assertSame( '2026-10-02 18:30:00', $date['local'] );
 	}
 
 	public function test_filename_patterns(): void {

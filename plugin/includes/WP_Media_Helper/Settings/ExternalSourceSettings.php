@@ -6,6 +6,7 @@ namespace WP_Media_Helper\Settings;
 
 use Closure;
 use InvalidArgumentException;
+use WP_Media_Helper\MediaSource\NamePattern;
 use WP_Media_Helper\MediaSource\PathConfinement;
 
 class ExternalSourceSettings {
@@ -158,7 +159,7 @@ class ExternalSourceSettings {
 
 			$filter = trim( (string) ( $source['filter_pattern'] ?? '' ) );
 			if ( '' !== $filter ) {
-				$filterError = $this->validatePatternSyntax( $filter );
+				$filterError = $this->validatePatternSyntax( $filter ) ?? $this->validateNamePattern( $filter );
 				if ( null !== $filterError ) {
 					$entryErrors['filter_pattern'] = $filterError;
 				}
@@ -313,6 +314,9 @@ class ExternalSourceSettings {
 			}
 
 			$patternError = $this->validatePatternSyntax( $value );
+			if ( null === $patternError && 'filter_pattern' === $field ) {
+				$patternError = $this->validateNamePattern( $value );
+			}
 			if ( null !== $patternError ) {
 				throw new InvalidArgumentException(
 					sprintf(
@@ -356,6 +360,7 @@ class ExternalSourceSettings {
 			'root' => $root,
 			'path_pattern' => $path,
 			'filter_pattern' => trim( (string) ( $source['filter_pattern'] ?? '' ) ),
+			'mtime_fallback' => filter_var( $source['mtime_fallback'] ?? true, FILTER_VALIDATE_BOOLEAN ),
 			'thumbnail_cache' => trim( (string) ( $source['thumbnail_cache'] ?? '' ) ),
 		];
 	}
@@ -443,6 +448,17 @@ class ExternalSourceSettings {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Checks that a name date pattern says where the year, the month and the day are.
+	 */
+	private function validateNamePattern( string $pattern ): ?string {
+		if ( null !== NamePattern::fromLegacyFilter( $pattern ) ) {
+			return null;
+		}
+
+		return __( 'The name date pattern must contain the year, the month and the day, each once, with the letters Y, m and d (and H, i, s for a time), for example {date:Ymd}.', 'wp-media-helper' );
 	}
 
 	/**

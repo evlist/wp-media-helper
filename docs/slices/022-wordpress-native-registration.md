@@ -242,11 +242,13 @@ working because the files remain. Cleaning up generated thumbnails belongs to
 - `AttachmentRegistrar` registers a file with `wp_insert_attachment()`, reading
   metadata with `wp_getimagesize()`, `wp_read_image_metadata()` and the core
   audio and video readers. It never calls `wp_generate_attachment_metadata()`.
-- `AttachmentDate` chooses the date. **Default order, provisional**: image
-  capture date (re-read as site time), video or audio creation date, a date in the
-  file name (`20261002_121549`, `2026-10-02`, ...), file modification time, then
-  now. GPX content, directory date and the other sources of the list above are
-  not used yet.
+- `AttachmentDate` chooses the date. Since [slice 025](025-database-file-index.md)
+  the order is: a date in the file name (the source's name pattern, then
+  `20261002_121549`, `2026-10-02`, ...), image capture date (re-read as site time),
+  video or audio creation date, file modification time (unless the source turns the
+  fallback off), then now. The name and the modification time follow the same rule
+  as the file index. GPX content, directory date and the other sources of the list
+  above are not used yet.
 - `AttachmentUrls` encodes the URL of attachments located in a configured
   source (`wp_get_attachment_url`), and the `guid` is written encoded.
 - Panel state (imported, attached here, attached elsewhere) is computed from the

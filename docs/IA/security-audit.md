@@ -41,7 +41,7 @@ Second audit of the plugin, made after the hardening described in the
 | Unbounded bulk requests and listings | Configurable `max_entries` (1-500, default 100) with pagination |
 | Absolute directory and foreign `other_post_id` returned to the browser | Removed / blanked |
 | Roots anywhere on the file system | Roots and thumbnail caches confined to an allowed base directory |
-| **`path_pattern` could list files outside the root** (found in this audit) | The resolved directory is verified to be inside the root (`SourceIndexer`); `..` and links are rejected. Earlier documentation wrongly said this was already covered |
+| **`path_pattern` could list files outside the root** (found in this audit) | The resolved directory is verified to be inside the root (`IndexScanner`); `..` and links are rejected. Earlier documentation wrongly said this was already covered |
 
 ## Residual weaknesses
 
@@ -66,6 +66,11 @@ folder) can be executed**. A read-only mount does not prevent execution.
 - Not fixable inside the plugin: the web server decides.
 
 ### R2 - Medium: the index is reachable over HTTP where `.htaccess` is not honored
+
+Status: **fixed** by [slice 025](../slices/025-database-file-index.md): the index is
+in database tables and holds no server path, so there is no file to serve. The
+JSON files and their folder are deleted when the plugin upgrades. The text below
+describes the former behavior.
 
 The index (`uploads/wp-media-helper-index/<source>-<date>.json`) lists the
 absolute paths of the files of a source. It has a predictable name and is
@@ -110,6 +115,11 @@ removes them, and a REST filter can hide them in the meantime. Check
 `/wp-json/wp/v2/media/<id>` on the site to see what is exposed.
 
 ### R4 - Medium: any user with `edit_posts` can enumerate sources and force rescans
+
+Status: *partly mitigated* by slice 025. A forced refresh no longer scans the whole
+source in the request: it reads the few hinted directories (at most one second per
+source) and asks for a background pass, which is bounded by a time budget and a
+lock. Listing the file names of every source for any day is unchanged.
 
 The panel and the listing endpoint require only `edit_posts`. A Contributor
 cannot import (no `upload_files`) but can list the file names of every enabled

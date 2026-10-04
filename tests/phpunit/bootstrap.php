@@ -29,3 +29,5 @@ spl_autoload_register( function ( string $class ): void {
 		require $file;
 	}
 } );
+
+require_once __DIR__ . '/support/FakeWpdb.php';

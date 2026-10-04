@@ -91,7 +91,7 @@
 				true,
 				sprintf(
 					/* translators: %s: example path pattern, wrapped in a code element. */
-					esc( __( 'Subdirectory resolved for the requested date, for example %s. Leave empty to use the source root directly.', 'wp-media-helper' ) ),
+					esc( __( 'Subdirectory where the files of the requested date are likely to be, for example %s. It is only a hint, used to find new files quickly: a file is placed on a day by its date, wherever it is. Leave empty to rely on the periodic scan of the whole source.', 'wp-media-helper' ) ),
 					'<code>{date:Y}/{date:m}/{date:d}</code>'
 				)
 			),
@@ -99,14 +99,27 @@
 				index,
 				'filter_pattern',
 				'filter',
-				__( 'Filter pattern', 'wp-media-helper' ),
+				__( 'Name date pattern', 'wp-media-helper' ),
 				true,
 				sprintf(
-					/* translators: %s: example filename filter, wrapped in a code element. */
-					esc( __( 'Filename filter applied once the directory is resolved, for example %s. Leave empty to keep every file in the resolved directory.', 'wp-media-helper' ) ),
+					/* translators: %s: example name date pattern, wrapped in a code element. */
+					esc( __( 'How the date is written in file names, for example %s. Common forms such as 20261002_121549 or 2026-10-02 are recognised without a pattern. A name with a date alone is placed at 12:00.', 'wp-media-helper' ) ),
 					'<code>{date:Ymd}</code>'
 				)
 			),
+			`
+			<tr>
+				<th scope="row">${ esc( __( 'Files without a date in their name', 'wp-media-helper' ) ) }</th>
+				<td>
+					<label>
+						<input type="hidden" name="sources[${ index }][mtime_fallback]" value="0" />
+						<input type="checkbox" name="sources[${ index }][mtime_fallback]" value="1" checked />
+						${ esc( __( 'Use the modification time of the file', 'wp-media-helper' ) ) }
+					</label>
+					<p class="description">${ esc( __( 'When unchecked, a file whose name has no date is not placed on any day.', 'wp-media-helper' ) ) }</p>
+				</td>
+			</tr>
+			`,
 			buildField(
 				index,
 				'thumbnail_cache',
@@ -134,6 +147,7 @@
 				<div class="wp-media-helper-source-header">
 					<strong>${ esc( __( 'New source', 'wp-media-helper' ) ) }</strong>
 					<label class="wp-media-helper-toggle">
+						<input type="hidden" name="sources[${ index }][enabled]" value="0" />
 						<input type="checkbox" name="sources[${ index }][enabled]" value="1" checked />
 						${ esc( __( 'Enabled', 'wp-media-helper' ) ) }
 					</label>

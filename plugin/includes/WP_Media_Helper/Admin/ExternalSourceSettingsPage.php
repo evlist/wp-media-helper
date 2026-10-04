@@ -6,6 +6,7 @@ namespace WP_Media_Helper\Admin;
 
 use InvalidArgumentException;
 use WP_Media_Helper\MediaSource\PathConfinement;
+use WP_Media_Helper\Index\DayIndex;
 use WP_Media_Helper\Settings\AllowedBase;
 use WP_Media_Helper\Settings\ExternalSourceSettings;
 use WP_Media_Helper\Settings\GeneralSettings;
@@ -18,6 +19,7 @@ class ExternalSourceSettingsPage {
 		add_action( 'admin_menu', [ $this, 'register' ] );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueueAssets' ] );
 		add_action( 'admin_post_wp_media_helper_save_external_sources', [ $this, 'save' ] );
+		add_action( 'admin_post_wp_media_helper_rescan', [ $this, 'rescan' ] );
 	}
 
 	public function register(): void {
@@ -97,6 +99,10 @@ class ExternalSourceSettingsPage {
 							<li><?php echo esc_html( $notice ); ?></li>
 						<?php endforeach; ?>
 					</ul>
+				</div>
+			<?php elseif ( isset( $_GET['rescan'] ) ) : ?>
+				<div class="notice notice-success is-dismissible">
+					<p><?php esc_html_e( 'A full scan of the source has been requested. It runs in the background.', 'wp-media-helper' ); ?></p>
 				</div>
 			<?php elseif ( isset( $_GET['updated'] ) ) : ?>
 				<div class="notice notice-success is-dismissible">
@@ -178,6 +184,7 @@ class ExternalSourceSettingsPage {
 							<div class="wp-media-helper-source-header">
 								<strong><?php echo esc_html( (string) ( $source['name'] ?? '' ) ?: __( 'New source', 'wp-media-helper' ) ); ?></strong>
 								<label class="wp-media-helper-toggle">
+									<input type="hidden" name="sources[<?php echo esc_attr( $index ); ?>][enabled]" value="0" />
 									<input type="checkbox" name="sources[<?php echo esc_attr( $index ); ?>][enabled]" value="1" <?php checked( ! empty( $source['enabled'] ) ); ?> />
 									<?php esc_html_e( 'Enabled', 'wp-media-helper' ); ?>
 								</label>
@@ -245,7 +252,7 @@ class ExternalSourceSettingsPage {
 												<?php
 												printf(
 													/* translators: %s: example path pattern, wrapped in a code element. */
-													esc_html__( 'Subdirectory resolved for the requested date, for example %s. Leave empty to use the source root directly.', 'wp-media-helper' ),
+													esc_html__( 'Subdirectory where the files of the requested date are likely to be, for example %s. It is only a hint, used to find new files quickly: a file is placed on a day by its date, wherever it is. Leave empty to rely on the periodic scan of the whole source.', 'wp-media-helper' ),
 													'<code>{date:Y}/{date:m}/{date:d}</code>'
 												);
 												?>
@@ -258,20 +265,48 @@ class ExternalSourceSettingsPage {
 										</td>
 									</tr>
 									<tr>
-										<th scope="row"><label for="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Filter pattern', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
+										<th scope="row"><label for="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Name date pattern', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
 										<td>
-											<input id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text" name="sources[<?php echo esc_attr( $index ); ?>][filter_pattern]" value="<?php echo esc_attr( (string) ( $source['filter_pattern'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>-description" />
+											<input id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['filter_pattern'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][filter_pattern]" value="<?php echo esc_attr( (string) ( $source['filter_pattern'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>-description" />
 											<p class="description" id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>-description">
 												<?php
 												printf(
-													/* translators: %s: example filename filter, wrapped in a code element. */
-													esc_html__( 'Filename filter applied once the directory is resolved, for example %s. Leave empty to keep every file in the resolved directory.', 'wp-media-helper' ),
+													/* translators: %s: example name date pattern, wrapped in a code element. */
+													esc_html__( 'How the date is written in file names, for example %s. Common forms such as 20261002_121549 or 2026-10-02 are recognised without a pattern. A name with a date alone is placed at 12:00.', 'wp-media-helper' ),
 													'<code>{date:Ymd}</code>'
 												);
 												?>
 											</p>
+											<?php if ( isset( $validationErrors[ $index ]['filter_pattern'] ) ) : ?>
+												<p class="description wp-media-helper-field-error">
+													<?php echo esc_html( $validationErrors[ $index ]['filter_pattern'] ); ?>
+												</p>
+											<?php endif; ?>
 										</td>
 									</tr>
+									<tr>
+										<th scope="row"><?php esc_html_e( 'Files without a date in their name', 'wp-media-helper' ); ?></th>
+										<td>
+											<label>
+												<input type="hidden" name="sources[<?php echo esc_attr( $index ); ?>][mtime_fallback]" value="0" />
+												<input type="checkbox" name="sources[<?php echo esc_attr( $index ); ?>][mtime_fallback]" value="1" <?php checked( ! array_key_exists( 'mtime_fallback', $source ) || filter_var( $source['mtime_fallback'], FILTER_VALIDATE_BOOLEAN ) ); ?> />
+												<?php esc_html_e( 'Use the modification time of the file', 'wp-media-helper' ); ?>
+											</label>
+											<p class="description"><?php esc_html_e( 'When unchecked, a file whose name has no date is not placed on any day.', 'wp-media-helper' ); ?></p>
+										</td>
+									</tr>
+									<?php if ( null === $pending && ! empty( $source['id'] ) ) : ?>
+										<?php $indexStatus = $this->indexStatus( $source ); ?>
+										<tr>
+											<th scope="row"><?php esc_html_e( 'Index', 'wp-media-helper' ); ?></th>
+											<td>
+												<p><?php echo esc_html( $indexStatus ); ?></p>
+												<p>
+													<a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=wp_media_helper_rescan&source=' . rawurlencode( (string) $source['id'] ) ), 'wp_media_helper_rescan_' . (string) $source['id'] ) ); ?>"><?php esc_html_e( 'Re-scan now', 'wp-media-helper' ); ?></a>
+												</p>
+											</td>
+										</tr>
+									<?php endif; ?>
 									<tr>
 										<th scope="row"><label for="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Thumbnail cache directory', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
 										<td>
@@ -569,6 +604,60 @@ class ExternalSourceSettingsPage {
 		}
 
 		return trailingslashit( (string) $uploads['baseurl'] ) . ltrim( str_replace( '\\', '/', substr( $realRoot, strlen( $realBase ) ) ), '/' ) . '/';
+	}
+
+	/**
+	 * Where the index of a source stands, as a sentence.
+	 *
+	 * @param array<string, mixed> $source
+	 */
+	private function indexStatus( array $source ): string {
+		$status = DayIndex::forWordPress()->manager()->status( $source );
+
+		if ( ! $status['indexed'] ) {
+			return sprintf(
+				/* translators: 1: number of files, 2: number of directories. */
+				__( 'Not indexed yet: the first scan runs in the background (%1$d files in %2$d directories found so far).', 'wp-media-helper' ),
+				$status['files'],
+				$status['directories']
+			);
+		}
+
+		$text = sprintf(
+			/* translators: 1: number of files, 2: number of directories, 3: time since the last scan, such as "2 hours". */
+			__( '%1$d files in %2$d directories. Last scan finished %3$s ago.', 'wp-media-helper' ),
+			$status['files'],
+			$status['directories'],
+			human_time_diff( $status['finished_at'], time() )
+		);
+
+		if ( $status['in_progress'] || '' !== $status['pending'] ) {
+			$text .= ' ' . __( 'A scan is in progress or waiting.', 'wp-media-helper' );
+		}
+
+		return $text;
+	}
+
+	/**
+	 * Asks for a full scan of a source, run in the background.
+	 */
+	public function rescan(): void {
+		$sourceId = sanitize_text_field( wp_unslash( $_GET['source'] ?? '' ) );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Unauthorized', 'wp-media-helper' ), 403 );
+		}
+
+		check_admin_referer( 'wp_media_helper_rescan_' . $sourceId );
+
+		foreach ( $this->loadSources() as $source ) {
+			if ( is_array( $source ) && (string) ( $source['id'] ?? '' ) === $sourceId ) {
+				DayIndex::forWordPress()->manager()->requestPass( $source, true );
+				break;
+			}
+		}
+
+		wp_safe_redirect( add_query_arg( 'rescan', 'true', $this->pageUrl() ) );
+		exit;
 	}
 
 	/**

@@ -40,6 +40,8 @@ spl_autoload_register( function ( string $class ): void {
 	}
 } );
 
+register_deactivation_hook( __FILE__, [ WP_Media_Helper\Index\Cron::class, 'clear' ] );
+
 add_action( 'plugins_loaded', function (): void {
 	WP_Media_Helper\Admin\Bootstrap::init();
 } );

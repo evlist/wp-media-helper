@@ -4,22 +4,43 @@
 
 use PHPUnit\Framework\TestCase;
 use WP_Media_Helper\Admin\MediaPanelState;
-use WP_Media_Helper\MediaSource\ExternalMediaIndex;
-use WP_Media_Helper\MediaSource\TargetedRefreshCoordinator;
+use WP_Media_Helper\Index\DayIndex;
+use WP_Media_Helper\Index\IndexManager;
+use WP_Media_Helper\Index\IndexScanner;
+use WP_Media_Helper\Index\KeyMapper;
+use WP_Media_Helper\Index\ScanBudget;
+use WP_Media_Helper\Index\ScanState;
+use WP_Media_Helper\Index\WpdbIndexStore;
 
 class MediaPanelStateTest extends TestCase {
 
 	private string $root;
-	private string $storage;
+	private DayIndex $dayIndex;
+	private IndexManager $manager;
+	/** @var array<string, mixed> */
+	private array $option = [];
 
 	protected function setUp(): void {
-		$this->root = sys_get_temp_dir() . '/wpmh_media_panel_' . uniqid();
-		$this->storage = sys_get_temp_dir() . '/wpmh_media_panel_store_' . uniqid();
+		$this->root = realpath( sys_get_temp_dir() ) . '/wpmh_media_panel_' . uniqid();
 		mkdir( $this->root . '/2026/08', 0755, true );
-		mkdir( $this->storage, 0755, true );
 
 		touch( $this->root . '/2026/08/20260810-rando-belledonne.jpg' );
 		touch( $this->root . '/2026/08/20260810-rando-belledonne.gpx' );
+		touch( $this->root . '/2026/08/20260811-autre-rando.jpg', time() - 1000 );
+		touch( $this->root . '/2026/08', time() - 1000 );
+
+		$GLOBALS['wpdb'] = new FakeWpdb();
+		$store = new WpdbIndexStore();
+		$keys = new KeyMapper( dirname( $this->root ) );
+		$scanner = new IndexScanner( $store, $keys, new DateTimeZone( 'UTC' ) );
+		$state = new ScanState(
+			fn() => $this->option,
+			function ( array $value ): void {
+				$this->option = $value;
+			}
+		);
+		$this->manager = new IndexManager( $store, $scanner, $state, static function ( int $delay ): void {} );
+		$this->dayIndex = new DayIndex( $store, $this->manager, $keys );
 	}
 
 	protected function tearDown(): void {
@@ -30,52 +51,55 @@ class MediaPanelStateTest extends TestCase {
 			$file->isDir() ? rmdir( $file->getPathname() ) : unlink( $file->getPathname() );
 		}
 		rmdir( $this->root );
+	}
 
-		if ( is_dir( $this->storage ) ) {
-			foreach ( new RecursiveIteratorIterator(
-				new RecursiveDirectoryIterator( $this->storage, FilesystemIterator::SKIP_DOTS ),
-				RecursiveIteratorIterator::CHILD_FIRST
-			) as $file ) {
-				$file->isDir() ? rmdir( $file->getPathname() ) : unlink( $file->getPathname() );
-			}
-			rmdir( $this->storage );
-		}
+	/**
+	 * @return array<string, mixed>
+	 */
+	private function source(): array {
+		return [
+			'root' => $this->root,
+			'path_pattern' => '{date:Y}/{date:m}',
+			'filter_pattern' => '{date:Ymd}',
+			'id' => 'belledonne',
+		];
 	}
 
 	public function test_resolve_returns_a_user_facing_panel_state_for_a_selected_date(): void {
-		$source = [
-			'root' => $this->root,
-			'path_pattern' => '{date:Y}/{date:m}',
-			'filter_pattern' => '{date:Ymd}',
-			'id' => 'belledonne',
-		];
-		$date = new DateTimeImmutable( '2026-08-10' );
-		$index = new ExternalMediaIndex( $this->storage );
-		$panel = new MediaPanelState( new TargetedRefreshCoordinator( $index ) );
+		$panel = new MediaPanelState( $this->dayIndex );
 
-		$index->getForSource( $source, $date, 'belledonne' );
-		$state = $panel->resolve( $source, $date, 'belledonne' );
+		$state = $panel->resolve( $this->source(), new DateTimeImmutable( '2026-08-10' ), 'belledonne' );
 
-		$this->assertSame( 'fresh', $state['status'] );
 		$this->assertSame( '2026-08-10', $state['date'] );
-		$this->assertFalse( $state['refresh_required'] );
 		$this->assertCount( 2, $state['files'] );
 		$this->assertSame( 'belledonne', $state['source_id'] );
+		$this->assertSame( 'belledonne', $state['files'][0]['source_id'] );
+		$this->assertSame( '', $state['directory'], 'No server directory is exposed.' );
+		$this->assertSame( [ '20260810-rando-belledonne.gpx', '20260810-rando-belledonne.jpg' ], array_column( $state['files'], 'name' ) );
 	}
 
-	public function test_request_refresh_returns_fresh_state_with_refresh_reason(): void {
-		$source = [
-			'root' => $this->root,
-			'path_pattern' => '{date:Y}/{date:m}',
-			'filter_pattern' => '{date:Ymd}',
-			'id' => 'belledonne',
-		];
-		$date = new DateTimeImmutable( '2026-08-10' );
-		$index = new ExternalMediaIndex( $this->storage );
-		$panel = new MediaPanelState( new TargetedRefreshCoordinator( $index ) );
+	public function test_the_state_is_stale_until_the_first_pass_has_finished(): void {
+		$panel = new MediaPanelState( $this->dayIndex );
+		$first = $panel->resolve( $this->source(), new DateTimeImmutable( '2026-08-10' ), 'belledonne' );
 
-		$index->getForSource( $source, $date, 'belledonne' );
-		$state = $panel->requestRefresh( $source, $date, 'belledonne' );
+		$this->assertSame( 'stale', $first['status'] );
+		$this->assertTrue( $first['refresh_required'] );
+		$this->assertSame( DayIndex::REASON_INCOMPLETE, $first['reason'] );
+
+		$this->manager->runBackground( [ $this->source() ], new ScanBudget( 30 ) );
+		$second = $panel->resolve( $this->source(), new DateTimeImmutable( '2026-08-10' ), 'belledonne' );
+
+		$this->assertSame( 'fresh', $second['status'] );
+		$this->assertFalse( $second['refresh_required'] );
+		$this->assertNull( $second['reason'] );
+	}
+
+	public function test_request_refresh_returns_the_files_with_a_refresh_reason(): void {
+		$panel = new MediaPanelState( $this->dayIndex );
+		$panel->resolve( $this->source(), new DateTimeImmutable( '2026-08-10' ), 'belledonne' );
+		$this->manager->runBackground( [ $this->source() ], new ScanBudget( 30 ) );
+
+		$state = $panel->requestRefresh( $this->source(), new DateTimeImmutable( '2026-08-10' ), 'belledonne' );
 
 		$this->assertSame( 'fresh', $state['status'] );
 		$this->assertFalse( $state['refresh_required'] );
@@ -84,17 +108,9 @@ class MediaPanelStateTest extends TestCase {
 	}
 
 	public function test_resolve_accepts_date_ranges_and_exposes_them_in_state(): void {
-		$source = [
-			'root' => $this->root,
-			'path_pattern' => '{date:Y}/{date:m}',
-			'filter_pattern' => '{date:Ymd}',
-			'id' => 'belledonne',
-		];
-		$start = new DateTimeImmutable( '2026-08-09' );
-		$end = new DateTimeImmutable( '2026-08-11' );
-		$panel = new MediaPanelState( new TargetedRefreshCoordinator( new ExternalMediaIndex( $this->storage ) ) );
+		$panel = new MediaPanelState( $this->dayIndex );
 
-		$state = $panel->resolve( $source, $start, 'belledonne', $end );
+		$state = $panel->resolve( $this->source(), new DateTimeImmutable( '2026-08-09' ), 'belledonne', new DateTimeImmutable( '2026-08-11' ) );
 
 		$this->assertSame( '2026-08-09', $state['date'] );
 		$this->assertSame( [ 'start' => '2026-08-09', 'end' => '2026-08-11' ], $state['date_range'] );

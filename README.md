@@ -67,8 +67,9 @@ All settings are managed on the plugin's **Settings** page
 | Setting | Description |
 |---------|-------------|
 | **External media directories** | Optional. One or more absolute server paths to external media roots, each located inside the WordPress uploads directory (see [Allowed base directory](#allowed-base-directory)). Leave empty to use only the standard WordPress media library. |
-| **Path pattern** | Optional. Pattern used to derive the directory for a given date and source. Supports placeholders such as `{date:Y}`, `{date:m}`, `{date:d}` and `{source}`. If left empty, the resolver falls back to the source root directly, which is useful for static media sources that do not depend on the date. |
-| **Filter pattern** | Optional. Pattern used to further filter filenames after the target directory has been resolved. Supports placeholders such as `{date:Ymd}`. Defaults to an empty filter. |
+| **Path pattern** | Optional. A **hint** for finding new files quickly: the subdirectory where the files of a date are likely to be, for example `{date:Y}/{date:m}/{date:d}` (placeholders `{date:...}` and `{source}`). The directories of the requested day and of the days around it are checked right away. It does not decide which files belong to a day: files are placed on a day by their date, wherever they are. |
+| **Name date pattern** | Optional. How a date is written in file names, for example `{date:Ymd}` or `IMG_{date:Ymd}_{date:His}`. Letters: `Y` year, `m` month, `d` day, `H` hour, `i` minute, `s` second. Forms such as `20261002_121549` or `2026-10-02` are recognised without a pattern. A name with a date alone is placed at 12:00. |
+| **Files without a date in their name** | Whether to use the modification time of the file (on by default). When off, such a file is not placed on any day. |
 | **Maximum entries per page** | Number of media items shown per page in the editor panel, and the maximum number of items accepted by a single bulk action. Whole number between 1 and 500, default 100. |
 | **Thumbnail cache directory** | Optional. Writable directory where thumbnails for external media files are stored, located inside the same allowed base directory as the roots and separate from the source root. Required when external directories are read-only. Thumbnails are generated lazily on first request. |
 
@@ -226,32 +227,38 @@ residual weaknesses.
 
 ## External Media Indexing
 
-External directories can contain many files, and extracting metadata such as
-EXIF or GPX dates can be expensive. The plugin should therefore maintain a
-local index of discovered external files instead of scanning every source on
-each page load.
+External directories can contain many files, so the plugin keeps a persistent
+index of the files it has discovered, in two database tables, instead of scanning
+every source when a page is loaded. Finding the files of a day is a query on that
+index (see [Dates in WP Media Helper](docs/IA/date-model.md) for how a file is
+given its day).
 
-When the user requests media for a target date:
+- **Discovery is incremental.** A directory whose modification time has not
+  changed is not read again, so a pass over an unchanged tree costs about one
+  `stat` per directory. A file added in a sub-directory is found because that
+  directory changed.
+- **The first scan is split in runs.** It runs in the background within a time
+  budget (15 seconds per run), resumes by itself, and the settings page shows its
+  progress. Until it has finished once, the panel says the list may be incomplete.
+- **Directory times are only a hint.** Some file systems do not update them and an
+  edit in place does not change them. A **full pass** re-reads every directory
+  weekly and on demand (*Re-scan now* in the settings), and an incremental pass runs
+  every 30 minutes.
+- **The path pattern is a hint.** When a day is requested, the directories it
+  points to for that day and its neighbours are checked at once, briefly, so files
+  just added to today's folder appear immediately.
+- **Dot files, symbolic links and anything outside the source root are ignored.**
+  Files that disappear are marked missing, then forgotten after 30 days.
 
-1. Display the current indexed results immediately.
-2. Check the modification time of each relevant mapped directory.
-3. Start a targeted refresh only when a directory changed or its index is too
-   old.
-4. Update the gallery asynchronously when the refresh completes.
+Background work uses WordPress cron, which runs when the site is visited. On a site
+with little traffic, or with `DISABLE_WP_CRON`, call `wp-cron.php` from a system
+cron (for example every five minutes), otherwise the first scan and the periodic
+passes may not run.
 
-The directory modification time is an invalidation hint, not an authoritative
-change notification. The plugin must also support forced refreshes and should
-periodically refresh entries even when the directory timestamp appears
-unchanged.
-
-While a relevant refresh is running, the gallery remains visible but media
-selection and confirmation are disabled. This prevents users from working with
-known-stale results. The interface should preserve the current scroll position
-and any existing selection when refreshed results arrive.
-
-A low-load scheduled task may refresh configured sources progressively in the
-background. It reduces the likelihood of a user-facing refresh, but does not
-replace the consistency check performed when the date is requested.
+The index holds no server path: files are identified by their path relative to
+the uploads directory, so it stays valid if the site moves. It is a cache: it can
+be rebuilt with *Re-scan now*. The tables are not removed when the plugin is
+deleted.
 
 ## Replacing Other Plugins
 
