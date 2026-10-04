@@ -3,7 +3,7 @@
 
 # Slice 026: Name date patterns, embedded dates and user dates
 
-Status: **proposed** (design only, not implemented). Depends on
+Status: **partly implemented** (see "Implementation notes" at the end). Depends on
 [slice 025](025-database-file-index.md).
 
 ## Goal
@@ -125,3 +125,36 @@ date can be understood and, if needed, overridden.
 - Exact syntax and the escaping of the characters `[`, `]`, `{`, `*` in literal text.
 - Which presets to ship, from real file names.
 - GPX: which time to use for tracks that span midnight (start, by default).
+
+## Implementation notes (first delivery)
+
+Done:
+
+- **Several name patterns per source** (`name_patterns`, at most 10, tried in order, the
+  generic recogniser last). A source saved with one `filter_pattern` keeps working and is
+  rewritten as a list when saved. The syntax adds `[ ... ]` (optional, not nested, no year,
+  month or day inside), `*` (any characters), `v` (milliseconds, read and ignored) and the
+  backslash escape for `[ ] { } *`.
+- **Deviation:** a pattern is **searched anywhere in the name**, as the first version did,
+  not matched against the whole name, so `*` is needed only *inside* a pattern. The digit
+  guards apply next to a date field, also beside `*` and an absent optional part. The presets
+  of the table above were rewritten for this (no leading or trailing `*`), and the
+  `[ _T]` of the first draft is not a character class: it is replaced by separate patterns.
+- **Presets** (Android, Pixel, Samsung and others, screenshots, WhatsApp, dates with
+  separators, any date) added from a menu on the form, and a **test field** that asks the
+  server which date a name gives, and with which pattern.
+- **Embedded dates of photos** (JPEG, TIFF): the capture date, read through the core reader,
+  is used after the name and before the modification time. It is read when the file is first
+  indexed, or when its size or time changed, only if the name has no date; the result is stored
+  (`embedded_date`, `embedded_state` 1 read / 2 none) so changing the patterns recomputes the
+  dates without opening the files again. The date source of the index is `embedded`.
+
+Not done yet:
+
+- Embedded dates of **video, audio and GPX**, and the bounded XML reader they need.
+- The **date set by the user** (`date_override`, a *Set date* action).
+- The embedded time **refining** the median time of a name that has a day only.
+- A per-source **time zone**.
+- Showing the **date and its source** for an item in the panel (the index stores the source).
+- A cap on the number of photos opened per scan run: a directory with thousands of new photos
+  is read in one go, within the time budget of the run only between directories.

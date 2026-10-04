@@ -59,7 +59,7 @@ final class UploadsSource {
 			'state'          => SourceState::ACTIVE,
 			'root'           => rtrim( $base, '/\\' ),
 			'path_pattern'   => '',
-			'filter_pattern' => '',
+			'name_patterns' => [],
 			'mtime_fallback' => true,
 		];
 

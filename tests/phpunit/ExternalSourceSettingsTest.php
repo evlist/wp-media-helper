@@ -55,7 +55,8 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertSame( 'active', $saved[0]['state'] );
 		$this->assertSame( $this->tmpRoot, $saved[0]['root'] );
 		$this->assertSame( '{date:Y}/{date:m}/{date:d}', $saved[0]['path_pattern'] );
-		$this->assertSame( '{date:Ymd}', $saved[0]['filter_pattern'] );
+		$this->assertSame( [ '{date:Ymd}' ], $saved[0]['name_patterns'], 'The legacy single pattern becomes a list.' );
+		$this->assertArrayNotHasKey( 'filter_pattern', $saved[0] );
 		$this->assertArrayNotHasKey( 'thumbnail_cache', $saved[0], 'The cache is site-wide: a stored per-source value is dropped.' );
 	}
 
@@ -254,7 +255,7 @@ class ExternalSourceSettingsTest extends TestCase {
 			],
 		] );
 
-		$this->assertArrayHasKey( 'filter_pattern', $errors[0] );
+		$this->assertArrayHasKey( 'name_patterns', $errors[0] );
 	}
 
 	public function test_accepts_valid_path_and_filter_patterns(): void {
@@ -584,13 +585,15 @@ class ExternalSourceSettingsTest extends TestCase {
 
 	public function test_a_name_date_pattern_must_say_where_the_year_month_and_day_are(): void {
 		$settings = new ExternalSourceSettings( static fn(): mixed => [], static function ( array $value ): void {} );
-		$check = fn( string $pattern ): array => $settings->validateSources( [ [ 'name' => 'A', 'root' => $this->tmpRoot, 'filter_pattern' => $pattern, 'thumbnail_cache' => '/tmp/wp-media-helper-cache' ] ] );
+		$check = fn( string $pattern ): array => $settings->validateSources( [ [ 'name' => 'A', 'root' => $this->tmpRoot, 'name_patterns' => $pattern, 'thumbnail_cache' => '/tmp/wp-media-helper-cache' ] ] );
 
 		$this->assertSame( [], $check( '{date:Ymd}' ) );
 		$this->assertSame( [], $check( 'IMG_{date:Y-m-d}_{date:His}' ) );
-		$this->assertArrayHasKey( 'filter_pattern', $check( '{date:Ym}' )[0] );
-		$this->assertArrayHasKey( 'filter_pattern', $check( '{date:y-m-d}' )[0] );
-		$this->assertArrayHasKey( 'filter_pattern', $check( 'no date here' )[0] );
+		$this->assertArrayHasKey( 'name_patterns', $check( '{date:Ym}' )[0] );
+		$this->assertArrayHasKey( 'name_patterns', $check( '{date:y-m-d}' )[0] );
+		$this->assertArrayHasKey( 'name_patterns', $check( 'no date here' )[0] );
+		$this->assertArrayHasKey( 'name_patterns', $check( "{date:Ymd}\n{date:Ym}" )[0], 'Every pattern of the list is checked.' );
+		$this->assertSame( [], $check( "{date:Ymd}[_{date:His}]\n*{date:Y-m-d}*\n" ) );
 	}
 
 	public function test_no_root_may_be_inside_or_equal_to_the_site_wide_cache_but_the_cache_may_be_inside_a_root(): void {
@@ -610,5 +613,16 @@ class ExternalSourceSettingsTest extends TestCase {
 			$this->assertArrayHasKey( 'root', $errors[0] );
 			$this->assertStringContainsString( 'thumbnail cache', $errors[0]['root'] );
 		}
+	}
+
+	public function test_a_source_keeps_an_ordered_list_of_name_patterns_and_at_most_ten(): void {
+		$saved = $this->normalize( [ 'name_patterns' => "  IMG_{date:Ymd}_{date:His}  \n\n{date:Y-m-d}\n" ] );
+		$this->assertSame( [ 'IMG_{date:Ymd}_{date:His}', '{date:Y-m-d}' ], $saved['name_patterns'] );
+
+		$this->assertSame( [ '{date:Ymd}' ], $this->normalize( [ 'name_patterns' => [ '{date:Ymd}', '  ' ] ] )['name_patterns'] );
+
+		$settings = new ExternalSourceSettings( static fn(): mixed => [], static function ( array $value ): void {} );
+		$many = implode( "\n", array_fill( 0, 11, '{date:Ymd}' ) );
+		$this->assertArrayHasKey( 'name_patterns', $settings->validateSources( [ [ 'name' => 'A', 'root' => $this->tmpRoot, 'name_patterns' => $many ] ] )[0] );
 	}
 }

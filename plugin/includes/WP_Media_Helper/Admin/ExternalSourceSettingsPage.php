@@ -5,6 +5,8 @@
 namespace WP_Media_Helper\Admin;
 
 use InvalidArgumentException;
+use WP_Media_Helper\MediaSource\FileDates;
+use WP_Media_Helper\MediaSource\NamePattern;
 use WP_Media_Helper\MediaSource\PathConfinement;
 use WP_Media_Helper\Index\DayIndex;
 use WP_Media_Helper\Maintenance\Reset;
@@ -12,6 +14,7 @@ use WP_Media_Helper\Settings\AllowedBase;
 use WP_Media_Helper\Settings\ExternalSourceSettings;
 use WP_Media_Helper\Settings\BuiltInExclusions;
 use WP_Media_Helper\Settings\GeneralSettings;
+use WP_Media_Helper\Settings\NamePatternPresets;
 use WP_Media_Helper\Settings\SourceOwnership;
 use WP_Media_Helper\Settings\SourceState;
 use WP_Media_Helper\Settings\UploadsSource;
@@ -28,6 +31,7 @@ class ExternalSourceSettingsPage {
 		add_action( 'admin_post_wp_media_helper_rescan', [ $this, 'rescan' ] );
 		add_action( 'admin_post_wp_media_helper_reset', [ $this, 'reset' ] );
 		add_action( 'admin_post_wp_media_helper_use_uploads', [ $this, 'useUploads' ] );
+		add_action( 'wp_ajax_wp_media_helper_test_name_pattern', [ $this, 'testNamePattern' ] );
 	}
 
 	public function register(): void {
@@ -53,6 +57,15 @@ class ExternalSourceSettingsPage {
 			[ 'wp-i18n' ],
 			WP_MEDIA_HELPER_VERSION,
 			true
+		);
+
+		wp_localize_script(
+			$handle,
+			'wpMediaHelperSettings',
+			[
+				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+				'nonce'   => wp_create_nonce( 'wp_media_helper_test_name_pattern' ),
+			]
 		);
 
 		wp_set_script_translations(
@@ -626,21 +639,35 @@ class ExternalSourceSettingsPage {
 						</td>
 					</tr>
 					<tr>
-						<th scope="row"><label for="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Name date pattern', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
-						<td>
-							<input id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $errors['filter_pattern'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][filter_pattern]" value="<?php echo esc_attr( (string) ( $source['filter_pattern'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>-description" />
+						<th scope="row"><label for="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Name date patterns', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
+						<td class="wp-media-helper-name-patterns">
+							<textarea id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>" class="large-text code<?php echo isset( $errors['name_patterns'] ) ? ' is-invalid' : ''; ?>" rows="3" name="sources[<?php echo esc_attr( $index ); ?>][name_patterns]" aria-describedby="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>-description"><?php echo esc_textarea( implode( "\n", FileDates::patternStrings( $source ) ) ); ?></textarea>
 							<p class="description" id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>-description">
 								<?php
 								printf(
-									/* translators: %s: example name date pattern, wrapped in a code element. */
-									esc_html__( 'How the date is written in file names, for example %s. Common forms such as 20261002_121549 or 2026-10-02 are recognised without a pattern. A name with a date alone is placed at 12:00.', 'wp-media-helper' ),
-									'<code>{date:Ymd}</code>'
+									/* translators: 1: example pattern, 2: example pattern with an optional time. */
+									esc_html__( 'One pattern per line, tried in order; the first that matches a file name gives its date. A pattern says how the date is written in the name, for example %1$s, with %2$s for an optional time. [ ] marks an optional part, * any characters. Common forms such as 20261002_121549 or 2026-10-02 are recognised without a pattern, after yours. A name with a date alone is placed at 12:00.', 'wp-media-helper' ),
+									'<code>{date:Ymd}</code>',
+									'<code>{date:Ymd}[_{date:His}]</code>'
 								);
 								?>
 							</p>
-							<?php if ( isset( $errors['filter_pattern'] ) ) : ?>
+							<p class="wp-media-helper-pattern-tools">
+								<label class="screen-reader-text" for="wp-media-helper-source-preset-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Preset', 'wp-media-helper' ); ?></label>
+								<select id="wp-media-helper-source-preset-<?php echo esc_attr( $index ); ?>" class="wp-media-helper-preset">
+									<option value=""><?php esc_html_e( 'Add a preset…', 'wp-media-helper' ); ?></option>
+									<?php foreach ( NamePatternPresets::all() as $presetId => $preset ) : ?>
+										<option value="<?php echo esc_attr( $presetId ); ?>" data-patterns="<?php echo esc_attr( (string) wp_json_encode( $preset['patterns'] ) ); ?>"><?php echo esc_html( $preset['label'] ); ?></option>
+									<?php endforeach; ?>
+								</select>
+								<label class="screen-reader-text" for="wp-media-helper-source-test-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'File name to test', 'wp-media-helper' ); ?></label>
+								<input id="wp-media-helper-source-test-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text wp-media-helper-test-name" placeholder="<?php esc_attr_e( 'A file name to test, e.g. IMG_20261002_121549.jpg', 'wp-media-helper' ); ?>" />
+								<button type="button" class="button wp-media-helper-test-pattern"><?php esc_html_e( 'Test', 'wp-media-helper' ); ?></button>
+								<span class="wp-media-helper-test-result" role="status"></span>
+							</p>
+							<?php if ( isset( $errors['name_patterns'] ) ) : ?>
 								<p class="description wp-media-helper-field-error">
-									<?php echo esc_html( $errors['filter_pattern'] ); ?>
+									<?php echo esc_html( $errors['name_patterns'] ); ?>
 								</p>
 							<?php endif; ?>
 						</td>
@@ -770,6 +797,43 @@ class ExternalSourceSettingsPage {
 
 		wp_safe_redirect( add_query_arg( 'updated', 'true', $this->pageUrl() ) );
 		exit;
+	}
+
+	/**
+	 * Says which date a file name gives with the patterns being edited, so a pattern can
+	 * be checked before it is saved. Nothing is stored.
+	 */
+	public function testNamePattern(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
+		}
+		check_ajax_referer( 'wp_media_helper_test_name_pattern', 'nonce' );
+
+		$name     = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
+		$patterns = FileDates::patternStrings( [ 'name_patterns' => wp_unslash( $_POST['patterns'] ?? '' ) ] );
+		if ( '' === $name || count( $patterns ) > ExternalSourceSettings::MAX_NAME_PATTERNS ) {
+			wp_send_json_error( [ 'message' => __( 'Enter a file name and at most ten patterns.', 'wp-media-helper' ) ] );
+		}
+
+		$now      = time();
+		$timezone = wp_timezone();
+		foreach ( $patterns as $position => $pattern ) {
+			$compiled = NamePattern::compile( $pattern );
+			if ( null === $compiled ) {
+				wp_send_json_error( [ 'message' => sprintf( /* translators: %d: position of an invalid pattern. */ __( 'Pattern %d is not valid.', 'wp-media-helper' ), $position + 1 ) ] );
+			}
+			$found = $compiled->match( $name, $timezone, $now );
+			if ( null !== $found ) {
+				wp_send_json_success( [ 'date' => $found['date']->format( 'Y-m-d H:i:s' ), 'precision' => $found['precision'], 'pattern' => $position + 1 ] );
+			}
+		}
+
+		$found = NamePattern::generic()->match( $name, $timezone, $now );
+		if ( null !== $found ) {
+			wp_send_json_success( [ 'date' => $found['date']->format( 'Y-m-d H:i:s' ), 'precision' => $found['precision'], 'pattern' => 0 ] );
+		}
+
+		wp_send_json_success( [ 'date' => null, 'precision' => null, 'pattern' => null ] );
 	}
 
 	public function reset(): void {

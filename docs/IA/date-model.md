@@ -49,11 +49,15 @@ The effective date of a file is, in this order:
    example `{date:Ymd}`, `IMG_{date:Ymd}_{date:His}`), then the generic forms
    (`20261002_121549`, `2026-10-02`, `2026-10-02 12.15.49`). The time is read when
    there is one; a date alone is placed at 12:00:00 site time;
-2. the **modification time** of the file, unless the source turns this fallback off,
+2. for a **photo** (JPEG, TIFF) whose name has no date, its **capture date** (IPTC
+   creation date, else EXIF), read once when the file is indexed and read again
+   only if its size or time changed (slice 026). EXIF has no time zone, so the
+   camera's clock time is taken as site time;
+3. the **modification time** of the file, unless the source turns this fallback off,
    in which case the file is placed on no day.
 
-Dates embedded in the files (EXIF, video, GPX) and dates set by the user are not
-used yet (slice 026). The dates are site time.
+Dates embedded in videos, audio and GPX files, and dates set by the user, are not
+used yet. The dates are site time.
 
 What this means in practice:
 
@@ -65,7 +69,7 @@ What this means in practice:
   appears immediately. A source without a path pattern is scanned from its root until
   its first pass has finished.
 - The list can still contain files whose capture date differs from the panel date,
-  because no embedded date is read yet (see section 4).
+  because videos and GPX files have no embedded date read yet (see section 4).
 - Each listed item carries a `date` field, but it is **the requested panel date**,
   not the date of the file. The panel does not use it.
 - The date structure of a response also has a `date_range`; it is always empty
@@ -147,10 +151,10 @@ says something about dates, and the three can disagree:
 Consequences with the effective-date rule of slice 025:
 
 - A photo taken on 2026-09-30 and uploaded on 2026-10-02 through WordPress lands in
-  `uploads/2026/10`, and its name (for example `IMG_1234.jpg`) has no date. Until
-  embedded dates are read (slice 026) its effective date is its **modification
-  time**, which is usually the upload day, so it is listed under 2026-10-02 although
-  its attachment date, set from the capture when it is registered, says 2026-09-30.
+  `uploads/2026/10`, and its name (for example `IMG_1234.jpg`) has no date. Since
+  the capture date of photos is read (slice 026) it is listed under 2026-09-30, like
+  its attachment date. A video or a GPX file named without a date still falls back
+  to its **modification time**, usually the upload day.
   Photos named by the phone (`20260930_101500.jpg`) are placed correctly.
 - A path pattern down to the day no longer hides such a file: it is found by the
   background passes, wherever it is. The pattern only makes new files of a day show
@@ -167,8 +171,9 @@ places files on misleading days.
 
 ## 5. Known limitations of the current version
 
-- Dates embedded in files (EXIF, video, GPX) are not read by the index, only by the
-  attachment date, and the user cannot set a date: slice 026.
+- Dates embedded in videos, audio and GPX files are not read, and the user cannot set
+  a date (rest of slice 026). Photos with a date in their name are not opened, so
+  their capture time does not refine the median time of the name.
 - A file's source of date is stored in the index but not shown, and the order is
   fixed.
 - Modification times can be changed by copies and synchronisation.

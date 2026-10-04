@@ -12,13 +12,14 @@ use DateTimeZone;
  * listed under) and by registration (the date of the attachment), so that what the
  * panel shows for a day is what the Media Library sorts by.
  *
- * Order: a date written in the name, then, when the source allows it, the
- * modification time. (Dates embedded in files and dates set by the user come in
- * a later slice and go before the modification time and before the name.)
+ * Order: a date written in the name, then a date embedded in the file (the capture
+ * date of a photo), then, when the source allows it, the modification time. (Dates
+ * set by the user come in a later slice and go before the name.)
  */
 class FileDates {
 
-	public const SOURCE_NAME  = 'name';
+	public const SOURCE_NAME     = 'name';
+	public const SOURCE_EMBEDDED = 'embedded';
 	public const SOURCE_MTIME = 'mtime';
 	public const SOURCE_NONE  = 'none';
 
@@ -27,19 +28,50 @@ class FileDates {
 	 */
 	public const MIN_TIMESTAMP = 631152000;
 
+	/**
+	 * Changes when the way embedded dates are read changes, so stored dates are recomputed.
+	 */
+	private const EMBEDDED_VERSION = 'e1';
+
 	private const FORMAT = 'Y-m-d H:i:s';
 
 	/**
-	 * Name patterns of a source: its configured pattern, then the generic recogniser.
+	 * The name patterns written for a source, in order: its `name_patterns` list, or the
+	 * single `filter_pattern` of a source saved before there were several.
+	 *
+	 * @param array<string, mixed> $source
+	 * @return string[]
+	 */
+	public static function patternStrings( array $source ): array {
+		$list = $source['name_patterns'] ?? null;
+		if ( is_string( $list ) ) {
+			$list = preg_split( '/\R/', $list ) ?: [];
+		}
+		if ( ! is_array( $list ) ) {
+			$list = [ (string) ( $source['filter_pattern'] ?? '' ) ];
+		}
+
+		$strings = [];
+		foreach ( $list as $pattern ) {
+			$pattern = is_string( $pattern ) ? trim( $pattern ) : '';
+			if ( '' !== $pattern ) {
+				$strings[] = $pattern;
+			}
+		}
+
+		return $strings;
+	}
+
+	/**
+	 * Name patterns of a source: the configured ones in order, then the generic recogniser.
 	 *
 	 * @param array<string, mixed> $source
 	 * @return NamePattern[]
 	 */
 	public static function patterns( array $source ): array {
 		$patterns = [];
-		$filter   = trim( (string) ( $source['filter_pattern'] ?? '' ) );
-		if ( '' !== $filter ) {
-			$configured = NamePattern::fromLegacyFilter( $filter );
+		foreach ( self::patternStrings( $source ) as $string ) {
+			$configured = NamePattern::compile( $string );
 			if ( null !== $configured ) {
 				$patterns[] = $configured;
 			}
@@ -66,7 +98,7 @@ class FileDates {
 	 * @param array<string, mixed> $source
 	 */
 	public static function configHash( array $source ): string {
-		return md5( trim( (string) ( $source['filter_pattern'] ?? '' ) ) . '|' . ( self::usesMtimeFallback( $source ) ? '1' : '0' ) );
+		return md5( implode( "\n", self::patternStrings( $source ) ) . '|' . ( self::usesMtimeFallback( $source ) ? '1' : '0' ) . '|' . self::EMBEDDED_VERSION );
 	}
 
 	public static function isPlausible( ?int $timestamp, int $now ): bool {
@@ -89,10 +121,11 @@ class FileDates {
 	}
 
 	/**
-	 * @param NamePattern[] $patterns
+	 * @param NamePattern[]          $patterns
+	 * @param DateTimeImmutable|null $embedded The date read from the content of the file, in site time, when there is one.
 	 * @return array{name_date:string|null, precision:string|null, local:string|null, gmt:string|null, day:string|null, source:string}
 	 */
-	public static function effective( string $name, ?int $mtime, array $patterns, bool $mtimeFallback, DateTimeZone $timezone, int $now ): array {
+	public static function effective( string $name, ?int $mtime, array $patterns, bool $mtimeFallback, DateTimeZone $timezone, int $now, ?DateTimeImmutable $embedded = null ): array {
 		$found = self::nameDate( $name, $patterns, $timezone, $now );
 		if ( null !== $found ) {
 			$formatted = self::format( $found['date'], $timezone );
@@ -104,6 +137,19 @@ class FileDates {
 				'gmt'       => $formatted['gmt'],
 				'day'       => $formatted['day'],
 				'source'    => self::SOURCE_NAME,
+			];
+		}
+
+		if ( null !== $embedded && self::isPlausible( $embedded->getTimestamp(), $now ) ) {
+			$formatted = self::format( $embedded, $timezone );
+
+			return [
+				'name_date' => null,
+				'precision' => NamePattern::PRECISION_SECOND,
+				'local'     => $formatted['local'],
+				'gmt'       => $formatted['gmt'],
+				'day'       => $formatted['day'],
+				'source'    => self::SOURCE_EMBEDDED,
 			];
 		}
 

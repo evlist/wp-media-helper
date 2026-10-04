@@ -19,7 +19,7 @@ class WpdbIndexStore implements IndexStore {
 	/**
 	 * Columns a scan may update on a file.
 	 */
-	private const UPDATABLE_FILE_COLUMNS = [ 'size', 'mtime', 'name_date', 'name_date_precision', 'effective_date', 'effective_day', 'date_source', 'missing_since' ];
+	private const UPDATABLE_FILE_COLUMNS = [ 'size', 'mtime', 'name_date', 'name_date_precision', 'embedded_date', 'embedded_state', 'effective_date', 'effective_day', 'date_source', 'missing_since' ];
 
 	public function findDirectory( string $sourceId, string $key ): ?array {
 		global $wpdb;
@@ -140,7 +140,7 @@ class WpdbIndexStore implements IndexStore {
 		global $wpdb;
 
 		$table   = Schema::filesTable();
-		$columns = 'source_id, dir_id, path_hash, path, name, ext, kind, size, mtime, name_date, name_date_precision, effective_date, effective_day, date_source, first_seen, last_seen';
+		$columns = 'source_id, dir_id, path_hash, path, name, ext, kind, size, mtime, name_date, name_date_precision, embedded_date, embedded_state, effective_date, effective_day, date_source, first_seen, last_seen';
 
 		foreach ( array_chunk( $files, self::INSERT_CHUNK ) as $chunk ) {
 			$rows = [];
@@ -158,6 +158,8 @@ class WpdbIndexStore implements IndexStore {
 					[ '%d', (int) $file['mtime'] ],
 					[ '%s', $file['name_date'] ?? null ],
 					[ '%s', $file['name_date_precision'] ?? null ],
+					[ '%s', $file['embedded_date'] ?? null ],
+					[ '%d', (int) ( $file['embedded_state'] ?? 0 ) ],
 					[ '%s', $file['effective_date'] ?? null ],
 					[ '%s', $file['effective_day'] ?? null ],
 					[ '%s', (string) ( $file['date_source'] ?? 'none' ) ],
@@ -213,6 +215,8 @@ class WpdbIndexStore implements IndexStore {
 					'mtime'               => (int) $file['mtime'],
 					'name_date'           => $file['name_date'] ?? null,
 					'name_date_precision' => $file['name_date_precision'] ?? null,
+					'embedded_date'       => $file['embedded_date'] ?? null,
+					'embedded_state'      => (int) ( $file['embedded_state'] ?? 0 ),
 					'effective_date'      => $file['effective_date'] ?? null,
 					'effective_day'       => $file['effective_day'] ?? null,
 					'date_source'         => (string) ( $file['date_source'] ?? 'none' ),

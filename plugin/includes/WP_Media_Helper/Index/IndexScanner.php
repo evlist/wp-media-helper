@@ -4,6 +4,7 @@
 
 namespace WP_Media_Helper\Index;
 
+use DateTimeImmutable;
 use DateTimeZone;
 use WP_Media_Helper\Admin\MediaPanelState;
 use WP_Media_Helper\MediaSource\FileDates;
@@ -47,11 +48,19 @@ class IndexScanner {
 	 */
 	private $clock;
 
-	public function __construct( IndexStore $store, KeyMapper $keys, DateTimeZone $timezone, ?callable $clock = null ) {
-		$this->store    = $store;
-		$this->keys     = $keys;
-		$this->timezone = $timezone;
-		$this->clock    = $clock;
+	/**
+	 * Reads the capture date of an image file: (path) => local clock timestamp or null.
+	 *
+	 * @var callable|null
+	 */
+	private $embeddedReader;
+
+	public function __construct( IndexStore $store, KeyMapper $keys, DateTimeZone $timezone, ?callable $clock = null, ?callable $embeddedReader = null ) {
+		$this->store          = $store;
+		$this->keys           = $keys;
+		$this->timezone       = $timezone;
+		$this->clock          = $clock;
+		$this->embeddedReader = $embeddedReader;
 	}
 
 	/**
@@ -251,19 +260,24 @@ class IndexScanner {
 		$new      = [];
 
 		foreach ( $files as $name => $file ) {
-			$dates = FileDates::effective( (string) $name, $file['mtime'], $context['patterns'], (bool) $context['fallback'], $this->timezone, $now );
+			$row      = $existing[ $name ] ?? null;
+			$kind     = MediaPanelState::resolveMediaType( (string) $name );
+			$embedded = $this->embeddedFor( (string) $name, $file, $row, $kind, $context );
+			$dates    = FileDates::effective( (string) $name, $file['mtime'], $context['patterns'], (bool) $context['fallback'], $this->timezone, $now, $embedded['date'] );
 
-			if ( ! isset( $existing[ $name ] ) ) {
+			if ( null === $row ) {
 				$extension = strtolower( pathinfo( (string) $name, PATHINFO_EXTENSION ) );
 				$new[]     = [
 					'key'                 => $this->keys->key( $file['path'] ),
 					'name'                => (string) $name,
 					'ext'                 => substr( $extension, 0, 20 ),
-					'kind'                => MediaPanelState::resolveMediaType( (string) $name ),
+					'kind'                => $kind,
 					'size'                => $file['size'],
 					'mtime'               => $file['mtime'],
 					'name_date'           => $dates['name_date'],
 					'name_date_precision' => $dates['precision'],
+					'embedded_date'       => $embedded['stored'],
+					'embedded_state'      => $embedded['state'],
 					'effective_date'      => $dates['local'],
 					'effective_day'       => $dates['day'],
 					'date_source'         => $dates['source'],
@@ -271,12 +285,13 @@ class IndexScanner {
 				continue;
 			}
 
-			$row    = $existing[ $name ];
 			$fields = [
 				'size'                => $file['size'],
 				'mtime'               => $file['mtime'],
 				'name_date'           => $dates['name_date'],
 				'name_date_precision' => $dates['precision'],
+				'embedded_date'       => $embedded['stored'],
+				'embedded_state'      => $embedded['state'],
 				'effective_date'      => $dates['local'],
 				'effective_day'       => $dates['day'],
 				'date_source'         => $dates['source'],
@@ -303,6 +318,35 @@ class IndexScanner {
 			$this->store->markFilesMissing( $gone, $now );
 			$context['stats']['missing'] += count( $gone );
 		}
+	}
+
+	/**
+	 * The date embedded in a file: read from the content only for an image whose name
+	 * has no date, and only when it was never read or when its size or time changed.
+	 * What was read is kept in the index (`embedded_state`: 0 not read, 1 read, 2 none), so a
+	 * change of the patterns recomputes the dates without opening the files again.
+	 *
+	 * @param array{size:int, mtime:int, path:string} $file
+	 * @param array<string, mixed>|null               $row  The stored row of the file, if any.
+	 * @param array<string, mixed>                    $context
+	 * @return array{date:\DateTimeImmutable|null, stored:string|null, state:int}
+	 */
+	private function embeddedFor( string $name, array $file, ?array $row, string $kind, array $context ): array {
+		$stored = null !== $row && ! empty( $row['embedded_date'] ) ? (string) $row['embedded_date'] : null;
+		$state  = null === $row ? 0 : (int) ( $row['embedded_state'] ?? 0 );
+
+		$changed = null !== $row && ( (int) $row['size'] !== $file['size'] || (int) $row['mtime'] !== $file['mtime'] );
+		$wanted  = 'image' === $kind && null !== $this->embeddedReader && 1 === preg_match( '/\.(jpe?g|tiff?)$/i', $name );
+		if ( $wanted && ( 0 === $state || $changed ) && null === FileDates::nameDate( $name, $context['patterns'], $this->timezone, $this->now() ) ) {
+			$timestamp = ( $this->embeddedReader )( $file['path'] );
+			// The reader gives the local clock time as if it were UTC, like the core reader.
+			$stored = is_int( $timestamp ) && $timestamp > 0 ? gmdate( 'Y-m-d H:i:s', $timestamp ) : null;
+			$state  = null === $stored ? 2 : 1;
+		}
+
+		$date = null === $stored ? null : DateTimeImmutable::createFromFormat( 'Y-m-d H:i:s', $stored, $this->timezone );
+
+		return [ 'date' => false === $date ? null : $date, 'stored' => $stored, 'state' => $state ];
 	}
 
 	/**

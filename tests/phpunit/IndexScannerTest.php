@@ -305,4 +305,78 @@ class IndexScannerTest extends TestCase {
 
 		$this->assertSame( 0, $this->store->countFiles( 's' ) );
 	}
+
+	/**
+	 * @param array<string, int|null> $timestamps Local clock time as if UTC, by file name.
+	 * @param string[]                $reads      Receives the names of the files that were opened.
+	 */
+	private function embeddedScanner( array $timestamps, array &$reads ): IndexScanner {
+		return new IndexScanner(
+			$this->store,
+			new KeyMapper( $this->base ),
+			new DateTimeZone( 'Europe/Paris' ),
+			null,
+			static function ( string $path ) use ( $timestamps, &$reads ): ?int {
+				$reads[] = basename( $path );
+
+				return $timestamps[ basename( $path ) ] ?? null;
+			}
+		);
+	}
+
+	public function test_the_capture_date_of_a_photo_without_a_date_in_its_name_places_it_and_is_read_once(): void {
+		touch( $this->root . '/2026/10/02/cam.jpg' );
+		touch( $this->root . '/2026/10/02/blank.jpeg' );
+		touch( $this->root . '/2026/10/02/clip.mp4' );
+		$this->age();
+		$reads = [];
+		$scanner = $this->embeddedScanner( [ 'cam.jpg' => strtotime( '2026-08-15 10:00:00 UTC' ), 'IMG_20260101.jpg' => 1 ], $reads );
+
+		$scanner->scan( $this->source(), 1, new ScanBudget( 30 ) );
+
+		$this->assertContains( 'cam.jpg', $this->day( '2026-08-15' ) );
+		$row = $this->store->filesForDay( [ 's' ], '2026-08-15' )[0];
+		$this->assertSame( 'embedded', $row['date_source'] );
+		$this->assertSame( '2026-08-15 10:00:00', $row['effective_date'], 'The local clock time of the camera is the site time.' );
+		$this->assertSame( 1, $row['embedded_state'] );
+		$this->assertContains( 'trace.gpx', $this->day( '2026-09-01' ), 'Not an image: the modification time applies and nothing is opened.' );
+		$this->assertNotContains( 'clip.mp4', $reads );
+		$this->assertNotContains( '20261002_121549.jpg', $reads, 'A date in the name wins: the file is not opened.' );
+
+		// A photo with no capture date falls back to the modification time and is not asked again.
+		$blank = array_filter( $this->store->filesForDay( [ 's' ], gmdate( 'Y-m-d' ) ), static fn ( array $r ): bool => 'blank.jpeg' === $r['name'] );
+		$this->assertSame( 2, ( array_values( $blank )[0] ?? [ 'embedded_state' => 2 ] )['embedded_state'] );
+
+		$reads = [];
+		$scanner->scan( $this->source(), 2, new ScanBudget( 30 ), true );
+		$this->assertSame( [], $reads, 'A full pass recomputes dates from what is stored, without opening the files.' );
+		$this->assertContains( 'cam.jpg', $this->day( '2026-08-15' ) );
+	}
+
+	public function test_a_photo_is_read_again_when_its_size_or_time_changed(): void {
+		touch( $this->root . '/2026/10/02/cam.jpg' );
+		$this->age();
+		$reads = [];
+		$scanner = $this->embeddedScanner( [ 'cam.jpg' => strtotime( '2026-08-15 10:00:00 UTC' ) ], $reads );
+		$scanner->scan( $this->source(), 1, new ScanBudget( 30 ) );
+		$this->assertSame( [ 'cam.jpg' ], $reads );
+
+		touch( $this->root . '/2026/10/02/cam.jpg', time() - 500 );
+		$this->age();
+		$scanner->scan( $this->source(), 2, new ScanBudget( 30 ), true );
+
+		$this->assertSame( [ 'cam.jpg', 'cam.jpg' ], $reads );
+	}
+
+	public function test_a_photo_with_a_date_in_its_name_is_never_opened(): void {
+		touch( $this->root . '/2026/10/02/holiday-20260720.jpg' );
+		$this->age();
+		$reads = [];
+		$scanner = $this->embeddedScanner( [ 'holiday-20260720.jpg' => strtotime( '2026-08-15 10:00:00 UTC' ) ], $reads );
+		// The generic recogniser finds the date in the name: the file is never opened.
+		$scanner->scan( $this->source(), 1, new ScanBudget( 30 ) );
+
+		$this->assertSame( [], $reads );
+		$this->assertContains( 'holiday-20260720.jpg', $this->day( '2026-07-20' ) );
+	}
 }

@@ -10,10 +10,10 @@ use DateTimeZone;
 /**
  * Reads the date, and the time when there is one, written in a file name.
  *
- * A pattern is written with the same placeholders as the path and filter
- * patterns: `{date:Ymd}` is a date and `{date:His}` a time, with the format
- * letters `Y m d H i s`. Everything outside placeholders is literal text. A
- * pattern is searched for anywhere in the name, and a run of digits next to a date
+ * A pattern is written with the same placeholders as the path patterns:
+ * `{date:Ymd}` is a date and `{date:His}` a time (letters `Y m d H i s v`),
+ * `[ ... ]` is an optional part, `*` any run of characters and everything else is
+ * literal text. A pattern is searched for anywhere in the name, and a run of digits next to a date
  * field must not continue the field, so `20261002121549` is never read as a longer
  * number.
  *
@@ -33,6 +33,7 @@ class NamePattern {
 		'H' => '([01]\d|2[0-3])',
 		'i' => '([0-5]\d)',
 		's' => '([0-5]\d)',
+		'v' => '(\d{3})',
 	];
 
 	private const MAX_LENGTH = 200;
@@ -79,9 +80,16 @@ class NamePattern {
 	}
 
 	/**
-	 * Returns null when the pattern is not valid: it must contain the year, the
-	 * month and the day, a time needs the hour and the minute, a field appears once,
-	 * and only the letters `Y m d H i s` may be used inside a placeholder.
+	 * Returns null when the pattern is not valid.
+	 *
+	 * Syntax: `{date:Ymd}` is a date or a time, with the letters `Y m d H i s v` (year,
+	 * month, day, hour, minute, second, milliseconds) and any separator between them;
+	 * `[ ... ]` is an optional part (not nested, and without the year, month and day);
+	 * `*` is any run of characters; `\` makes the next character literal; anything else
+	 * is literal text. The year, month and day must appear once each, a time needs the
+	 * hour and the minute, the seconds need the hour, the milliseconds need the seconds.
+	 * The pattern is searched anywhere in the name, and a run of digits next to a date
+	 * field must not continue the field.
 	 */
 	public static function compile( string $pattern ): ?self {
 		$pattern = trim( $pattern );
@@ -89,50 +97,117 @@ class NamePattern {
 			return null;
 		}
 
-		$parts  = preg_split( '/(\{date:[^{}]*\})/', $pattern, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY );
-		$tokens = [];
-		$groups = [];
-		$count  = 0;
-
-		foreach ( (array) $parts as $part ) {
-			if ( 1 === preg_match( '/^\{date:([^{}]*)\}$/', $part, $found ) ) {
-				if ( '' === $found[1] ) {
-					return null;
-				}
-				foreach ( str_split( $found[1] ) as $character ) {
-					if ( isset( self::FIELDS[ $character ] ) ) {
-						if ( isset( $groups[ $character ] ) ) {
-							return null;
-						}
-						$groups[ $character ] = ++$count;
-						$tokens[]             = [ 'field', self::FIELDS[ $character ] ];
-					} elseif ( ctype_alpha( $character ) ) {
-						return null;
-					} else {
-						$tokens[] = [ 'text', preg_quote( $character, '/' ) ];
-					}
-				}
-				continue;
-			}
-
-			if ( str_contains( $part, '{' ) || str_contains( $part, '}' ) ) {
-				return null;
-			}
-			$tokens[] = [ 'text', preg_quote( $part, '/' ) ];
-		}
-
-		if ( ! isset( $groups['Y'], $groups['m'], $groups['d'] ) || isset( $groups['H'] ) !== isset( $groups['i'] ) || ( isset( $groups['s'] ) && ! isset( $groups['H'] ) ) ) {
+		$tokens = self::tokenize( $pattern );
+		if ( null === $tokens ) {
 			return null;
 		}
 
-		$regex = '';
-		foreach ( $tokens as $token ) {
-			$regex .= $token[1];
-		}
-		$start = 'field' === $tokens[0][0] ? '(?<!\d)' : '';
-		$end   = 'field' === $tokens[ count( $tokens ) - 1 ][0] ? '(?!\d)' : '';
+		$groups    = [];
+		$count     = 0;
+		$regex     = '';
+		$endsField = false;   // The regex so far can end with a date field.
+		$boundary  = true;    // Start of the pattern, or just after `*`.
+		$optional  = false;
+		$before    = false;
 
-		return new self( '/' . $start . $regex . $end . '/', $groups );
+		foreach ( $tokens as $token ) {
+			switch ( $token[0] ) {
+				case 'open':
+					$optional = true;
+					$before   = $endsField;
+					$regex   .= '(?:';
+					break;
+				case 'close':
+					$optional  = false;
+					$endsField = $endsField || $before;
+					$regex    .= ')?';
+					break;
+				case 'star':
+					$regex    .= ( $endsField ? '(?!\d)' : '' ) . '.*?';
+					$endsField = false;
+					$boundary  = true;
+					break;
+				case 'text':
+					$regex    .= preg_quote( $token[1], '/' );
+					$endsField = false;
+					$boundary  = false;
+					break;
+				case 'field':
+					$letter = $token[1];
+					if ( isset( $groups[ $letter ] ) || ( $optional && in_array( $letter, [ 'Y', 'm', 'd' ], true ) ) ) {
+						return null;
+					}
+					$groups[ $letter ] = ++$count;
+					$regex            .= ( $boundary ? '(?<!\d)' : '' ) . self::FIELDS[ $letter ];
+					$endsField         = true;
+					$boundary          = false;
+					break;
+			}
+		}
+
+		if ( $optional || ! isset( $groups['Y'], $groups['m'], $groups['d'] )
+			|| isset( $groups['H'] ) !== isset( $groups['i'] )
+			|| ( isset( $groups['s'] ) && ! isset( $groups['H'] ) )
+			|| ( isset( $groups['v'] ) && ! isset( $groups['s'] ) ) ) {
+			return null;
+		}
+
+		return new self( '/' . $regex . ( $endsField ? '(?!\d)' : '' ) . '/', $groups );
+	}
+
+	/**
+	 * @return array<int, array{0:string, 1?:string}>|null
+	 */
+	private static function tokenize( string $pattern ): ?array {
+		$tokens = [];
+		$open   = false;
+		$length = strlen( $pattern );
+
+		for ( $i = 0; $i < $length; ++$i ) {
+			$character = $pattern[ $i ];
+
+			if ( '\\' === $character ) {
+				if ( $i + 1 >= $length ) {
+					return null;
+				}
+				$tokens[] = [ 'text', $pattern[ ++$i ] ];
+			} elseif ( '{' === $character ) {
+				$end = strpos( $pattern, '}', $i );
+				if ( 0 !== strncmp( substr( $pattern, $i, 6 ), '{date:', 6 ) || false === $end || $end === $i + 6 ) {
+					return null;
+				}
+				foreach ( str_split( substr( $pattern, $i + 6, $end - $i - 6 ) ) as $letter ) {
+					if ( isset( self::FIELDS[ $letter ] ) ) {
+						$tokens[] = [ 'field', $letter ];
+					} elseif ( ctype_alpha( $letter ) || '{' === $letter ) {
+						return null;
+					} else {
+						$tokens[] = [ 'text', $letter ];
+					}
+				}
+				$i = $end;
+			} elseif ( '}' === $character ) {
+				return null;
+			} elseif ( '[' === $character ) {
+				if ( $open ) {
+					return null;
+				}
+				$open     = true;
+				$tokens[] = [ 'open' ];
+			} elseif ( ']' === $character ) {
+				if ( ! $open ) {
+					return null;
+				}
+				$open     = false;
+				$tokens[] = [ 'close' ];
+			} elseif ( '*' === $character ) {
+				$tokens[] = [ 'star' ];
+			} else {
+				$tokens[] = [ 'text', $character ];
+			}
+		}
+
+		return $open ? null : $tokens;
 	}
 
 	/**
@@ -151,13 +226,14 @@ class NamePattern {
 		}
 
 		$hasTime = isset( $this->groups['H'] ) && '' !== ( $found[ $this->groups['H'] ] ?? '' );
+		$hasSeconds = $hasTime && isset( $this->groups['s'] ) && '' !== ( $found[ $this->groups['s'] ] ?? '' );
 		$time    = self::MEDIAN_TIME;
 		if ( $hasTime ) {
 			$time = sprintf(
 				'%02d:%02d:%02d',
 				(int) $found[ $this->groups['H'] ],
-				(int) ( $found[ $this->groups['i'] ?? 0 ] ?? 0 ),
-				isset( $this->groups['s'] ) ? (int) ( $found[ $this->groups['s'] ] ?? 0 ) : 0
+				(int) ( $found[ $this->groups['i'] ] ?? 0 ),
+				$hasSeconds ? (int) $found[ $this->groups['s'] ] : 0
 			);
 		}
 

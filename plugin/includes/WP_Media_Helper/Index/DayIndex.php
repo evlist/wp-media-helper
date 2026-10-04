@@ -9,6 +9,7 @@ use DateTimeInterface;
 use DateTimeZone;
 use InvalidArgumentException;
 use WP_Media_Helper\MediaSource\DatePatternResolver;
+use WP_Media_Helper\MediaSource\EmbeddedDates;
 
 /**
  * The files of a source for one day, answered from the index.
@@ -43,7 +44,7 @@ class DayIndex {
 		$basedir  = is_array( $uploads ) && ! empty( $uploads['basedir'] ) ? (string) $uploads['basedir'] : '';
 		$store    = new WpdbIndexStore();
 		$keys     = new KeyMapper( $basedir );
-		$scanner  = new IndexScanner( $store, $keys, wp_timezone() );
+		$scanner  = new IndexScanner( $store, $keys, wp_timezone(), null, EmbeddedDates::imageReader() );
 		$state    = new ScanState(
 			static fn(): mixed => get_option( ScanState::OPTION, [] ),
 			static function ( array $value ): void {

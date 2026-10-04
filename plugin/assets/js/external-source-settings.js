@@ -46,6 +46,73 @@
 		renumber();
 	} );
 
+	const settings = window.wpMediaHelperSettings || {};
+
+	// A preset adds its patterns to the list of the source, without repeating one.
+	container.addEventListener( 'change', function ( event ) {
+		if ( ! event.target.classList.contains( 'wp-media-helper-preset' ) || ! event.target.value ) {
+			return;
+		}
+
+		const option = event.target.options[ event.target.selectedIndex ];
+		const cell = event.target.closest( '.wp-media-helper-name-patterns' );
+		const area = cell ? cell.querySelector( 'textarea' ) : null;
+		let added = [];
+		try {
+			added = JSON.parse( option.getAttribute( 'data-patterns' ) || '[]' );
+		} catch ( error ) {
+			added = [];
+		}
+
+		if ( area ) {
+			const lines = area.value.split( /\r?\n/ ).map( function ( line ) { return line.trim(); } ).filter( Boolean );
+			added.forEach( function ( pattern ) {
+				if ( -1 === lines.indexOf( pattern ) ) {
+					lines.push( pattern );
+				}
+			} );
+			area.value = lines.join( '\n' );
+		}
+		event.target.value = '';
+	} );
+
+	// Asks the server which date a file name gives with the patterns as currently typed.
+	container.addEventListener( 'click', function ( event ) {
+		if ( ! event.target.classList.contains( 'wp-media-helper-test-pattern' ) ) {
+			return;
+		}
+
+		const cell = event.target.closest( '.wp-media-helper-name-patterns' );
+		const area = cell ? cell.querySelector( 'textarea' ) : null;
+		const nameInput = cell ? cell.querySelector( '.wp-media-helper-test-name' ) : null;
+		const result = cell ? cell.querySelector( '.wp-media-helper-test-result' ) : null;
+		if ( ! area || ! nameInput || ! result || ! settings.ajaxUrl ) {
+			return;
+		}
+
+		const body = new window.FormData();
+		body.append( 'action', 'wp_media_helper_test_name_pattern' );
+		body.append( 'nonce', settings.nonce || '' );
+		body.append( 'patterns', area.value );
+		body.append( 'name', nameInput.value );
+		result.textContent = '…';
+
+		window.fetch( settings.ajaxUrl, { method: 'POST', credentials: 'same-origin', body: body } )
+			.then( function ( response ) { return response.json(); } )
+			.then( function ( payload ) {
+				if ( ! payload || ! payload.success ) {
+					result.textContent = payload && payload.data && payload.data.message ? payload.data.message : __( 'The test failed.', 'wp-media-helper' );
+				} else if ( ! payload.data.date ) {
+					result.textContent = __( 'No date found in this name.', 'wp-media-helper' );
+				} else {
+					result.textContent = payload.data.pattern > 0
+						? sprintf( __( '%1$s (pattern %2$d)', 'wp-media-helper' ), payload.data.date, payload.data.pattern )
+						: sprintf( __( '%s (common form recognised without a pattern)', 'wp-media-helper' ), payload.data.date );
+				}
+			} )
+			.catch( function () { result.textContent = __( 'The test failed.', 'wp-media-helper' ); } );
+	} );
+
 	container.addEventListener( 'click', function ( event ) {
 		if ( event.target.classList.contains( 'wp-media-helper-move-source' ) ) {
 			const moving = event.target.closest( '.wp-media-helper-source' );

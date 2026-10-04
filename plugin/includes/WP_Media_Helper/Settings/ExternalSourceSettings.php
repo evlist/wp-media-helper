@@ -6,12 +6,15 @@ namespace WP_Media_Helper\Settings;
 
 use Closure;
 use InvalidArgumentException;
+use WP_Media_Helper\MediaSource\FileDates;
 use WP_Media_Helper\MediaSource\NamePattern;
 use WP_Media_Helper\MediaSource\PathConfinement;
 
 class ExternalSourceSettings {
 
 	private const OPTION_KEY = 'wp_media_helper_external_sources';
+
+	public const MAX_NAME_PATTERNS = 10;
 
 	/**
 	 * @var Closure(): mixed
@@ -134,12 +137,9 @@ class ExternalSourceSettings {
 				}
 			}
 
-			$filter = trim( (string) ( $source['filter_pattern'] ?? '' ) );
-			if ( '' !== $filter ) {
-				$filterError = $this->validatePatternSyntax( $filter ) ?? $this->validateNamePattern( $filter );
-				if ( null !== $filterError ) {
-					$entryErrors['filter_pattern'] = $filterError;
-				}
+			$namePatternsError = $this->validateNamePatterns( $source );
+			if ( null !== $namePatternsError ) {
+				$entryErrors['name_patterns'] = $namePatternsError;
 			}
 
 			if ( [] !== $entryErrors ) {
@@ -306,17 +306,10 @@ class ExternalSourceSettings {
 			);
 		}
 
-		$filter = trim( (string) ( $source['filter_pattern'] ?? '' ) );
+		$namePatternsError = $this->validateNamePatterns( $source );
+		$pathError         = '' === $path ? null : $this->validatePatternSyntax( $path );
 
-		foreach ( [ 'path_pattern' => $path, 'filter_pattern' => $filter ] as $field => $value ) {
-			if ( '' === $value ) {
-				continue;
-			}
-
-			$patternError = $this->validatePatternSyntax( $value );
-			if ( null === $patternError && 'filter_pattern' === $field ) {
-				$patternError = $this->validateNamePattern( $value );
-			}
+		foreach ( [ $pathError, $namePatternsError ] as $patternError ) {
 			if ( null !== $patternError ) {
 				throw new InvalidArgumentException(
 					sprintf(
@@ -359,7 +352,7 @@ class ExternalSourceSettings {
 			'state' => SourceState::of( $source ),
 			'root' => $root,
 			'path_pattern' => $path,
-			'filter_pattern' => trim( (string) ( $source['filter_pattern'] ?? '' ) ),
+			'name_patterns' => FileDates::patternStrings( $source ),
 			'mtime_fallback' => filter_var( $source['mtime_fallback'] ?? true, FILTER_VALIDATE_BOOLEAN ),
 		];
 	}
@@ -404,14 +397,32 @@ class ExternalSourceSettings {
 	}
 
 	/**
-	 * Checks that a name date pattern says where the year, the month and the day are.
+	 * Checks the name date patterns of a source: at most MAX_NAME_PATTERNS, each valid.
+	 *
+	 * @param array<string, mixed> $source
 	 */
-	private function validateNamePattern( string $pattern ): ?string {
-		if ( null !== NamePattern::fromLegacyFilter( $pattern ) ) {
-			return null;
+	private function validateNamePatterns( array $source ): ?string {
+		$patterns = FileDates::patternStrings( $source );
+		if ( count( $patterns ) > self::MAX_NAME_PATTERNS ) {
+			return sprintf(
+				/* translators: %d: maximum number of name date patterns. */
+				__( 'A source can have at most %d name date patterns.', 'wp-media-helper' ),
+				self::MAX_NAME_PATTERNS
+			);
 		}
 
-		return __( 'The name date pattern must contain the year, the month and the day, each once, with the letters Y, m and d (and H, i, s for a time), for example {date:Ymd}.', 'wp-media-helper' );
+		foreach ( $patterns as $position => $pattern ) {
+			if ( null === NamePattern::compile( $pattern ) ) {
+				return sprintf(
+					/* translators: 1: position of the pattern in the list, 2: the pattern. */
+					__( 'Name date pattern %1$d (%2$s) is not valid. It must contain the year, the month and the day, each once, with the letters Y, m and d (and H, i, s for a time), for example {date:Ymd}[_{date:His}]. Use [ ] for an optional part, * for any characters, and a backslash before a literal [, ], { or *.', 'wp-media-helper' ),
+					$position + 1,
+					$pattern
+				);
+			}
+		}
+
+		return null;
 	}
 
 	/**
