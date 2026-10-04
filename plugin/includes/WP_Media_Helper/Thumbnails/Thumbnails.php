@@ -74,6 +74,7 @@ final class Thumbnails {
 		add_action( 'delete_attachment', [ $this, 'purge' ] );
 		add_action( 'wp_media_helper_attachment_registered', [ $this, 'schedule' ] );
 		add_action( self::CRON_HOOK, [ $this, 'generateInBackground' ] );
+		add_filter( 'rest_prepare_attachment', [ $this, 'restSizes' ], 10, 3 );
 	}
 
 	/**
@@ -104,7 +105,9 @@ final class Thumbnails {
 			}
 		}
 
-		if ( ! $this->isRegisteredByUs( $attachmentId ) ) {
+		// Attachments made by another tool are left alone, unless the file that their metadata lists is not
+		// beside the original: WordPress would then give the address of a file that does not exist.
+		if ( ! $this->isRegisteredByUs( $attachmentId ) && ! ( is_array( $entry ) && $this->isMissingBesideOriginal( $relative, $entry ) ) ) {
 			return $out;
 		}
 
@@ -183,6 +186,55 @@ final class Thumbnails {
 
 		// A few seconds apart, so a batch of imports does not start at the same moment.
 		wp_schedule_single_event( time() + 10 + ( $attachmentId % 10 ) * 3, self::CRON_HOOK, [ $attachmentId ] );
+	}
+
+	/**
+	 * The editor shows a picture from the sizes that the REST answer lists (the featured image
+	 * panel uses them). A file registered by this plugin has none until they are made, so the
+	 * panel would load the full original: for the one attachment asked for, the sizes are made now
+	 * and added to the answer.
+	 *
+	 * @param mixed $response
+	 * @param mixed $post
+	 * @param mixed $request
+	 * @return mixed
+	 */
+	public function restSizes( $response, $post, $request ) {
+		if ( ! $response instanceof \WP_REST_Response || ! $post instanceof \WP_Post || ! $request instanceof \WP_REST_Request || ! $request->get_param( 'id' )
+			|| ! wp_attachment_is_image( $post->ID ) || ! $this->isRegisteredByUs( $post->ID ) || ! current_user_can( 'edit_post', $post->ID ) ) {
+			return $response;
+		}
+
+		$metadata = wp_get_attachment_metadata( $post->ID );
+		if ( ! is_array( $metadata ) || ! empty( $metadata['sizes'] ) ) {
+			return $response;
+		}
+
+		$this->generateInBackground( $post->ID );
+		$metadata = wp_get_attachment_metadata( $post->ID );
+		$data     = $response->get_data();
+		if ( ! is_array( $metadata ) || empty( $metadata['sizes'] ) || ! is_array( $data ) || ! isset( $data['media_details'] ) || ! is_array( $data['media_details'] ) ) {
+			return $response;
+		}
+
+		$sizes = is_array( $data['media_details']['sizes'] ?? null ) ? $data['media_details']['sizes'] : [];
+		foreach ( $metadata['sizes'] as $name => $entry ) {
+			$source = wp_get_attachment_image_src( $post->ID, (string) $name );
+			if ( ! is_array( $entry ) || ! is_array( $source ) ) {
+				continue;
+			}
+			$sizes[ $name ] = [
+				'file'       => (string) ( $entry['file'] ?? '' ),
+				'width'      => (int) ( $entry['width'] ?? 0 ),
+				'height'     => (int) ( $entry['height'] ?? 0 ),
+				'mime_type'  => (string) ( $entry['mime-type'] ?? '' ),
+				'source_url' => $source[0],
+			];
+		}
+		$data['media_details']['sizes'] = $sizes;
+		$response->set_data( $data );
+
+		return $response;
 	}
 
 	public function generateInBackground( $attachmentId ): void {
@@ -267,6 +319,20 @@ final class Thumbnails {
 		$metadata['sizes'][ $size ] = $entry;
 
 		return [ 'entry' => $entry, 'metadata' => $metadata ];
+	}
+
+	/**
+	 * @param array<string, mixed> $entry A size of the attachment metadata.
+	 */
+	private function isMissingBesideOriginal( string $relative, array $entry ): bool {
+		$uploads = wp_upload_dir( null, false );
+		$name    = isset( $entry['file'] ) && is_string( $entry['file'] ) ? $entry['file'] : '';
+		if ( ! is_array( $uploads ) || empty( $uploads['basedir'] ) || '' === $name || $name !== basename( $name ) ) {
+			return false;
+		}
+		$directory = dirname( $relative );
+
+		return ! file_exists( rtrim( (string) $uploads['basedir'], '/' ) . ( '.' === $directory ? '' : '/' . $directory ) . '/' . $name );
 	}
 
 	private function isRegisteredByUs( int $attachmentId ): bool {
