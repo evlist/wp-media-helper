@@ -45,6 +45,35 @@ final class ThumbnailService {
 	}
 
 	/**
+	 * Deletes every size of a file found in the cache (`<name>-<W>x<H>.<ext>` next to where
+	 * its sizes are kept), whether or not an attachment lists them: the previews of the panel
+	 * have none. Only regular files named like that inside the cache are removed.
+	 *
+	 * @param string $relative Path of the original relative to uploads.
+	 * @return int Number of files deleted.
+	 */
+	public function purgeFor( string $relative ): int {
+		$sample = ThumbnailLayout::pathForFile( $this->cacheDir, $relative, ThumbnailLayout::fileName( basename( $relative ), 1, 1 ) );
+		if ( null === $sample || ! $this->isInsideCache( dirname( $sample ) ) || ! is_dir( dirname( $sample ) ) ) {
+			return 0;
+		}
+
+		$name      = pathinfo( basename( $relative ), PATHINFO_FILENAME );
+		$extension = pathinfo( basename( $relative ), PATHINFO_EXTENSION );
+		$pattern   = '/^' . preg_quote( $name, '/' ) . '-\d+x\d+' . ( '' === $extension ? '' : '\.' . preg_quote( $extension, '/' ) ) . '$/';
+
+		$deleted = 0;
+		foreach ( scandir( dirname( $sample ) ) ?: [] as $entry ) {
+			$path = dirname( $sample ) . '/' . $entry;
+			if ( 1 === preg_match( $pattern, $entry ) && is_file( $path ) && ! is_link( $path ) && @unlink( $path ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors
+				++$deleted;
+			}
+		}
+
+		return $deleted;
+	}
+
+	/**
 	 * The file a size of `$width` x `$height` has in the cache, when it exists.
 	 */
 	public function existingSize( string $relative, int $width, int $height ): ?string {

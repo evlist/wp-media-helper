@@ -234,6 +234,8 @@ class EditorMediaController {
 			'attachment_scope' => $attachmentScope,
 			'media_type' => $mediaType,
 			'filename' => $filename,
+			// Not stored: asked for again by the panel, and only granted to who may see hidden files.
+			'show_hidden' => ! empty( $decoded['show_hidden'] ),
 		];
 	}
 
@@ -331,11 +333,15 @@ class EditorMediaController {
 		$encodedItems = wp_unslash( $_POST['items'] ?? '' );
 		$items = is_string( $encodedItems ) ? json_decode( $encodedItems, true ) : [];
 
-		if ( ! in_array( $action, [ 'import', 'remove', 'attach', 'detach' ], true ) ) {
+		if ( ! in_array( $action, [ 'import', 'remove', 'attach', 'detach', 'hide', 'show' ], true ) ) {
 			wp_send_json_error( [ 'message' => 'The requested bulk action is not supported.' ], 400 );
 		}
 
 		if ( in_array( $action, [ 'import', 'attach' ], true ) && ! current_user_can( 'upload_files' ) ) {
+			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
+		}
+
+		if ( in_array( $action, [ 'hide', 'show' ], true ) && ! HiddenFiles::canHide() ) {
 			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
 		}
 
@@ -380,7 +386,7 @@ class EditorMediaController {
 		$results = [];
 		$registry = new AttachmentRegistry();
 		$registrar = new AttachmentRegistrar( $registry );
-		$activeSources = in_array( $action, [ 'import', 'attach' ], true ) ? $this->getActiveSources() : [];
+		$activeSources = in_array( $action, [ 'import', 'attach', 'hide', 'show' ], true ) ? $this->getActiveSources() : [];
 		foreach ( $items as $item ) {
 			$itemSourceId = (string) ( $item['source_id'] ?? $sourceId );
 			$result = [
@@ -402,6 +408,24 @@ class EditorMediaController {
 				}
 			}
 
+			if ( in_array( $action, [ 'hide', 'show' ], true ) ) {
+				// The flag is global: the file must belong to an active source, whoever claims it.
+				$confined = PathConfinement::resolveFileInSources( $activeSources, $itemSourceId, $item['path'] );
+				if ( null === $confined ) {
+					$result['message'] = __( 'The selected media file is not readable.', 'wp-media-helper' );
+					$results[] = $result;
+					continue;
+				}
+
+				HiddenFiles::set( $confined['path'], 'hide' === $action );
+				$result['path'] = $confined['path'];
+				$result['success'] = true;
+				$result['is_hidden'] = 'hide' === $action;
+				$result['operation'] = 'hide' === $action ? 'hidden' : 'shown';
+				$results[] = $result;
+				continue;
+			}
+
 			if ( in_array( $action, [ 'import', 'attach' ], true ) ) {
 				// The path comes from the browser: it must resolve to a regular
 				// file below the root of an active configured source.
@@ -415,6 +439,14 @@ class EditorMediaController {
 				$itemSourceId = (string) $confined['source']['id'];
 				$item['path'] = $confined['path'];
 				$result['path'] = $confined['path'];
+
+				// A hidden file is not offered: a list that was not refreshed must not import it.
+				if ( HiddenFiles::isHidden( $confined['path'] ) ) {
+					$result['message'] = __( 'This file is hidden. Show it first.', 'wp-media-helper' );
+					$result['operation'] = 'hidden';
+					$results[] = $result;
+					continue;
+				}
 
 				// Reuse the attachment of this file, whichever tool created it.
 				$existing = $registry->findByPath( $item['path'] );
@@ -644,12 +676,14 @@ class EditorMediaController {
 
 		$date = new DateTimeImmutable( $dateValue );
 		$panelState = new MediaPanelState();
+		$includeHidden = ! empty( $filters['show_hidden'] ) && HiddenFiles::canSeeHidden();
+		$filters['show_hidden'] = $includeHidden;
 		$results = [];
 		foreach ( $selectedSources as $selected ) {
 			$sourceKey = (string) ( $selected['id'] ?? '' );
 			$results[] = $forceRefresh
-				? $panelState->requestRefresh( $selected, $date, $sourceKey )
-				: $panelState->resolve( $selected, $date, $sourceKey );
+				? $panelState->requestRefresh( $selected, $date, $sourceKey, null, $includeHidden )
+				: $panelState->resolve( $selected, $date, $sourceKey, null, $includeHidden );
 		}
 
 		$merged = [
@@ -717,7 +751,7 @@ class EditorMediaController {
 		$nonce   = wp_create_nonce( PanelThumbnail::NONCE );
 		$service = Thumbnails::serviceForWordPress();
 		foreach ( $files as $index => $file ) {
-			$url = 'image' === ( $file['media_type'] ?? '' ) && ! empty( $file['path'] ) ? PanelThumbnail::urlFor( (string) $file['path'], $nonce, $service ) : null;
+			$url = 'image' === ( $file['media_type'] ?? '' ) && ! empty( $file['path'] ) && empty( $file['is_hidden'] ) ? PanelThumbnail::urlFor( (string) $file['path'], $nonce, $service ) : null;
 			if ( null !== $url ) {
 				$files[ $index ]['thumbnail_url'] = $url;
 			}

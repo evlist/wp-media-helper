@@ -3,7 +3,7 @@
 
 # Slice 027: Hidden files
 
-Status: **proposed** (design only, not implemented). Depends on
+Status: **implemented, first delivery** (see "Implementation notes" at the end). Depends on
 [slice 025](025-database-file-index.md).
 
 ## Goal
@@ -73,3 +73,35 @@ design. The date set by the user (slice 026) is stored there too.
 - Should hidden files be excluded from the *Remove*, *Attach* and *Import* actions
   or only from the lists?
 - Retention of the flag when a file is missing for a long time.
+
+## Implementation notes (first delivery)
+
+- **Storage.** `hidden`, `hidden_by`, `hidden_at` on the rows of the index. Hiding sets them on
+  **every row of the file, whatever the source** (the flag is global to the site); scans never
+  write them (they are not among the columns a scan owns). The flags live in the index tables,
+  so the Reset of the file index removes them, and a row missing for 30 days is purged with its flag.
+- **Actions.** `hide` and `show` in the bulk menu and per item (the path is resolved to a file of
+  an active source, whoever claims it), without a post. They are bounded by the maximum number
+  of items. Hiding does not touch any attachment, file or post.
+- **Who.** Two filters, default `upload_files`: `wp_media_helper_can_hide_files` (hide and show) and
+  `wp_media_helper_can_see_hidden_files` (list hidden files), so a site can reserve them to some
+  roles. The panel only shows the controls the user is granted; the server checks again.
+- **Listing.** Hidden files are left out of every list. A *Show hidden files* checkbox, for users
+  who may see them, lists them marked *Hidden*, with a *Show again* action to undo a mistake
+  (the choice is not stored: the panel starts without it). The *Show again* bulk action appears
+  with that box.
+- **Answers to the open question.** A hidden file **cannot be imported or attached** (the action
+  is refused with a message, so a list that was not refreshed does not import it); *Remove* and
+  *Detach* of an existing attachment still work.
+- **Thumbnails.** Hiding deletes every cached size of the file (`<name>-<W>x<H>.<ext>` in the
+  cache folder of the file), including the previews of the panel that have no attachment. A
+  hidden file gets no preview and the preview endpoint refuses it. An attachment of a hidden file
+  keeps working: its sizes are created again when WordPress asks for them. Files written by other
+  tools in the same folder under the same naming are deleted too.
+
+Not done:
+
+- The **rename heuristic** (a missing file and a new one with the same size and time carry the
+  flags over): a renamed or moved file loses its flag.
+- Persisting the *Show hidden files* filter per user.
+- A listing of all hidden files outside the date view.

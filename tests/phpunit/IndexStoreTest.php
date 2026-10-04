@@ -224,4 +224,31 @@ class IndexStoreTest extends TestCase {
 	private function day( string $day ): array {
 		return array_column( $this->store->filesForDay( [ 's' ], $day ), 'name' );
 	}
+
+	public function test_hiding_is_global_reversible_listed_on_demand_and_kept_by_scans(): void {
+		$dir = $this->store->saveDirectory( 's', 'photos', 0, 1 );
+		$other = $this->store->saveDirectory( 'o', 'photos', 0, 1 );
+		$this->store->insertFiles( 's', $dir, [ $this->file( 'photos/a.jpg', '2026-10-02' ), $this->file( 'photos/b.jpg', '2026-10-02' ) ], 5 );
+		$this->store->insertFiles( 'o', $other, [ $this->file( 'photos/a.jpg', '2026-10-02' ) ], 5 );
+
+		$this->assertSame( 2, $this->store->setHidden( [ 'photos/a.jpg' ], true, 7, 100 ), 'Every row of the file, whatever the source.' );
+		$this->assertSame( 0, $this->store->setHidden( [], true, 7, 100 ) );
+
+		$this->assertSame( [ 'b.jpg' ], array_column( $this->store->filesForDay( [ 's' ], '2026-10-02' ), 'name' ) );
+		$withHidden = $this->store->filesForDay( [ 's' ], '2026-10-02', true );
+		$this->assertSame( [ 'a.jpg', 'b.jpg' ], array_column( $withHidden, 'name' ) );
+		$this->assertSame( [ 1, 0 ], array_column( $withHidden, 'hidden' ) );
+		$this->assertSame( 7, $withHidden[0]['hidden_by'] );
+		$this->assertSame( [ 'photos/a.jpg' ], $this->store->hiddenKeys( [ 'photos/a.jpg', 'photos/b.jpg', 'photos/none.jpg' ] ) );
+
+		// A scan updates the row without touching the flag.
+		$id = $this->store->filesInDirectory( $dir )['a.jpg']['id'];
+		$this->store->updateFile( $id, [ 'size' => 11 ], 120 );
+		$this->assertSame( [ 'photos/a.jpg' ], $this->store->hiddenKeys( [ 'photos/a.jpg' ] ) );
+
+		$this->store->setHidden( [ 'photos/a.jpg' ], false, 7, 130 );
+		$this->assertSame( [ 'a.jpg', 'b.jpg' ], array_column( $this->store->filesForDay( [ 's' ], '2026-10-02' ), 'name' ) );
+		$this->assertSame( [], $this->store->hiddenKeys( [ 'photos/a.jpg' ] ) );
+		$this->assertNull( $this->store->filesForDay( [ 's' ], '2026-10-02', true )[0]['hidden_by'] );
+	}
 }

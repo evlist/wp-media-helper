@@ -100,6 +100,15 @@ class FakeWpdb {
 	}
 
 	/**
+	 * @return array<int, mixed>
+	 */
+	public function get_col( string $query ): array {
+		++$this->queries;
+
+		return $this->pdo->query( $query )->fetchAll( PDO::FETCH_COLUMN );
+	}
+
+	/**
 	 * @return int|false
 	 */
 	public function query( string $query ) {

@@ -265,7 +265,7 @@ class WpdbIndexStore implements IndexStore {
 		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET missing_since = %d WHERE id = %d AND missing_since IS NULL", $now, $directoryId ) ); // phpcs:ignore WordPress.DB
 	}
 
-	public function filesForDay( array $sourceIds, string $day ): array {
+	public function filesForDay( array $sourceIds, string $day, bool $includeHidden = false ): array {
 		global $wpdb;
 
 		$sourceIds = array_values( array_unique( array_map( 'strval', $sourceIds ) ) );
@@ -276,13 +276,50 @@ class WpdbIndexStore implements IndexStore {
 		$table = Schema::filesTable();
 		$rows  = $wpdb->get_results( // phpcs:ignore WordPress.DB
 			$wpdb->prepare(
-				"SELECT * FROM {$table} WHERE effective_day = %s AND missing_since IS NULL AND hidden = 0 AND source_id IN (" . implode( ', ', array_fill( 0, count( $sourceIds ), '%s' ) ) . ') ORDER BY effective_date ASC, name ASC',
+				"SELECT * FROM {$table} WHERE effective_day = %s AND missing_since IS NULL" . ( $includeHidden ? '' : ' AND hidden = 0' ) . " AND source_id IN (" . implode( ', ', array_fill( 0, count( $sourceIds ), '%s' ) ) . ') ORDER BY effective_date ASC, name ASC',
 				array_merge( [ $day ], $sourceIds )
 			),
 			ARRAY_A
 		);
 
 		return array_map( [ self::class, 'typed' ], is_array( $rows ) ? $rows : [] );
+	}
+
+	public function setHidden( array $keys, bool $hidden, int $userId, int $now ): int {
+		global $wpdb;
+
+		$hashes = array_values( array_unique( array_map( static fn ( $key ): string => sha1( (string) $key ), $keys ) ) );
+		if ( [] === $hashes ) {
+			return 0;
+		}
+
+		$table        = Schema::filesTable();
+		$placeholders = implode( ', ', array_fill( 0, count( $hashes ), '%s' ) );
+		$set          = $hidden ? 'hidden = 1, hidden_by = %d, hidden_at = %d' : 'hidden = 0, hidden_by = NULL, hidden_at = NULL';
+		$args         = $hidden ? array_merge( [ $userId, $now ], $hashes ) : $hashes;
+		$changed      = $wpdb->query( $wpdb->prepare( "UPDATE {$table} SET {$set} WHERE path_hash IN ({$placeholders})", $args ) ); // phpcs:ignore WordPress.DB
+
+		return false === $changed ? 0 : (int) $changed;
+	}
+
+	public function hiddenKeys( array $keys ): array {
+		global $wpdb;
+
+		$keys = array_values( array_unique( array_map( 'strval', $keys ) ) );
+		if ( [] === $keys ) {
+			return [];
+		}
+
+		$table        = Schema::filesTable();
+		$placeholders = implode( ', ', array_fill( 0, count( $keys ), '%s' ) );
+		$found        = $wpdb->get_col( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				"SELECT DISTINCT path FROM {$table} WHERE hidden = 1 AND path_hash IN ({$placeholders})",
+				array_map( 'sha1', $keys )
+			)
+		);
+
+		return is_array( $found ) ? array_values( array_map( 'strval', $found ) ) : [];
 	}
 
 	public function countFiles( string $sourceId ): int {

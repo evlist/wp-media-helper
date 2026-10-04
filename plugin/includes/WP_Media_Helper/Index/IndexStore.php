@@ -81,12 +81,29 @@ interface IndexStore {
 	public function markDirectoryMissing( int $directoryId, int $now ): void;
 
 	/**
-	 * Visible files of the sources whose effective day is $day, oldest first.
+	 * Files of the sources whose effective day is $day, oldest first. Hidden files
+	 * (slice 027) are left out unless asked for.
 	 *
 	 * @param string[] $sourceIds
 	 * @return array<int, array<string, mixed>>
 	 */
-	public function filesForDay( array $sourceIds, string $day ): array;
+	public function filesForDay( array $sourceIds, string $day, bool $includeHidden = false ): array;
+
+	/**
+	 * Hides or shows files, whatever the source: the flag is global to the site and kept
+	 * on the row of the file, so it survives the scans. Returns how many rows changed.
+	 *
+	 * @param string[] $keys Index keys of the files (see KeyMapper).
+	 */
+	public function setHidden( array $keys, bool $hidden, int $userId, int $now ): int;
+
+	/**
+	 * The keys, among those given, of files that are hidden.
+	 *
+	 * @param string[] $keys
+	 * @return string[]
+	 */
+	public function hiddenKeys( array $keys ): array;
 
 	public function countFiles( string $sourceId ): int;
 

@@ -238,6 +238,18 @@ the one used by Thumbnails Folder: its existing files are reused, with its URLs.
   `wp_media_helper_background_thumbnails` (force or prevent the background event) and
   `wp_media_helper_thumbnail_max_pixels` (images larger than 100 megapixels are skipped).
 
+## Hiding files
+
+*Hide* (bulk action and per-item link) removes a file from the lists for the whole site, for
+example a photo that is not meant to be published. It does not import anything and changes no
+attachment, file or post. A hidden file is not offered for import or attach, has no preview, and
+its thumbnails are deleted from the cache. Users who may see hidden files get a
+*Show hidden files* checkbox that lists them marked *Hidden*, with *Show again* to undo.
+
+By default whoever can upload files can hide, show and see hidden files. A site can restrict that
+in code with the filters `wp_media_helper_can_hide_files` and `wp_media_helper_can_see_hidden_files`.
+A renamed or moved file loses its hidden flag.
+
 ## Reset
 
 The bottom of the settings page has a **Reset** section to start again from nothing
@@ -246,7 +258,7 @@ The bottom of the settings page has a **Reset** section to start again from noth
 | Item | What it removes |
 |------|-----------------|
 | Settings and sources | The list of sources and the general settings |
-| File index | The index tables, the scan state and the scheduled scans (rebuilt when a source is added) |
+| File index | The index tables (including the hidden flags of files), the scan state and the scheduled scans (rebuilt when a source is added) |
 | Dates and preferences | The date of each post, and the filters and panel mode of each user |
 | Thumbnails of imported media | The cached sizes of the attachments imported by this plugin |
 | The whole thumbnail cache | Every file of the cache directory, including previews of files never imported and files written by other tools (off by default) |

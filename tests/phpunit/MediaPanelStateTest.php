@@ -310,19 +310,19 @@ class MediaPanelStateTest extends TestCase {
 			[ 'belledonne', 'legacy-source' ]
 		);
 
-		$this->assertSame( [ 'date' => '2026-09-20', 'source' => [ 'belledonne' ], 'attachment_scope' => [ 'other' ], 'media_type' => [ 'image' ], 'filename' => 'summit' ], $filters );
+		$this->assertSame( [ 'date' => '2026-09-20', 'source' => [ 'belledonne' ], 'attachment_scope' => [ 'other' ], 'media_type' => [ 'image' ], 'filename' => 'summit', 'show_hidden' => false ], $filters );
 	}
 
 	public function test_normalize_filters_falls_back_to_legacy_parameters_when_payload_is_absent(): void {
 		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( '', '2026-01-01', 'legacy-source', [ 'legacy-source', 'other-source' ] );
 
-		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => [ 'image', 'video', 'other' ], 'filename' => '' ], $filters );
+		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => [ 'image', 'video', 'other' ], 'filename' => '', 'show_hidden' => false ], $filters );
 	}
 
 	public function test_normalize_filters_ignores_invalid_payloads(): void {
 		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( 'not-json', '2026-01-01', 'legacy-source', [ 'legacy-source', 'other-source' ] );
 
-		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => [ 'image', 'video', 'other' ], 'filename' => '' ], $filters );
+		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => [ 'image', 'video', 'other' ], 'filename' => '', 'show_hidden' => false ], $filters );
 	}
 
 	public function test_normalize_filters_resolves_attachment_scope_from_storage_when_absent_from_payload(): void {
@@ -513,5 +513,14 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertSame( 0, \WP_Media_Helper\Admin\EditorMediaController::findOtherPostAttachment( $rows, 7 ) );
 		$this->assertSame( 7, \WP_Media_Helper\Admin\EditorMediaController::findOtherPostAttachment( $rows, 8 ) );
 		$this->assertSame( 0, \WP_Media_Helper\Admin\EditorMediaController::findOtherPostAttachment( [], 8 ) );
+	}
+
+	public function test_hidden_files_are_marked_when_the_panel_asks_for_them(): void {
+		$items = MediaPanelState::enrichFiles( [ '/u/a.jpg', '/u/b.jpg' ], 's', '2026-10-02' );
+
+		$marked = MediaPanelState::markHidden( $items, [ '/u/a.jpg' ] );
+		$this->assertTrue( $marked[0]['is_hidden'] );
+		$this->assertArrayNotHasKey( 'is_hidden', $marked[1] );
+		$this->assertSame( $items, MediaPanelState::markHidden( $items, [] ) );
 	}
 }

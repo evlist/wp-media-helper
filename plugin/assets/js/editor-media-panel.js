@@ -4,7 +4,7 @@
 	const { __, sprintf, _n } = wp.i18n;
 	const { registerPlugin } = wp.plugins;
 	const { PluginSidebar } = wp.editPost;
-	const { PanelBody, PanelRow, Button, TextControl, Notice, Dropdown, MenuItem } = wp.components;
+	const { PanelBody, PanelRow, Button, TextControl, Notice, Dropdown, MenuItem, CheckboxControl } = wp.components;
 	const chevronDown = wp.icons && wp.icons.chevronDown ? wp.icons.chevronDown : null;
 	const bulkActionIcon = chevronDown || wp.element.createElement( 'span', { 'aria-hidden': true, style: { fontSize: '12px', lineHeight: 1 } }, '\u25BE' );
 	const { useState, useEffect } = wp.element;
@@ -12,6 +12,8 @@
 	const endpoint = wpMediaHelperEditorPanel.ajaxUrl;
 	const nonce = wpMediaHelperEditorPanel.nonce;
 	const defaultDate = wpMediaHelperEditorPanel.date;
+	const canHide = !! wpMediaHelperEditorPanel.canHide;
+	const canSeeHidden = !! wpMediaHelperEditorPanel.canSeeHidden;
 	const defaultPanelMode = 'advanced' === wpMediaHelperEditorPanel.panelMode ? 'advanced' : 'simple';
 	const dateMetaKey = 'wp_media_helper_date';
 
@@ -22,6 +24,8 @@
 		{ value: 'remove', label: __( 'Remove', 'wp-media-helper' ) },
 		{ value: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) },
 		{ value: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) },
+		{ value: 'hide', label: __( 'Hide', 'wp-media-helper' ) },
+		{ value: 'show', label: __( 'Show again', 'wp-media-helper' ) },
 	];
 	const PANEL_MODES = [
 		{ value: 'simple', label: __( 'Simple', 'wp-media-helper' ) },
@@ -131,6 +135,7 @@
 			other_post_title: item && item.other_post_title ? item.other_post_title : '',
 			other_post_edit_url: item && item.other_post_edit_url ? item.other_post_edit_url : '',
 			media_type: item && item.media_type ? item.media_type : 'other',
+			is_hidden: !! ( item && item.is_hidden ),
 			thumbnail_url: item && item.thumbnail_url ? item.thumbnail_url : '',
 		};
 	};
@@ -385,7 +390,7 @@
 				document.removeEventListener( 'visibilitychange', handleVisibilityChange );
 			};
 			// eslint-disable-next-line react-hooks/exhaustive-deps
-		}, [ filters.date, filters.filename || '', ( filters.attachment_scope || [] ).join( ',' ), ( filters.source || [] ).join( ',' ), ( filters.media_type || [] ).join( ',' ), page ] );
+		}, [ filters.date, filters.filename || '', ( filters.attachment_scope || [] ).join( ',' ), ( filters.source || [] ).join( ',' ), ( filters.media_type || [] ).join( ',' ), !! filters.show_hidden, page ] );
 
 		const handleRefresh = function () {
 			runFetch( true );
@@ -430,6 +435,15 @@
 				return Object.assign( {}, currentFilters, { media_type: next } );
 			} );
 			saveFilter( 'media_type', next, getCurrentPostId() );
+		};
+
+		// Not stored: hidden files are listed only while the box is checked.
+		const toggleShowHidden = function ( checked ) {
+			setPage( 1 );
+			setSelectedIds( [] );
+			setFiltersState( function ( currentFilters ) {
+				return Object.assign( {}, currentFilters, { show_hidden: !! checked } );
+			} );
 		};
 
 		const setFilename = function ( value ) {
@@ -561,10 +575,15 @@
 
 			setLoading( true );
 			setOperationNotice( null );
+			const performedAction = bulkAction;
 			bulkMediaItems( bulkAction, selectedItems, postId )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
 						applyBulkResults( payload );
+						if ( [ 'hide', 'show' ].includes( performedAction ) ) {
+							setSelectedIds( [] );
+							runFetch( false );
+						}
 					} else {
 						setOperationNotice( payload && payload.data && payload.data.message ? payload.data.message : __( 'The bulk operation failed.', 'wp-media-helper' ) );
 					}
@@ -591,6 +610,9 @@
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
 						applyBulkResults( payload );
+						if ( [ 'hide', 'show' ].includes( action ) ) {
+							runFetch( false );
+						}
 					} else {
 						setOperationNotice( payload && payload.data && payload.data.message ? payload.data.message : __( 'The action failed.', 'wp-media-helper' ) );
 					}
@@ -610,6 +632,13 @@
 			? availableSources.map( function ( source ) { return source.id; } )
 			: currentSourceFilter;
 		const visibleBulkActions = BULK_ACTIONS.filter( function ( action ) {
+			if ( 'hide' === action.value ) {
+				return canHide;
+			}
+			if ( 'show' === action.value ) {
+				return canHide && !! filters.show_hidden;
+			}
+
 			return 'advanced' === panelMode || [ 'attach', 'remove' ].includes( action.value );
 		} );
 		const visibleIds = visibleItems.map( itemKey );
@@ -693,7 +722,15 @@
 							disabled: loading,
 							minSelected: 1,
 							onToggle: toggleMediaType
-						} )
+						} ),
+						canSeeHidden
+							? wp.element.createElement( CheckboxControl, {
+								label: __( 'Show hidden files', 'wp-media-helper' ),
+								checked: !! filters.show_hidden,
+								disabled: loading,
+								onChange: toggleShowHidden
+							} )
+							: null
 					)
 				),
 				wp.element.createElement(
@@ -830,6 +867,9 @@
 												)
 											),
 											wp.element.createElement( 'td', { style: { padding: '0.4rem', verticalAlign: 'top', overflowWrap: 'anywhere' } },
+												item.is_hidden
+													? wp.element.createElement( 'div', { style: { color: '#8a2424', fontWeight: 600, marginBottom: '0.25rem' } }, __( 'Hidden', 'wp-media-helper' ) )
+													: null,
 												item.is_attached_to_other_post
 													? wp.element.createElement( 'div', { style: { color: '#b32d2e' } },
 														item.other_post_edit_url
@@ -856,7 +896,16 @@
 														] )
 											),
 											wp.element.createElement( 'td', { style: { padding: '0.4rem', textAlign: 'right' } },
-												item.is_attached_to_other_post
+												item.is_hidden
+													? ( canHide
+														? wp.element.createElement( Button, {
+															isLink: true,
+															disabled: loading,
+															onClick: function () { handleItemAction( 'show', item ); },
+															text: __( 'Show again', 'wp-media-helper' )
+														} )
+														: null )
+													: ( item.is_attached_to_other_post
 													? null
 													: wp.element.createElement( 'div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' } },
 														wp.element.createElement( Button, {
@@ -879,8 +928,16 @@
 																onClick: function () { handleItemAction( 'attach', item ); },
 																text: __( 'Attach', 'wp-media-helper' )
 															} )
-																: null
-													)
+																: null,
+														canHide
+															? wp.element.createElement( Button, {
+																isLink: true,
+																disabled: loading,
+																onClick: function () { handleItemAction( 'hide', item ); },
+																text: __( 'Hide', 'wp-media-helper' )
+															} )
+															: null
+													) )
 											)
 										);
 									} )

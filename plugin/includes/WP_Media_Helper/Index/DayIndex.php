@@ -56,15 +56,47 @@ class DayIndex {
 		return new self( $store, $manager, $keys );
 	}
 
+	/**
+	 * Hides or shows files (canonical paths of files of an active source). Returns how many
+	 * index rows changed.
+	 *
+	 * @param string[] $paths
+	 */
+	public function setHidden( array $paths, bool $hidden, int $userId ): int {
+		return $this->store->setHidden( array_map( [ $this->keys, 'key' ], $paths ), $hidden, $userId, time() );
+	}
+
+	/**
+	 * The files, among those given, that are hidden.
+	 *
+	 * @param string[] $paths
+	 * @return string[]
+	 */
+	public function hiddenAmong( array $paths ): array {
+		$byKey = [];
+		foreach ( $paths as $path ) {
+			$byKey[ $this->keys->key( $path ) ] = $path;
+		}
+
+		$hidden = [];
+		foreach ( $this->store->hiddenKeys( array_keys( $byKey ) ) as $key ) {
+			if ( isset( $byKey[ $key ] ) ) {
+				$hidden[] = $byKey[ $key ];
+			}
+		}
+
+		return $hidden;
+	}
+
 	public function manager(): IndexManager {
 		return $this->manager;
 	}
 
 	/**
 	 * @param array<string, mixed> $source
-	 * @return array{files:string[], refresh_required:bool, stale:bool, reason:string|null}
+	 * @return array{files:string[], hidden:string[], refresh_required:bool, stale:bool, reason:string|null}
 	 */
-	public function forDay( array $source, DateTimeInterface $date, bool $force = false ): array {
+	public function forDay( array $source, DateTimeInterface $date, bool $force = false, bool $includeHidden = false ): array {
 		$id = (string) ( $source['id'] ?? '' );
 		$this->manager->prepare( $source );
 		$indexed = $this->manager->isIndexed( $source );
@@ -77,13 +109,19 @@ class DayIndex {
 			$this->manager->requestPass( $source, false );
 		}
 
-		$files = [];
-		foreach ( $this->store->filesForDay( [ $id ], $date->format( 'Y-m-d' ) ) as $row ) {
-			$files[] = $this->keys->absolute( (string) $row['path'] );
+		$files  = [];
+		$hidden = [];
+		foreach ( $this->store->filesForDay( [ $id ], $date->format( 'Y-m-d' ), $includeHidden ) as $row ) {
+			$path    = $this->keys->absolute( (string) $row['path'] );
+			$files[] = $path;
+			if ( ! empty( $row['hidden'] ) ) {
+				$hidden[] = $path;
+			}
 		}
 
 		return [
 			'files'            => $files,
+			'hidden'           => $hidden,
 			'refresh_required' => ! $indexed,
 			'stale'            => false,
 			'reason'           => $indexed ? ( $force ? self::REASON_FORCED : null ) : self::REASON_INCOMPLETE,

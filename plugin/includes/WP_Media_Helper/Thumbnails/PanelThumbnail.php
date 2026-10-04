@@ -4,6 +4,7 @@
 
 namespace WP_Media_Helper\Thumbnails;
 
+use WP_Media_Helper\Admin\HiddenFiles;
 use WP_Media_Helper\Admin\MediaPanelState;
 use WP_Media_Helper\MediaSource\PathConfinement;
 use WP_Media_Helper\MediaSource\UploadsPath;
@@ -92,6 +93,10 @@ final class PanelThumbnail {
 		}
 
 		$file = $confined['path'];
+		// A hidden file has no preview, and none is made.
+		if ( HiddenFiles::isHidden( $file ) ) {
+			self::fail( 404 );
+		}
 		$send = self::previewFile( $file );
 		if ( null === $send ) {
 			self::fail( 404 );

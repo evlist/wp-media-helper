@@ -133,4 +133,34 @@ class ThumbnailServiceTest extends TestCase {
 		$this->assertFalse( file_exists( $this->cache . '/photos/2026/a-300x200.jpg' ) );
 		$this->assertTrue( file_exists( $this->base . '/photos/2026/a.jpg' ), 'The original is never deleted.' );
 	}
+
+	public function test_purge_for_deletes_every_size_of_a_file_and_only_those(): void {
+		$service = $this->service();
+		$service->ensure( 'photos/2026/a.jpg', 150, 150, true, 'image/jpeg' );
+		$service->ensure( 'photos/2026/a.jpg', 1024, 683, false, 'image/jpeg' );
+		file_put_contents( $this->base . '/photos/2026/ab.jpg', 'x' );
+		$service->ensure( 'photos/2026/ab.jpg', 150, 150, true, 'image/jpeg' );
+		file_put_contents( $this->base . '/photos/2026/b.jpg', 'x' );
+		$service->ensure( 'photos/2026/b.jpg', 150, 150, true, 'image/jpeg' );
+		file_put_contents( $this->cache . '/photos/2026/a-notasize.jpg', 'keep' );
+		file_put_contents( $this->cache . '/photos/2026/a-10x10.png', 'keep' );
+
+		$this->assertSame( 2, $service->purgeFor( 'photos/2026/a.jpg' ) );
+
+		$this->assertSame( [ 'a-10x10.png', 'a-notasize.jpg', 'ab-150x150.jpg', 'b-150x150.jpg' ], array_map( 'basename', glob( $this->cache . '/photos/2026/*' ) ) );
+		$this->assertTrue( is_file( $this->base . '/photos/2026/a.jpg' ), 'The original is kept.' );
+		$this->assertSame( 0, $service->purgeFor( 'photos/2026/a.jpg' ), 'Nothing left to delete.' );
+		$this->assertSame( 0, $service->purgeFor( '../a.jpg' ) );
+		$this->assertSame( 0, $service->purgeFor( 'nowhere/a.jpg' ) );
+	}
+
+	public function test_purge_for_does_not_follow_a_link_in_the_cache(): void {
+		mkdir( $this->base . '/outside', 0755 );
+		file_put_contents( $this->base . '/outside/a-150x150.jpg', 'keep' );
+		mkdir( $this->cache, 0755 );
+		symlink( $this->base . '/outside', $this->cache . '/photos' );
+
+		$this->assertSame( 0, $this->service()->purgeFor( 'photos/a.jpg' ) );
+		$this->assertTrue( is_file( $this->base . '/outside/a-150x150.jpg' ) );
+	}
 }

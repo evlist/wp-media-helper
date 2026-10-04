@@ -257,6 +257,28 @@ class MediaPanelState {
 		return false !== $parsed && $parsed->format( 'Y-m-d' ) === $value ? $value : $fallback;
 	}
 
+	/**
+	 * Marks the items whose file is hidden.
+	 *
+	 * @param array<int, array<string, mixed>> $items
+	 * @param string[]                         $hiddenPaths
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function markHidden( array $items, array $hiddenPaths ): array {
+		if ( [] === $hiddenPaths ) {
+			return $items;
+		}
+
+		$hidden = array_flip( $hiddenPaths );
+		foreach ( $items as $index => $item ) {
+			if ( isset( $hidden[ (string) ( $item['path'] ?? '' ) ] ) ) {
+				$items[ $index ]['is_hidden'] = true;
+			}
+		}
+
+		return $items;
+	}
+
 	public function __construct( ?DayIndex $dayIndex = null ) {
 		$this->dayIndex = $dayIndex;
 	}
@@ -285,8 +307,8 @@ class MediaPanelState {
 	 *   directory:string
 	 * }
 	 */
-	public function resolve( array $source, DateTimeInterface $date, ?string $context = null, ?DateTimeInterface $dateEnd = null ): array {
-		return $this->state( $source, $date, $context, $dateEnd, false );
+	public function resolve( array $source, DateTimeInterface $date, ?string $context = null, ?DateTimeInterface $dateEnd = null, bool $includeHidden = false ): array {
+		return $this->state( $source, $date, $context, $dateEnd, false, $includeHidden );
 	}
 
 	/**
@@ -306,21 +328,21 @@ class MediaPanelState {
 	 *   directory:string
 	 * }
 	 */
-	public function requestRefresh( array $source, DateTimeInterface $date, ?string $context = null, ?DateTimeInterface $dateEnd = null ): array {
-		return $this->state( $source, $date, $context, $dateEnd, true );
+	public function requestRefresh( array $source, DateTimeInterface $date, ?string $context = null, ?DateTimeInterface $dateEnd = null, bool $includeHidden = false ): array {
+		return $this->state( $source, $date, $context, $dateEnd, true, $includeHidden );
 	}
 
 	/**
 	 * @param array<string, mixed> $source
 	 * @return array<string, mixed>
 	 */
-	private function state( array $source, DateTimeInterface $date, ?string $context, ?DateTimeInterface $dateEnd, bool $force ): array {
+	private function state( array $source, DateTimeInterface $date, ?string $context, ?DateTimeInterface $dateEnd, bool $force, bool $includeHidden = false ): array {
 		$sourceId = (string) ( $context ?? $source['id'] ?? '' );
 		if ( '' === $sourceId ) {
 			throw new InvalidArgumentException( 'Source identifier is required for media panel state.' );
 		}
 
-		$result    = $this->dayIndex()->forDay( array_merge( $source, [ 'id' => $sourceId ] ), $date, $force );
+		$result    = $this->dayIndex()->forDay( array_merge( $source, [ 'id' => $sourceId ] ), $date, $force, $includeHidden );
 		$dateValue = $date->format( 'Y-m-d' );
 
 		return [
@@ -334,7 +356,7 @@ class MediaPanelState {
 			'refresh_required' => $result['refresh_required'],
 			'stale' => $result['stale'],
 			'reason' => $result['reason'],
-			'files' => self::enrichFiles( $result['files'], $sourceId, $dateValue ),
+			'files' => self::markHidden( self::enrichFiles( $result['files'], $sourceId, $dateValue ), $result['hidden'] ?? [] ),
 			'directory' => '',
 		];
 	}
