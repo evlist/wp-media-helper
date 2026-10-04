@@ -89,8 +89,11 @@ and this order, with the capture date joining at step 3 in slice 026.
 
 A file with no date in its name now falls back to its modification time, where the
 filter pattern used to leave it out. This can show files that were not listed
-before. A per-source setting "use the modification time when the name has no
-date" decides it (open question).
+before. **Decided: the fallback is on by default.** A per-source setting "use the
+modification time when the name has no date" lets a source opt out; a file with no
+usable date is then not placed on any day. Because a modification time can be
+changed by a copy or a synchronisation, slice 026 shows which source gave each date
+and lets the user set one.
 
 ## Discovery
 
@@ -186,7 +189,6 @@ a deep directory, and the response time of a day's list.
 
 ## Open questions
 
-- Use the modification time as a fallback by default?
 - Retention of missing files, and whether uninstall removes the tables.
 - Whether the day's neighbours (the day before and after) are included in the
   synchronous hint, to cover time-zone edges.

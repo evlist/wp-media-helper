@@ -91,8 +91,8 @@ date can be understood and, if needed, overridden.
 ## Interface
 
 - The source form lists the name patterns in order, with presets, a test field
-  ("this file name gives this date") and the option to use the modification time as
-  a fallback.
+  ("this file name gives this date") and the per-source option to use the modification
+  time as a fallback (on by default, see slice 025).
 - Items show their date and its source in the advanced mode of the panel.
 
 ## Security

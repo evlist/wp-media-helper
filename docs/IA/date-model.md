@@ -192,8 +192,9 @@ applied to it.
   user metadata such as a hidden flag, which cannot live in the attachment meta of a
   file that is not imported. The path pattern becomes a hint saying which directories
   to check first. Default order of the effective date: a date forced by the user,
-  the date in the name, the embedded date, the modification time. Hidden files are
-  global to the site. Several name patterns can be set per source, with presets for
+  the date in the name, the embedded date, the modification time. The modification time is a fallback
+  that is on by default, with a per-source opt-out. Hidden files are global to the
+  site. Several name patterns can be set per source, with presets for
   common devices. The target library has about 5,000 directories and more than
   110,000 files, so the first scan must be resumable and the next ones incremental.
 - Open: when the name gives a day without a time and the embedded metadata gives a
