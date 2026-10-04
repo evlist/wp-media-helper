@@ -98,13 +98,20 @@ class AttachmentDateTest extends TestCase {
 		$this->assertSame( [ 'filesize' => 7 ], AttachmentMetadata::forFile( 7 ) );
 	}
 
-	public function test_a_date_without_time_stays_on_the_same_day_in_gmt_for_any_site_time_zone(): void {
-		foreach ( [ 'Pacific/Auckland', 'Europe/Paris', 'UTC', 'America/Los_Angeles', 'Asia/Kolkata' ] as $name ) {
-			$timezone = new DateTimeZone( $name );
-			$date = AttachmentDate::resolve( null, null, 'sous-titres-2026-10-02.vtt', null, $timezone, $this->now );
+	public function test_a_date_without_time_keeps_its_day_in_gmt_within_twelve_hours_of_utc(): void {
+		foreach ( [ 'Europe/Paris', 'UTC', 'America/Los_Angeles', 'Asia/Kolkata', 'Asia/Tokyo' ] as $name ) {
+			$date = AttachmentDate::resolve( null, null, 'sous-titres-2026-10-02.vtt', null, new DateTimeZone( $name ), $this->now );
 
 			$this->assertSame( '2026-10-02 12:00:00', $date['local'], $name );
 			$this->assertSame( '2026-10-02', substr( $date['gmt'], 0, 10 ), $name );
 		}
+	}
+
+	public function test_beyond_twelve_hours_east_of_utc_only_the_gmt_day_differs(): void {
+		// New Zealand daylight time is UTC+13: noon local is the previous evening in GMT.
+		$date = AttachmentDate::resolve( null, null, 'sous-titres-2026-10-02.vtt', null, new DateTimeZone( 'Pacific/Auckland' ), $this->now );
+
+		$this->assertSame( '2026-10-02 12:00:00', $date['local'] );
+		$this->assertSame( '2026-10-01 23:00:00', $date['gmt'] );
 	}
 }

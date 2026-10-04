@@ -83,9 +83,11 @@ this **provisional** order:
 2. the creation date of a video or audio file, when the container has one;
 3. a date written in the file name, such as `20261002_121549`, `2026-10-02` or
    `2026-10-02 12.15.49`. The time is read when the name has one; a date alone
-   is given the **median time of the day, 12:00:00 site time**, so that a time
-   zone or daylight saving change cannot move it to the neighbouring day, and so
-   that it sorts in the middle of the day;
+   is given the **median time of the day, 12:00:00 site time**. Its date in GMT is
+   then the same day for any site time zone within twelve hours of UTC (midnight
+   would give the previous GMT day east of UTC), and it sorts in the middle of the
+   day. East of UTC+12, such as New Zealand in summer, only the GMT date differs;
+   the site date is always the one in the name;
 4. the modification time of the file;
 5. the current time.
 

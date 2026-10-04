@@ -71,9 +71,10 @@ class AttachmentDate {
 	/**
 	 * Finds a date such as `20261002_121549`, `2026-10-02` or `2026-10-02 12.15.49`
 	 * in a file name. The time is read when the name has one. A date alone is
-	 * taken at the median time of the day, 12:00:00 site time, so that a change of
-	 * time zone or daylight saving time cannot move it to the previous or the next
-	 * day, and so that it sorts in the middle of the day.
+	 * taken at the median time of the day, 12:00:00 site time. Its GMT date is then
+	 * the same day for any site time zone within twelve hours of UTC (midnight
+	 * would give the previous GMT day east of UTC), and it sorts in the middle of
+	 * the day. The local date is always the one in the name.
 	 */
 	public static function fromFilename( string $basename, DateTimeZone $timezone, int $now ): ?DateTimeImmutable {
 		$pattern = '/(?<!\d)((?:19|20)\d{2})[-_.]?(0[1-9]|1[0-2])[-_.]?(0[1-9]|[12]\d|3[01])'
