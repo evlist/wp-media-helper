@@ -38,6 +38,11 @@ class NamePattern {
 
 	private const MAX_LENGTH = 200;
 
+	/**
+	 * Wildcards in a pattern: each one makes a failed match cost more, so the number is kept low.
+	 */
+	private const MAX_STARS = 3;
+
 	private string $regex;
 
 	/**
@@ -98,7 +103,7 @@ class NamePattern {
 		}
 
 		$tokens = self::tokenize( $pattern );
-		if ( null === $tokens ) {
+		if ( null === $tokens || count( array_filter( $tokens, static fn ( array $token ): bool => 'star' === $token[0] ) ) > self::MAX_STARS ) {
 			return null;
 		}
 

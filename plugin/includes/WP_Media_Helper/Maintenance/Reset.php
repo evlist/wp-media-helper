@@ -145,7 +145,16 @@ final class Reset {
 			return 0;
 		}
 
-		return self::deleteTree( $cache, $base );
+		// The cache directory can be moved by a filter: never empty one that is, or holds, the
+		// root of a source (the originals would be next to the thumbnails).
+		foreach ( self::sourceRoots() as $root ) {
+			if ( $root === $cache || PathConfinement::isWithin( $cache, $root ) ) {
+				return 0;
+			}
+		}
+
+		// Only files named like thumbnails (and the temporary files of the generator).
+		return self::deleteTree( $cache, $base, static fn ( string $name ): bool => 1 === preg_match( '/^.+-\d+x\d+\.[A-Za-z0-9]+$/', $name ) || 1 === preg_match( '/^\.[0-9a-f]{8}-.+/', $name ) );
 	}
 
 	/**
@@ -182,10 +191,31 @@ final class Reset {
 	}
 
 	/**
-	 * Deletes a directory and what is in it, without following links, and only when it
-	 * is strictly inside `$within`. Returns the number of files deleted.
+	 * Canonical roots of the configured sources.
+	 *
+	 * @return string[]
 	 */
-	public static function deleteTree( string $directory, string $within ): int {
+	private static function sourceRoots(): array {
+		$sources = get_option( ExternalSourceSettings::optionKey(), [] );
+		$roots   = [];
+		foreach ( is_array( $sources ) ? $sources : [] as $source ) {
+			$real = is_array( $source ) ? realpath( trim( (string) ( $source['root'] ?? '' ) ) ) : false;
+			if ( false !== $real ) {
+				$roots[] = $real;
+			}
+		}
+
+		return $roots;
+	}
+
+	/**
+	 * Deletes a directory and what is in it, without following links, and only when it
+	 * is strictly inside `$within`. When `$accept` is given only the files it accepts (by
+	 * name) are deleted. Returns the number of files deleted.
+	 *
+	 * @param (callable(string): bool)|null $accept
+	 */
+	public static function deleteTree( string $directory, string $within, ?callable $accept = null ): int {
 		$real   = realpath( $directory );
 		$inside = realpath( $within );
 		if ( false === $real || false === $inside || is_link( $directory ) || ! PathConfinement::isWithin( $inside, $real ) ) {
@@ -200,12 +230,15 @@ final class Reset {
 
 			$path = $real . '/' . $entry;
 			if ( is_link( $path ) || is_file( $path ) ) {
+				if ( null !== $accept && ! $accept( $entry ) ) {
+					continue;
+				}
 				// A link is removed as a link, whatever it points to.
 				if ( @unlink( $path ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors, WordPress.WP.AlternativeFunctions
 					++$deleted;
 				}
 			} elseif ( is_dir( $path ) ) {
-				$deleted += self::deleteTree( $path, $real );
+				$deleted += self::deleteTree( $path, $real, $accept );
 			}
 		}
 		@rmdir( $real ); // phpcs:ignore WordPress.PHP.NoSilencedErrors, WordPress.WP.AlternativeFunctions

@@ -32,6 +32,8 @@ class PostDateMeta {
 					'type' => 'string',
 					'single' => true,
 					'default' => '',
+					// Only a calendar day (or nothing) is stored, whatever the client sends.
+					'sanitize_callback' => static fn ( $value ): string => is_string( $value ) && 1 === preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $value, $day ) && checkdate( (int) $day[2], (int) $day[3], (int) $day[1] ) ? $value : '',
 					'show_in_rest' => true,
 					'auth_callback' => static function ( bool $allowed, string $metaKey, int $postId ): bool {
 						return current_user_can( 'edit_post', $postId );

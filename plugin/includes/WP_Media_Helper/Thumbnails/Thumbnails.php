@@ -24,6 +24,46 @@ final class Thumbnails {
 	public const CRON_HOOK    = 'wp_media_helper_generate_thumbnails';
 	public const BUDGET       = 10;
 	public const MAX_PIXELS   = 100000000;
+	public const FAILURE_TTL  = 600;
+
+	/**
+	 * Whether an image of this size can probably be decoded within the memory limit. The
+	 * image editors hold the decoded picture (about four bytes a pixel) and a resized copy; a
+	 * fatal error on a page view, repeated at every view, is worse than a missing thumbnail.
+	 */
+	public static function fitsInMemory( int $width, int $height ): bool {
+		if ( function_exists( 'wp_raise_memory_limit' ) ) {
+			wp_raise_memory_limit( 'image' );
+		}
+
+		$limit = self::memoryLimitBytes();
+		if ( $limit < 0 ) {
+			return true;
+		}
+
+		$factor = (int) apply_filters( 'wp_media_helper_thumbnail_memory_factor', 6 );
+
+		return $width * $height * max( 1, $factor ) + memory_get_usage( true ) <= $limit;
+	}
+
+	private static function memoryLimitBytes(): int {
+		$value = trim( (string) ini_get( 'memory_limit' ) );
+		if ( '' === $value || '-1' === $value ) {
+			return -1;
+		}
+
+		$number = (int) $value;
+		switch ( strtolower( substr( $value, -1 ) ) ) {
+			case 'g':
+				return $number * 1073741824;
+			case 'm':
+				return $number * 1048576;
+			case 'k':
+				return $number * 1024;
+		}
+
+		return $number;
+	}
 
 	private ?ThumbnailService $service = null;
 	private bool $serviceBuilt         = false;
@@ -191,6 +231,12 @@ final class Thumbnails {
 			return null;
 		}
 
+		// A size that just failed is not tried again at every view of the page.
+		$failureKey = 'wp_media_helper_thumb_failed_' . $attachmentId . '_' . $size;
+		if ( false !== get_transient( $failureKey ) ) {
+			return null;
+		}
+
 		$existing = $metadata['sizes'][ $size ] ?? null;
 		if ( is_array( $existing ) && null !== $service->existing( $relative, $existing ) ) {
 			return null;
@@ -204,8 +250,16 @@ final class Thumbnails {
 		}
 
 		$mimeType = (string) get_post_mime_type( $attachmentId );
-		$entry    = $service->ensure( $relative, (int) $dimensions[4], (int) $dimensions[5], $definition['crop'], $mimeType );
+		if ( ! self::fitsInMemory( $width, $height ) ) {
+			set_transient( $failureKey, 1, self::FAILURE_TTL );
+
+			return null;
+		}
+
+		$entry = $service->ensure( $relative, (int) $dimensions[4], (int) $dimensions[5], $definition['crop'], $mimeType );
 		if ( null === $entry ) {
+			set_transient( $failureKey, 1, self::FAILURE_TTL );
+
 			return null;
 		}
 

@@ -810,7 +810,7 @@ class ExternalSourceSettingsPage {
 		}
 		check_ajax_referer( 'wp_media_helper_test_name_pattern', 'nonce' );
 
-		$name     = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
+		$name     = mb_substr( sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) ), 0, 255 );
 		$patterns = FileDates::patternStrings( [ 'name_patterns' => wp_unslash( $_POST['patterns'] ?? '' ) ] );
 		if ( '' === $name || count( $patterns ) > ExternalSourceSettings::MAX_NAME_PATTERNS ) {
 			wp_send_json_error( [ 'message' => __( 'Enter a file name and at most ten patterns.', 'wp-media-helper' ) ] );

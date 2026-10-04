@@ -3,14 +3,19 @@
 
 # Security audit and residual weaknesses
 
-Second audit of the plugin, made after the hardening described in the
+Third audit of the plugin. The second was made after the hardening described in the
 [constraints](constraints.md) and in slices
 [020](../slices/020-pagination-and-entry-limit.md) and
-[021](../slices/021-allowed-base-directory.md).
+[021](../slices/021-allowed-base-directory.md). This one covers what slices 022 to 028 added:
+native registration, the thumbnail cache and the panel previews, source ownership and the
+default uploads source, name patterns and embedded dates, hidden files and the Reset
+tool. Sections are updated in place; the findings of this audit are listed first.
 
 ## Scope and limits
 
-- Manual review of all PHP and JavaScript under `plugin/`, version 0.1.0.
+- Manual review of all PHP and JavaScript under `plugin/`, version 0.1.0, with a focus on
+  every `wp_ajax_*` and `admin_post_*` entry point (below) and on each place that writes,
+  deletes or serves a file.
 - The findings come from reading the code. The PHP logic was exercised with
   unit tests and small stubs; **nothing was tested inside a running WordPress,
   with a real web server, or with the WordPress test suite**. Statements about
@@ -24,10 +29,35 @@ Second audit of the plugin, made after the hardening described in the
 | Actor | Trusted to | Not trusted to |
 |-------|------------|----------------|
 | Site owner (code, `wp-config.php`, web server) | Define the allowed base directory, server rules | — |
-| Administrator (`manage_options`) | Choose sources inside the allowed base | Reach the rest of the file system (matters on multisite and hardened sites) |
-| Users with `upload_files` | Import and attach files from enabled sources | Choose paths outside source roots |
+| Administrator (`manage_options`) | Choose sources inside the allowed base, reset the plugin data | Reach the rest of the file system (matters on multisite and hardened sites) |
+| Users with `upload_files` | Import and attach files from active sources, hide and show files site-wide, see previews of listed images | Choose paths outside source roots, or files owned by another source or excluded |
 | Users with `edit_posts` | Browse the panel for their posts | Import, delete or modify other users' media |
 | Anyone else | — | Everything |
+
+## Entry points and their checks
+
+| Entry point | Capability | Nonce | Notes |
+|-------------|-----------|-------|-------|
+| `wp_media_helper_media_panel_state` (listing) | `edit_posts` | `wp_media_helper_media_panel` | Hidden files only for `wp_media_helper_can_see_hidden_files`. See R4 |
+| `wp_media_helper_bulk_media` | `upload_files` for import/attach; `edit_post` per attachment for attach/detach/remove; `wp_media_helper_can_hide_files` for hide/show | same | Paths resolved to a file of an active source by ownership; maximum number of items |
+| `wp_media_helper_panel_mode`, `wp_media_helper_save_filter` | `edit_posts` | same | Values whitelisted |
+| `wp_media_helper_thumbnail` (preview, GET) | `upload_files` | same, in the URL | Path resolved to an image of an active source, not hidden, size and memory limits. See R12 and R14 |
+| `wp_media_helper_test_name_pattern` | `manage_options` | own nonce | Nothing stored; patterns limited (length, wildcards) |
+| `admin_post_*`: save sources, rescan, use uploads, reset | `manage_options` | one per action | Reset also needs the word `RESET` |
+| WP-Cron events (index run, maintenance, thumbnails) | none (internal) | — | Bounded by a time budget; the index run holds a lock |
+| Front end (`image_downsize` filter) | anonymous | — | Creates a missing size of an attachment imported by this plugin. See R17 |
+
+## Found and fixed in this audit
+
+| Finding | Fix |
+|---------|-----|
+| **The Reset of the thumbnail cache deleted every file under the cache directory.** The directory can be moved with a filter; moved over a source (for example `uploads/photos`) a Reset would have deleted the originals | The Reset refuses when the cache is, or contains, the root of a source, and only deletes files named like thumbnails (`<name>-<W>x<H>.<ext>`) and the generator's temporary files. Directories are removed only when empty |
+| A preview request for an SVG or a file other than a raster image could be answered with a script-capable content type | Raster images only (a file that is not recognised by `getimagesize()` gets a 404, SVG is refused explicitly), `nosniff`, and `Content-Security-Policy: default-src 'none'; sandbox` on the response |
+| A very large image made the image editor run out of memory: a fatal error at every view of the page that rendered it (front end) or of the panel | A size is attempted only if the decoded image should fit in the memory limit (`wp_media_helper_thumbnail_memory_factor`), and a size that failed is not tried again for ten minutes |
+| Wildcards in a name pattern multiplied the cost of a failed match | At most three `*` per pattern; PCRE limits already bounded the worst case |
+| The name entered in the pattern test was not bounded | Cut to 255 characters |
+| R8: `wp_media_helper_date` accepted any string | `sanitize_callback`: a real `Y-m-d` day or an empty value |
+| R6: removal relied on core not finding the file | Fixed earlier (slice 022): `wp_delete_file` is refused for the duration of a removal, also in the Reset |
 
 ## Fixed since the first audit
 
@@ -64,6 +94,11 @@ folder) can be executed**. A read-only mount does not prevent execution.
   Alternatively the site owner can set `WP_MEDIA_HELPER_ALLOWED_BASE` to a
   location that is not served.
 - Not fixable inside the plugin: the web server decides.
+- Update (slices 024 and 028): a source on the uploads directory itself is possible and the
+  files of private folders it contains could be listed and imported. A built-in list of
+  directories is never listed (`woocommerce_uploads`, backups, caches, logs, and the temporary
+  folder of Bulk Media Register that a test found), extensible by a filter. It is a default,
+  not a guarantee: see R19.
 
 ### R2 - Medium: the index is reachable over HTTP where `.htaccess` is not honored
 
@@ -116,7 +151,8 @@ removes them, and a REST filter can hide them in the meantime. Check
 
 ### R4 - Medium: any user with `edit_posts` can enumerate sources and force rescans
 
-Status: *partly mitigated* by slice 025. A forced refresh no longer scans the whole
+Status: *partly mitigated* by slice 025. Previews and hiding need `upload_files`; the
+listing itself still needs only `edit_posts`. A forced refresh no longer scans the whole
 source in the request: it reads the few hinted directories (at most one second per
 source) and asks for a background pass, which is bounded by a time budget and a
 lock. Listing the file names of every source for any day is unchanged.
@@ -172,6 +208,8 @@ attachment status do.
 
 ### R8 - Low: unsanitized post meta
 
+Status: **fixed** in this audit (see above). The text below describes the former behavior.
+
 `wp_media_helper_date` is registered with `show_in_rest` and no sanitize
 callback, so a user who can edit the post can store an arbitrary string. It is
 validated when used.
@@ -191,8 +229,84 @@ thumbnail cache are in [slice 021](../slices/021-allowed-base-directory.md).
 
 - A corrupted source option (not an array) makes `ExternalSourceSettings::getAll()`
   throw, which ends an AJAX request with a server error instead of a message.
-- There is no uninstall routine: options, user meta (filters, panel mode) and
-  the index files remain after the plugin is deleted.
+- There is no uninstall routine: options, tables, user meta (filters, panel mode) and
+  post dates remain after the plugin is deleted. The Reset section (slice 027's companion tool)
+  removes them on demand, and a routine for `uninstall.php` could reuse it.
+
+### R12 - High: previews of files that were never imported are publicly downloadable
+
+The panel previews are stored in the thumbnail cache, `uploads/thumbnails/<path of the file>-150x150.<ext>`,
+which the web server serves. The URL is predictable: it follows the path of the original, and
+camera names contain a date and a time. Anyone who can guess or learn the path of a **private**
+image of a source (not imported, not published) can fetch its 150 px preview, **without
+logging in**, once a user has listed it in the panel. The preview endpoint itself needs a
+session, but what it writes does not. Slice 023 states that only images the site accepts to
+publish may be given a public cache; the panel previews break that rule.
+
+- Status: *open*, to decide.
+- Recommendations: store the panel previews in a directory that is not served (and send them
+  through the authenticated endpoint) and keep the public cache for imported attachments;
+  or, as a smaller step, make the first delivery with previews only for imported files; or
+  block HTTP access to `uploads/thumbnails` for sites that keep private sources.
+- Hiding a file deletes its previews (slice 027), which limits the exposure for files known to
+  be private.
+
+### R13 - Low to medium: previews are generated on request by any user who can upload
+
+Each listed image whose preview is missing costs a decode and a resize on request. The browser
+loads the rows on screen only and the size and memory limits apply, but nothing limits the
+number of requests per user. A user with `upload_files` can already import, so the extra
+power is CPU time, not access.
+
+- Status: *open*. Recommendation: a per-user throttle, and a time budget for the generation.
+
+### R14 - Low: the preview URL carries the nonce and the server path
+
+The URL of the endpoint holds the nonce (bound to the user and session) and the absolute path of
+the file, so both appear in the access logs and in a `Referer` sent from the admin page. The path was
+already sent to the browser in the listing, and the nonce is useless without the session.
+
+- Status: *open*, accepted. Recommendation: use a key in place of the path (an index identifier).
+
+### R15 - Low: the Reset is irreversible
+
+It requires `manage_options`, a nonce and the word `RESET`. Its default selection leaves out
+what is not a preference (post dates, the whole cache, imported media) after a test showed that
+a default-on option lost the dates of every post. It deletes only thumbnails among files, and
+removes attachments from the library without deleting their files. A database backup is the only
+way back.
+
+### R16 - Low: site-wide actions by any user who can upload
+
+Hiding and showing a file affects every user. There is no log of who hid what (the index keeps
+`hidden_by` and `hidden_at` on the row, not a history). Sites can restrict both capabilities
+with `wp_media_helper_can_hide_files` and `wp_media_helper_can_see_hidden_files`.
+
+### R17 - Low: anonymous visitors can trigger the creation of a size
+
+A page that renders an image imported by this plugin creates its missing sizes on the first
+view, whoever the visitor is. This is the model of Thumbnails Folder. Only registered sizes of
+real attachments are created, the image is read from the source (never modified), and the size and
+memory limits and the failure delay of this audit apply. A burst of first views after a large
+import can still cost CPU; the background event after registration exists to avoid that.
+
+### R18 - Low: the thumbnail cache cannot be told from other tools' files
+
+The cache folder may also hold files of Thumbnails Folder. The Reset (whole cache) and hiding delete
+files by their name (`<name>-<W>x<H>.<ext>`), which can match a file of another tool in the same
+folder. This is documented in the README and the Reset screen.
+
+### R19 - Medium: the built-in exclusions are a default, not a guarantee
+
+A source on the uploads directory lists every image under it except the excluded directories. A
+private folder not on the list (a form plugin, a download manager, a custom directory) can be
+listed to every user who can upload, and imported. A test found one unlisted folder within hours (the
+temporary folder of another plugin, harmless but noisy).
+
+- Status: *mitigated* by the list, the filter, and the opt-in button of slice 028 (nothing is
+  scanned until an administrator chooses it).
+- Recommendation: a screen to add excluded directories without code, and keeping the one-click
+  source clearly optional.
 
 ### R11 - Informational
 
@@ -207,14 +321,23 @@ thumbnail cache are in [slice 021](../slices/021-allowed-base-directory.md).
 
 ## Test gaps
 
-The unit tests cover the pure logic (confinement, validation, pagination,
-filters). The AJAX handlers, capability checks, nonce handling and settings
+The unit tests cover the pure logic (confinement, ownership, validation, pagination,
+filters, the thumbnail layout and service, the index, hiding at the data level, the file
+part of the Reset). The AJAX handlers, capability checks, nonce handling and settings
 page are not covered by automated tests, because they need WordPress. Adding
 integration tests with the WordPress test suite would protect the controls
 above from regressions; capability checks for each endpoint and role are the
 first candidates.
 
-## Planned fixes
+## Priorities after this audit
+
+1. **R12** (previews of private files in a public cache): decide the design, since it
+   contradicts the promise of slice 023.
+2. R19 (a screen for excluded directories) and R4 (require `upload_files` for the listing).
+3. R13 and R14 (throttle, identifiers instead of paths in preview URLs).
+4. Integration tests of the endpoints above with the WordPress test suite.
+
+## Planned fixes (from the second audit, kept for the record)
 
 Several residual weaknesses are addressed by the proposed slices:
 

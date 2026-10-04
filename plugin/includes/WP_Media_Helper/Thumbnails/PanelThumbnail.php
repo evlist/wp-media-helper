@@ -102,8 +102,9 @@ final class PanelThumbnail {
 			self::fail( 404 );
 		}
 
+		// Raster images only: an SVG sent inline would run script in the site's origin.
 		$type = wp_check_filetype( $send['path'] );
-		if ( empty( $type['type'] ) || ! str_starts_with( (string) $type['type'], 'image/' ) ) {
+		if ( empty( $type['type'] ) || ! str_starts_with( (string) $type['type'], 'image/' ) || str_contains( (string) $type['type'], 'svg' ) ) {
 			self::fail( 404 );
 		}
 
@@ -112,6 +113,7 @@ final class PanelThumbnail {
 		header( 'Content-Type: ' . $type['type'] );
 		header( 'Content-Length: ' . (string) filesize( $send['path'] ) );
 		header( 'X-Content-Type-Options: nosniff' );
+		header( "Content-Security-Policy: default-src 'none'; sandbox" );
 		readfile( $send['path'] ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 		exit;
 	}
@@ -131,7 +133,7 @@ final class PanelThumbnail {
 
 		$width  = (int) $dims[0];
 		$height = (int) $dims[1];
-		if ( $width * $height > apply_filters( 'wp_media_helper_thumbnail_max_pixels', Thumbnails::MAX_PIXELS ) ) {
+		if ( $width * $height > apply_filters( 'wp_media_helper_thumbnail_max_pixels', Thumbnails::MAX_PIXELS ) || ! Thumbnails::fitsInMemory( $width, $height ) ) {
 			return null;
 		}
 

@@ -60,4 +60,18 @@ class ResetTest extends TestCase {
 	public function test_only_known_items_are_listed(): void {
 		$this->assertSame( [ 'settings', 'index', 'post_dates', 'user_data', 'thumbnails', 'cache', 'attachments' ], Reset::items() );
 	}
+
+	public function test_a_filter_on_the_names_keeps_every_other_file(): void {
+		file_put_contents( $this->base . '/uploads/thumbnails/photos/2026/original.jpg', 'keep' );
+		file_put_contents( $this->base . '/uploads/thumbnails/photos/2026/.0123abcd-a-150x150.jpg', 'x' );
+		file_put_contents( $this->base . '/uploads/thumbnails/notes.txt', 'keep' );
+		$thumbnail = static fn ( string $name ): bool => 1 === preg_match( '/^.+-\d+x\d+\.[A-Za-z0-9]+$/', $name ) || 1 === preg_match( '/^\.[0-9a-f]{8}-.+/', $name );
+
+		$deleted = Reset::deleteTree( $this->base . '/uploads/thumbnails', $this->base . '/uploads', $thumbnail );
+
+		$this->assertSame( 3, $deleted, 'The two thumbnails and the temporary file.' );
+		$this->assertTrue( is_file( $this->base . '/uploads/thumbnails/photos/2026/original.jpg' ), 'A file that is not named like a thumbnail stays.' );
+		$this->assertTrue( is_file( $this->base . '/uploads/thumbnails/notes.txt' ) );
+		$this->assertTrue( is_dir( $this->base . '/uploads/thumbnails/photos/2026' ), 'A directory that still holds a file stays.' );
+	}
 }

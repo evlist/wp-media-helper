@@ -183,4 +183,20 @@ class NamePatternTest extends TestCase {
 		$utc = new DateTimeImmutable( '2026-10-02 22:30:00', new DateTimeZone( 'UTC' ) ); // 00:30 on the 3rd in Paris.
 		$this->assertSame( '2026-10-02 12:00:00', $fmt( FileDates::refineTime( $day, $utc, $this->paris ) ) );
 	}
+
+	public function test_the_number_of_wildcards_is_limited(): void {
+		$this->assertNotNull( NamePattern::compile( '*{date:Ymd}*' ) );
+		$this->assertNotNull( NamePattern::compile( '*a*{date:Ymd}*' ) );
+		$this->assertNull( NamePattern::compile( '*a*b*{date:Ymd}*' ) );
+		$this->assertNull( NamePattern::compile( '****************{date:Ymd}' ) );
+	}
+
+	public function test_a_failed_match_on_a_long_name_stays_fast(): void {
+		$pattern = NamePattern::compile( '*a*a*{date:Ymd}[_{date:His}]' );
+		$name = str_repeat( 'a', 250 ) . '.jpg';
+		$start = microtime( true );
+
+		$this->assertNull( $pattern->match( $name, $this->paris, $this->now ) );
+		$this->assertLessThan( 1.0, microtime( true ) - $start );
+	}
 }
