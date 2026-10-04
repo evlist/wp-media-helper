@@ -29,6 +29,7 @@ class FakeWpdb {
 		$this->pdo->exec( "CREATE TABLE wp_media_helper_files (
 			id INTEGER PRIMARY KEY AUTOINCREMENT, source_id TEXT NOT NULL, dir_id INTEGER NOT NULL, path_hash TEXT NOT NULL,
 			path TEXT NOT NULL, name TEXT NOT NULL, ext TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT 'other',
+			width INTEGER DEFAULT NULL, height INTEGER DEFAULT NULL,
 			size INTEGER NOT NULL DEFAULT 0, mtime INTEGER NOT NULL DEFAULT 0, name_date TEXT DEFAULT NULL,
 			name_date_precision TEXT DEFAULT NULL, embedded_date TEXT DEFAULT NULL, embedded_state INTEGER NOT NULL DEFAULT 0,
 			date_override TEXT DEFAULT NULL, effective_date TEXT DEFAULT NULL, effective_day TEXT DEFAULT NULL,

@@ -9,7 +9,7 @@ namespace WP_Media_Helper\Index;
  */
 class Schema {
 
-	public const VERSION        = 1;
+	public const VERSION        = 2;
 	public const VERSION_OPTION = 'wp_media_helper_index_db_version';
 
 	public static function directoriesTable(): string {
@@ -56,6 +56,8 @@ class Schema {
   name varchar(255) NOT NULL,
   ext varchar(20) NOT NULL DEFAULT '',
   kind varchar(10) NOT NULL DEFAULT 'other',
+  width int(10) unsigned DEFAULT NULL,
+  height int(10) unsigned DEFAULT NULL,
   size bigint(20) unsigned NOT NULL DEFAULT 0,
   mtime bigint(20) unsigned NOT NULL DEFAULT 0,
   name_date datetime DEFAULT NULL,

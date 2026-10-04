@@ -14,12 +14,12 @@ class WpdbIndexStore implements IndexStore {
 
 	private const INSERT_CHUNK = 100;
 
-	private const INTEGER_COLUMNS = [ 'id', 'parent_id', 'dir_id', 'mtime', 'scanned_run', 'queued_run', 'last_scanned', 'missing_since', 'size', 'first_seen', 'last_seen', 'hidden', 'hidden_by', 'hidden_at', 'embedded_state' ];
+	private const INTEGER_COLUMNS = [ 'id', 'parent_id', 'dir_id', 'mtime', 'scanned_run', 'queued_run', 'last_scanned', 'missing_since', 'size', 'first_seen', 'last_seen', 'hidden', 'hidden_by', 'hidden_at', 'embedded_state', 'width', 'height' ];
 
 	/**
 	 * Columns a scan may update on a file.
 	 */
-	private const UPDATABLE_FILE_COLUMNS = [ 'size', 'mtime', 'name_date', 'name_date_precision', 'embedded_date', 'embedded_state', 'effective_date', 'effective_day', 'date_source', 'missing_since' ];
+	private const UPDATABLE_FILE_COLUMNS = [ 'size', 'mtime', 'name_date', 'name_date_precision', 'embedded_date', 'embedded_state', 'width', 'height', 'effective_date', 'effective_day', 'date_source', 'missing_since' ];
 
 	public function findDirectory( string $sourceId, string $key ): ?array {
 		global $wpdb;
@@ -140,7 +140,7 @@ class WpdbIndexStore implements IndexStore {
 		global $wpdb;
 
 		$table   = Schema::filesTable();
-		$columns = 'source_id, dir_id, path_hash, path, name, ext, kind, size, mtime, name_date, name_date_precision, embedded_date, embedded_state, effective_date, effective_day, date_source, first_seen, last_seen';
+		$columns = 'source_id, dir_id, path_hash, path, name, ext, kind, width, height, size, mtime, name_date, name_date_precision, embedded_date, embedded_state, effective_date, effective_day, date_source, first_seen, last_seen';
 
 		foreach ( array_chunk( $files, self::INSERT_CHUNK ) as $chunk ) {
 			$rows = [];
@@ -154,6 +154,8 @@ class WpdbIndexStore implements IndexStore {
 					[ '%s', (string) $file['name'] ],
 					[ '%s', (string) $file['ext'] ],
 					[ '%s', (string) $file['kind'] ],
+					[ '%d', $file['width'] ?? null ],
+					[ '%d', $file['height'] ?? null ],
 					[ '%d', (int) $file['size'] ],
 					[ '%d', (int) $file['mtime'] ],
 					[ '%s', $file['name_date'] ?? null ],
@@ -211,6 +213,8 @@ class WpdbIndexStore implements IndexStore {
 					'name'                => (string) $file['name'],
 					'ext'                 => (string) $file['ext'],
 					'kind'                => (string) $file['kind'],
+					'width'               => $file['width'] ?? null,
+					'height'              => $file['height'] ?? null,
 					'size'                => (int) $file['size'],
 					'mtime'               => (int) $file['mtime'],
 					'name_date'           => $file['name_date'] ?? null,

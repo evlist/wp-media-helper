@@ -3,7 +3,7 @@
 
 # Slice 029: User interface
 
-Status: **proposed** (design only, not implemented). The features it presents come
+Status: **in progress** (the gallery design below is decided; delivered in steps). The features it presents come
 from slices [020](020-pagination-and-entry-limit.md), [023](023-thumbnails-in-cache.md),
 [024](024-source-priority-and-ownership.md), [025](025-database-file-index.md) and
 [028](028-default-uploads-source.md).
@@ -15,24 +15,45 @@ that worked. This slice improves how they look and how they are used, without ch
 what they do. The detailed wishes are to be collected from use; the list below is a
 starting point.
 
-## Editor panel
+## Editor panel: a gallery
 
-- **Previews.** The 48 px preview next to the name was the minimum. Options: a grid
-  view with larger previews, switchable with the list view (remembered per user, like
-  the panel mode); a larger preview on hover or focus; a placeholder icon by type
-  (video, GPX, subtitles, other) instead of nothing.
-- **Layout in the sidebar.** The sidebar is narrow: compact filters (collapsed groups,
-  the filter in use summarised), sticky pagination and bulk-action bar, rows that do
-  not wrap badly with long names.
-- **Status.** Replace the lines of text ("In WP media library", "Attached to current
-  post") with badges or icons with text alternatives; keep the "indexing in progress"
-  and refresh feedback visible but quiet.
-- **Selection.** Select a range with shift-click, keep the selection across pages
-  (within the limit of a bulk action), show how many items are selected.
-- **Date.** A date picker with previous/next day buttons and a mark for days that
-  have files (from the index), since the date is the main entry point.
-- **Keyboard and screen readers.** Roles, labels and focus handling checked, in
-  particular for the table, the bulk bar and the preview images.
+Decided with the author, after the Samsung Gallery: the table is replaced by a **gallery of
+thumbnails** over the full width of the panel.
+
+- **Real geometry.** Thumbnails keep the proportions of the image (a square crop hides what
+  identifies a photo) and are laid out in justified rows. The index stores the dimensions of each
+  image, as displayed (EXIF orientation applied).
+- **Density.** The user chooses how many images per row: **1 (large), 2 or 3 (small)**, remembered
+  per user. The server gives two preview sizes (long edge 320 and 640 px, not cropped, not
+  enlarged, in the same cache and layout as the other sizes) and the browser takes the one that fits.
+- **State on the thumbnail.** The attachment state is a badge: a green paperclip (attached to this
+  post), a red paperclip with a lock (attached to another post), a crossed paperclip (not attached).
+  A shape and a text alternative go with every colour. Two smaller corner badges show *in the
+  Media Library* and *hidden*.
+- **Files without a preview** (video, GPX, subtitles, other) get a tile with an icon for the type
+  and the name; video posters need ffmpeg and are left for later.
+- **Selection.** A long press on a thumbnail enters selection mode, with a checkbox on every
+  thumbnail and the bulk actions in a bar; Ctrl/Shift-click and a *Select* button give the same to
+  a mouse user. The selection survives scrolling and loading more.
+- **Actions and details.** A click on a thumbnail opens a **detail sheet** (large preview, name, date
+  and its source, size, dimensions, state, actions). The context menu (right click) offers the same
+  actions, and so do a *more* button shown on hover and focus and the menu key of the keyboard,
+  because a right click does not exist on a touch screen and is not discoverable.
+- **Infinite scroll** replaces the pagination: the next lot (the *maximum entries* setting) is
+  loaded when the end is near, and the automatic refresh checks for news without resetting the
+  scroll ("New files, refresh").
+- **Counts.** The number of files matching the filters is always shown, and the number selected.
+- The table is not kept.
+
+### Delivery
+
+1. **Foundations** (done): file count in the panel; dimensions of images in the index (`width`,
+   `height`, as displayed with the EXIF orientation applied, read from the header at indexing; the
+   index version is 2 and a full pass reads the existing rows); two non-cropped preview sizes
+   (long edge 320 and 640 px) in the cache, with their URLs in the listing (`thumbnail_url`,
+   `thumbnail_large_url`) and the dimensions on each item (`width`, `height`).
+2. **The gallery:** justified rows, density, badges, selection mode, infinite scroll.
+3. **Detail sheet and context menu**, with the keyboard.
 
 ## Settings page
 

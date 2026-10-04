@@ -29,9 +29,9 @@ class FileDates {
 	public const MIN_TIMESTAMP = 631152000;
 
 	/**
-	 * Changes when the way embedded dates are read changes, so stored dates are recomputed.
+	 * Changes when what a scan reads from the files changes (embedded dates, image dimensions), so existing rows are read again by a full pass.
 	 */
-	private const EMBEDDED_VERSION = 'e2';
+	private const EMBEDDED_VERSION = 'e3';
 
 	private const FORMAT = 'Y-m-d H:i:s';
 

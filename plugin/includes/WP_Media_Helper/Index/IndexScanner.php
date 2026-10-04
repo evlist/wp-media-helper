@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use WP_Media_Helper\Admin\MediaPanelState;
 use WP_Media_Helper\MediaSource\FileDates;
+use WP_Media_Helper\MediaSource\ImageDimensions;
 use WP_Media_Helper\MediaSource\NamePattern;
 use WP_Media_Helper\MediaSource\PathConfinement;
 use WP_Media_Helper\Settings\SourceOwnership;
@@ -56,12 +57,20 @@ class IndexScanner {
 	 */
 	private $embeddedReader;
 
-	public function __construct( IndexStore $store, KeyMapper $keys, DateTimeZone $timezone, ?callable $clock = null, ?callable $embeddedReader = null ) {
-		$this->store          = $store;
-		$this->keys           = $keys;
-		$this->timezone       = $timezone;
-		$this->clock          = $clock;
-		$this->embeddedReader = $embeddedReader;
+	/**
+	 * Reads the dimensions of an image file: (path) => [width, height] or null.
+	 *
+	 * @var callable|null
+	 */
+	private $dimensionsReader;
+
+	public function __construct( IndexStore $store, KeyMapper $keys, DateTimeZone $timezone, ?callable $clock = null, ?callable $embeddedReader = null, ?callable $dimensionsReader = null ) {
+		$this->store            = $store;
+		$this->keys             = $keys;
+		$this->timezone         = $timezone;
+		$this->clock            = $clock;
+		$this->embeddedReader   = $embeddedReader;
+		$this->dimensionsReader = $dimensionsReader;
 	}
 
 	/**
@@ -265,6 +274,7 @@ class IndexScanner {
 			$kind     = MediaPanelState::resolveMediaType( (string) $name );
 			$embedded = $this->embeddedFor( (string) $name, $file, $row, $kind, $context );
 			$dates    = FileDates::effective( (string) $name, $file['mtime'], $context['patterns'], (bool) $context['fallback'], $this->timezone, $now, $embedded['date'] );
+			$size     = $this->dimensionsFor( (string) $name, $file, $row, $kind );
 
 			if ( null === $row ) {
 				$extension = strtolower( pathinfo( (string) $name, PATHINFO_EXTENSION ) );
@@ -273,6 +283,8 @@ class IndexScanner {
 					'name'                => (string) $name,
 					'ext'                 => substr( $extension, 0, 20 ),
 					'kind'                => $kind,
+					'width'               => $size[0],
+					'height'              => $size[1],
 					'size'                => $file['size'],
 					'mtime'               => $file['mtime'],
 					'name_date'           => $dates['name_date'],
@@ -287,6 +299,8 @@ class IndexScanner {
 			}
 
 			$fields = [
+				'width'               => $size[0],
+				'height'              => $size[1],
 				'size'                => $file['size'],
 				'mtime'               => $file['mtime'],
 				'name_date'           => $dates['name_date'],
@@ -348,6 +362,31 @@ class IndexScanner {
 		$date = null === $stored ? null : DateTimeImmutable::createFromFormat( 'Y-m-d H:i:s', $stored, $this->timezone );
 
 		return [ 'date' => false === $date ? null : $date, 'stored' => $stored, 'state' => $state ];
+	}
+
+	/**
+	 * The dimensions of an image: read from its header when never read or when the file
+	 * changed (0 x 0 records a file that could not be read, so it is not tried again). Other
+	 * files have none.
+	 *
+	 * @param array{size:int, mtime:int, path:string} $file
+	 * @param array<string, mixed>|null               $row
+	 * @return array{0:int|null, 1:int|null}
+	 */
+	private function dimensionsFor( string $name, array $file, ?array $row, string $kind ): array {
+		$known   = null !== $row && null !== ( $row['width'] ?? null ) && null !== ( $row['height'] ?? null );
+		$changed = null !== $row && ( (int) $row['size'] !== $file['size'] || (int) $row['mtime'] !== $file['mtime'] );
+		if ( 'image' !== $kind || null === $this->dimensionsReader || ! ImageDimensions::isReadable( $name ) ) {
+			return [ null, null ];
+		}
+
+		if ( $known && ! $changed ) {
+			return [ (int) $row['width'], (int) $row['height'] ];
+		}
+
+		$read = ( $this->dimensionsReader )( $file['path'] );
+
+		return is_array( $read ) ? [ (int) $read[0], (int) $read[1] ] : [ 0, 0 ];
 	}
 
 	/**

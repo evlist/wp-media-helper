@@ -10,6 +10,7 @@ use DateTimeZone;
 use InvalidArgumentException;
 use WP_Media_Helper\MediaSource\DatePatternResolver;
 use WP_Media_Helper\MediaSource\EmbeddedDates;
+use WP_Media_Helper\MediaSource\ImageDimensions;
 
 /**
  * The files of a source for one day, answered from the index.
@@ -44,7 +45,7 @@ class DayIndex {
 		$basedir  = is_array( $uploads ) && ! empty( $uploads['basedir'] ) ? (string) $uploads['basedir'] : '';
 		$store    = new WpdbIndexStore();
 		$keys     = new KeyMapper( $basedir );
-		$scanner  = new IndexScanner( $store, $keys, wp_timezone(), null, EmbeddedDates::imageReader() );
+		$scanner  = new IndexScanner( $store, $keys, wp_timezone(), null, EmbeddedDates::imageReader(), ImageDimensions::reader() );
 		$state    = new ScanState(
 			static fn(): mixed => get_option( ScanState::OPTION, [] ),
 			static function ( array $value ): void {
@@ -94,7 +95,7 @@ class DayIndex {
 
 	/**
 	 * @param array<string, mixed> $source
-	 * @return array{files:string[], hidden:string[], refresh_required:bool, stale:bool, reason:string|null}
+	 * @return array{files:string[], hidden:string[], dimensions:array<string, array{0:int, 1:int}>, refresh_required:bool, stale:bool, reason:string|null}
 	 */
 	public function forDay( array $source, DateTimeInterface $date, bool $force = false, bool $includeHidden = false ): array {
 		$id = (string) ( $source['id'] ?? '' );
@@ -109,19 +110,24 @@ class DayIndex {
 			$this->manager->requestPass( $source, false );
 		}
 
-		$files  = [];
-		$hidden = [];
+		$files      = [];
+		$hidden     = [];
+		$dimensions = [];
 		foreach ( $this->store->filesForDay( [ $id ], $date->format( 'Y-m-d' ), $includeHidden ) as $row ) {
 			$path    = $this->keys->absolute( (string) $row['path'] );
 			$files[] = $path;
 			if ( ! empty( $row['hidden'] ) ) {
 				$hidden[] = $path;
 			}
+			if ( ! empty( $row['width'] ) && ! empty( $row['height'] ) ) {
+				$dimensions[ $path ] = [ (int) $row['width'], (int) $row['height'] ];
+			}
 		}
 
 		return [
 			'files'            => $files,
 			'hidden'           => $hidden,
+			'dimensions'       => $dimensions,
 			'refresh_required' => ! $indexed,
 			'stale'            => false,
 			'reason'           => $indexed ? ( $force ? self::REASON_FORCED : null ) : self::REASON_INCOMPLETE,

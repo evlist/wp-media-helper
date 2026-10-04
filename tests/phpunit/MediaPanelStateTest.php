@@ -523,4 +523,12 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertArrayNotHasKey( 'is_hidden', $marked[1] );
 		$this->assertSame( $items, MediaPanelState::markHidden( $items, [] ) );
 	}
+
+	public function test_images_get_their_dimensions(): void {
+		$items = MediaPanelState::enrichFiles( [ '/u/a.jpg', '/u/b.mp4' ], 's', '2026-10-02' );
+
+		$marked = MediaPanelState::markDimensions( $items, [ '/u/a.jpg' => [ 4000, 3000 ] ] );
+		$this->assertSame( [ 4000, 3000 ], [ $marked[0]['width'], $marked[0]['height'] ] );
+		$this->assertArrayNotHasKey( 'width', $marked[1] );
+	}
 }

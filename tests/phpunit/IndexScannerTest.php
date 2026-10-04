@@ -402,4 +402,52 @@ class IndexScannerTest extends TestCase {
 		$this->assertSame( '2026-07-20 12:00:00', $rows['later-20260720.jpg']['effective_date'], 'A photo of another day keeps the median time: the name is the statement of the day.' );
 		$this->assertSame( [], $this->day( '2026-08-15' ), 'The capture date never moves a file named with a day.' );
 	}
+
+	/**
+	 * @param array<string, array{0:int, 1:int}|null> $sizes By file name.
+	 * @param string[]                                $reads Receives the names of the files that were read.
+	 */
+	private function dimensionsScanner( array $sizes, array &$reads ): IndexScanner {
+		return new IndexScanner(
+			$this->store,
+			new KeyMapper( $this->base ),
+			new DateTimeZone( 'Europe/Paris' ),
+			null,
+			null,
+			static function ( string $path ) use ( $sizes, &$reads ): ?array {
+				$reads[] = basename( $path );
+
+				return $sizes[ basename( $path ) ] ?? null;
+			}
+		);
+	}
+
+	public function test_the_dimensions_of_images_are_read_once_and_kept_with_the_row(): void {
+		touch( $this->root . '/2026/10/02/broken.png' );
+		$this->age();
+		$reads = [];
+		$scanner = $this->dimensionsScanner( [ '20261002_121549.jpg' => [ 4000, 3000 ], 'broken.png' => null ], $reads );
+
+		$scanner->scan( $this->source(), 1, new ScanBudget( 30 ) );
+
+		$rows = [];
+		foreach ( $this->store->filesForDay( [ 's' ], '2026-10-02' ) as $row ) {
+			$rows[ $row['name'] ] = $row;
+		}
+		$this->assertSame( [ 4000, 3000 ], [ $rows['20261002_121549.jpg']['width'], $rows['20261002_121549.jpg']['height'] ] );
+		$this->assertNull( $rows['trace.gpx']['width'] ?? null, 'Only images have dimensions.' );
+		$this->assertNotContains( 'trace.gpx', $reads );
+
+		$broken = $this->store->filesInDirectory( (int) $this->db->get_var( "SELECT dir_id FROM wp_media_helper_files WHERE name = 'broken.png'" ) )['broken.png'];
+		$this->assertSame( [ 0, 0 ], [ $broken['width'], $broken['height'] ], 'An unreadable image is recorded and not tried again.' );
+
+		$reads = [];
+		$scanner->scan( $this->source(), 2, new ScanBudget( 30 ), true );
+		$this->assertSame( [], $reads, 'A full pass does not read the files again.' );
+
+		touch( $this->root . '/2026/10/02/20261002_121549.jpg', time() - 500 );
+		$this->age();
+		$scanner->scan( $this->source(), 3, new ScanBudget( 30 ), true );
+		$this->assertSame( [ '20261002_121549.jpg' ], $reads, 'A changed image is read again.' );
+	}
 }

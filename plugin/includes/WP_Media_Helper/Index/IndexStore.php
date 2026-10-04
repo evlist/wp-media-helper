@@ -61,7 +61,7 @@ interface IndexStore {
 
 	/**
 	 * @param array<int, array<string, mixed>> $files Rows with `key`, `name`, `ext`, `kind`, `size`, `mtime`,
-	 *                                                  `name_date`, `name_date_precision`, `embedded_date`, `embedded_state`, `effective_date`,
+	 *                                                  `width`, `height` (pixels as displayed, 0 when unreadable, null when not read), `name_date`, `name_date_precision`, `embedded_date`, `embedded_state`, `effective_date`,
 	 *                                                  `effective_day`, `date_source`.
 	 */
 	public function insertFiles( string $sourceId, int $directoryId, array $files, int $now ): void;

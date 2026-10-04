@@ -225,9 +225,9 @@ the one used by Thumbnails Folder: its existing files are reused, with its URLs.
 - Only attachments imported by this plugin get new sizes. Attachments from other tools
   keep theirs; those already in the cache are served from there.
 - Deleting an attachment deletes its thumbnails, never the original.
-- **Previews in the editor panel.** Each listed image, imported or not, shows a small
-  preview (the site's `thumbnail` size, stored in the same cache, so importing reuses
-  it). When it is not in the cache yet the browser asks an authenticated endpoint
+- **Previews in the editor panel.** Each listed image, imported or not, shows a preview
+  that keeps its proportions, in two sizes (long edge 320 and 640 px, never enlarged),
+  stored in the same cache. The panel also shows how many files match the filters. When it is not in the cache yet the browser asks an authenticated endpoint
   (`admin-ajax.php?action=wp_media_helper_thumbnail`) that creates and returns it; only
   the rows on screen are loaded. Only users who may upload see previews, and only for
   images of an active source. An image too small to be reduced is sent as it is

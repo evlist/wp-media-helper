@@ -751,9 +751,11 @@ class EditorMediaController {
 		$nonce   = wp_create_nonce( PanelThumbnail::NONCE );
 		$service = Thumbnails::serviceForWordPress();
 		foreach ( $files as $index => $file ) {
-			$url = 'image' === ( $file['media_type'] ?? '' ) && ! empty( $file['path'] ) && empty( $file['is_hidden'] ) ? PanelThumbnail::urlFor( (string) $file['path'], $nonce, $service ) : null;
-			if ( null !== $url ) {
-				$files[ $index ]['thumbnail_url'] = $url;
+			if ( 'image' === ( $file['media_type'] ?? '' ) && ! empty( $file['path'] ) && empty( $file['is_hidden'] ) ) {
+				$files[ $index ] = array_merge(
+					$file,
+					PanelThumbnail::urlsFor( (string) $file['path'], $nonce, $service, isset( $file['width'] ) ? (int) $file['width'] : null, isset( $file['height'] ) ? (int) $file['height'] : null )
+				);
 			}
 		}
 

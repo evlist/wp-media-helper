@@ -137,6 +137,9 @@
 			media_type: item && item.media_type ? item.media_type : 'other',
 			is_hidden: !! ( item && item.is_hidden ),
 			thumbnail_url: item && item.thumbnail_url ? item.thumbnail_url : '',
+			thumbnail_large_url: item && item.thumbnail_large_url ? item.thumbnail_large_url : '',
+			width: item && item.width ? item.width : 0,
+			height: item && item.height ? item.height : 0,
 		};
 	};
 
@@ -803,6 +806,13 @@
 							? wp.element.createElement( Notice, { status: 'warning', isDismissible: true, onRemove: function () { setOperationNotice( null ); } }, operationNotice )
 							: null,
 						wp.element.createElement( 'div', null,
+							// How many files the filters match (all pages), and how many are selected.
+							wp.element.createElement( 'div', { role: 'status', style: { margin: '0 0 0.5rem', color: '#50575e', fontSize: '12px' } },
+								sprintf( _n( '%d file', '%d files', pagination.total, 'wp-media-helper' ), pagination.total ),
+								selectedIds.length > 0
+									? ' \u00B7 ' + sprintf( _n( '%d selected', '%d selected', selectedIds.length, 'wp-media-helper' ), selectedIds.length )
+									: ''
+							),
 							wp.element.createElement( 'table', { style: { width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '12px' } },
 								wp.element.createElement( 'thead', null,
 									wp.element.createElement( 'tr', null,

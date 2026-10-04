@@ -6,6 +6,7 @@ namespace WP_Media_Helper\Thumbnails;
 
 use WP_Media_Helper\Admin\HiddenFiles;
 use WP_Media_Helper\Admin\MediaPanelState;
+use WP_Media_Helper\MediaSource\ImageDimensions;
 use WP_Media_Helper\MediaSource\PathConfinement;
 use WP_Media_Helper\MediaSource\UploadsPath;
 use WP_Media_Helper\Settings\ActiveSources;
@@ -13,8 +14,7 @@ use WP_Media_Helper\Settings\ActiveSources;
 /**
  * Small previews of the files listed in the editor panel, imported or not.
  *
- * The preview is the `thumbnail` size, stored in the same cache and layout as the
- * sizes of attachments, so importing a file reuses it. The list gives the URL of the
+ * The previews are stored in the same cache and layout as the sizes of attachments. The list gives the URL of the
  * file in the cache when it is already there, and otherwise the URL of an
  * authenticated endpoint that creates it and returns it. Only images of an active
  * source, resolved on the server, can be requested, and only by users who may upload.
@@ -35,43 +35,59 @@ final class PanelThumbnail {
 	}
 
 	/**
-	 * The `thumbnail` size as defined by the site: width, height and whether it crops.
-	 *
-	 * @return array{width:int, height:int, crop:bool|array<int,string>}
+	 * Preview sizes: the long edge in pixels. The pictures keep their proportions and are
+	 * never enlarged. `small` serves two or three images per row of the gallery, `large` one
+	 * per row (and screens with a high pixel density).
 	 */
-	public static function size(): array {
-		$sizes = function_exists( 'wp_get_registered_image_subsizes' ) ? wp_get_registered_image_subsizes() : [];
-		$thumb = $sizes['thumbnail'] ?? [ 'width' => 150, 'height' => 150, 'crop' => true ];
+	public const SIZES = [ 'small' => 320, 'large' => 640 ];
 
-		return [ 'width' => max( 1, (int) $thumb['width'] ), 'height' => max( 1, (int) $thumb['height'] ), 'crop' => $thumb['crop'] ];
+	/**
+	 * The dimensions of a preview, or null when the image is not larger than the size.
+	 *
+	 * @return array{0:int, 1:int}|null
+	 */
+	public static function previewDimensions( int $width, int $height, int $longEdge ): ?array {
+		if ( $width < 1 || $height < 1 || max( $width, $height ) <= $longEdge ) {
+			return null;
+		}
+
+		$ratio = $longEdge / max( $width, $height );
+
+		return [ max( 1, (int) round( $width * $ratio ) ), max( 1, (int) round( $height * $ratio ) ) ];
 	}
 
 	/**
-	 * URL of the preview of a listed file: the cached file when it exists, else the endpoint.
-	 * Null for files that are not images.
+	 * URLs of the previews of a listed image, one per size: the cached file when it exists,
+	 * else the endpoint. Empty for files that are not images.
 	 *
-	 * @param string $canonicalPath Path of a file of an active source, as listed.
+	 * @param string   $canonicalPath Path of a file of an active source, as listed.
+	 * @param int|null $width         Dimensions as displayed, when the index has them.
+	 * @return array<string, string>  `thumbnail_url` and `thumbnail_large_url`.
 	 */
-	public static function urlFor( string $canonicalPath, string $nonce, ?ThumbnailService $service ): ?string {
+	public static function urlsFor( string $canonicalPath, string $nonce, ?ThumbnailService $service, ?int $width = null, ?int $height = null ): array {
 		if ( 'image' !== MediaPanelState::resolveMediaType( basename( $canonicalPath ) ) ) {
-			return null;
+			return [];
 		}
 
 		$uploads  = wp_upload_dir( null, false );
 		$relative = is_array( $uploads ) ? UploadsPath::relativeKey( $canonicalPath, (string) ( $uploads['basedir'] ?? '' ) ) : null;
-		if ( null !== $service && null !== $relative ) {
-			$size   = self::size();
-			$cached = $service->existingSize( $relative, $size['width'], $size['height'] );
-			$url    = null === $cached ? null : $service->url( $cached );
-			if ( null !== $url ) {
-				return $url;
+
+		$urls = [];
+		foreach ( self::SIZES as $name => $edge ) {
+			$url = null;
+			if ( null !== $service && null !== $relative && null !== $width && null !== $height ) {
+				$dimensions = self::previewDimensions( $width, $height, $edge );
+				$cached     = null === $dimensions ? null : $service->existingSize( $relative, $dimensions[0], $dimensions[1] );
+				$url        = null === $cached ? null : $service->url( $cached );
 			}
+
+			$urls[ 'small' === $name ? 'thumbnail_url' : 'thumbnail_large_url' ] = $url ?? add_query_arg(
+				[ 'action' => self::ACTION, 'nonce' => $nonce, 'size' => $name, 'path' => $canonicalPath ],
+				admin_url( 'admin-ajax.php' )
+			);
 		}
 
-		return add_query_arg(
-			[ 'action' => self::ACTION, 'nonce' => $nonce, 'path' => $canonicalPath ],
-			admin_url( 'admin-ajax.php' )
-		);
+		return $urls;
 	}
 
 	/**
@@ -97,7 +113,8 @@ final class PanelThumbnail {
 		if ( HiddenFiles::isHidden( $file ) ) {
 			self::fail( 404 );
 		}
-		$send = self::previewFile( $file );
+		$size = sanitize_key( wp_unslash( $_GET['size'] ?? 'small' ) );
+		$send = self::previewFile( $file, self::SIZES[ $size ] ?? self::SIZES['small'] );
 		if ( null === $send ) {
 			self::fail( 404 );
 		}
@@ -124,21 +141,19 @@ final class PanelThumbnail {
 	 *
 	 * @return array{path:string}|null
 	 */
-	private static function previewFile( string $file ): ?array {
-		$size = self::size();
-		$dims = function_exists( 'wp_getimagesize' ) ? wp_getimagesize( $file ) : getimagesize( $file );
-		if ( ! is_array( $dims ) || empty( $dims[0] ) || empty( $dims[1] ) ) {
+	private static function previewFile( string $file, int $longEdge ): ?array {
+		$read = ImageDimensions::reader()( $file );
+		if ( null === $read ) {
 			return null;
 		}
 
-		$width  = (int) $dims[0];
-		$height = (int) $dims[1];
+		[ $width, $height ] = $read;
 		if ( $width * $height > apply_filters( 'wp_media_helper_thumbnail_max_pixels', Thumbnails::MAX_PIXELS ) || ! Thumbnails::fitsInMemory( $width, $height ) ) {
 			return null;
 		}
 
-		$resized = image_resize_dimensions( $width, $height, $size['width'], $size['height'], $size['crop'] );
-		if ( ! is_array( $resized ) ) {
+		$target = self::previewDimensions( $width, $height, $longEdge );
+		if ( null === $target ) {
 			return filesize( $file ) <= self::MAX_ORIGINAL_BYTES ? [ 'path' => $file ] : null;
 		}
 
@@ -149,7 +164,7 @@ final class PanelThumbnail {
 			return null;
 		}
 
-		$entry = $service->ensure( $relative, (int) $resized[4], (int) $resized[5], $size['crop'], (string) ( wp_check_filetype( $file )['type'] ?? '' ) );
+		$entry = $service->ensure( $relative, $target[0], $target[1], false, (string) ( wp_check_filetype( $file )['type'] ?? '' ) );
 		$path  = null === $entry ? null : $service->existing( $relative, $entry );
 
 		return null === $path ? null : [ 'path' => $path ];

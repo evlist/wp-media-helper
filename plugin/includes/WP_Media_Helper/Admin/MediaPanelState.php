@@ -258,6 +258,25 @@ class MediaPanelState {
 	}
 
 	/**
+	 * Gives the images their dimensions, as displayed, for the layout of the gallery.
+	 *
+	 * @param array<int, array<string, mixed>>     $items
+	 * @param array<string, array{0:int, 1:int}> $dimensions By path.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function markDimensions( array $items, array $dimensions ): array {
+		foreach ( $items as $index => $item ) {
+			$size = $dimensions[ (string) ( $item['path'] ?? '' ) ] ?? null;
+			if ( null !== $size ) {
+				$items[ $index ]['width']  = $size[0];
+				$items[ $index ]['height'] = $size[1];
+			}
+		}
+
+		return $items;
+	}
+
+	/**
 	 * Marks the items whose file is hidden.
 	 *
 	 * @param array<int, array<string, mixed>> $items
@@ -356,7 +375,7 @@ class MediaPanelState {
 			'refresh_required' => $result['refresh_required'],
 			'stale' => $result['stale'],
 			'reason' => $result['reason'],
-			'files' => self::markHidden( self::enrichFiles( $result['files'], $sourceId, $dateValue ), $result['hidden'] ?? [] ),
+			'files' => self::markDimensions( self::markHidden( self::enrichFiles( $result['files'], $sourceId, $dateValue ), $result['hidden'] ?? [] ), $result['dimensions'] ?? [] ),
 			'directory' => '',
 		];
 	}
