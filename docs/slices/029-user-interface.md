@@ -103,6 +103,30 @@ featured image shows a star. There is no bulk action.
 - **Index.** A small table (source, files, directories, last scan, scan in progress)
   with a "Scan now" button per source, instead of a sentence.
 
+### The settings page (done)
+
+- **Sources as cards.** A card shows, whatever its state, a drag handle, its priority number, its
+  name and root, its state menu, and the buttons *move up/down*, *add a source before/after* and
+  *remove*; its settings (name, root) open under it, and the rarely used ones (path pattern, name
+  date patterns with presets and test, modification-time option) are in a closed *Advanced
+  settings* part. A card is closed unless it is new or has an error (and the advanced part opens
+  when the error is in it). The header follows what is typed.
+- **Order.** Drag by the handle (HTML5 drag and drop), the arrows (keyboard and touch), or insert a
+  new card before or after another one; the new card opens with the focus on its name. A source
+  whose directory is inside an earlier source's (roots written the same way) shows the shadowing
+  warning at once, under its header.
+- **First use.** With no source, a block explains the two ways to start (the uploads source, with the
+  list of excluded directories, or a directory of one's own) and goes away when a card is added.
+- **Index.** A table (source, files, directories, last scan, state) with *Re-scan now* for each
+  active source replaces the sentence in each card.
+- **Warnings** (disabled sources, shadowed sources, public directories) are dismissible notices.
+- **Reset** is a closed block at the bottom, marked in red, open again after a missing confirmation.
+- **No inline style**: the page has a stylesheet (`assets/css/settings.css`) that follows the admin
+  colour scheme and stacks on narrow screens.
+- Tested in Chromium on the HTML produced by the PHP page (a stub of the WordPress functions) with
+  the real script and stylesheet: toggling, moving, adding before/after, live title, shadowing
+  warning, drag and drop, removing, the empty state.
+
 ## Cross-cutting
 
 - Admin colours and spacing follow the WordPress admin styles, including dark and

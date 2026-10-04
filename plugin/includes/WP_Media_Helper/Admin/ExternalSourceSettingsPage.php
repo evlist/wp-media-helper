@@ -51,6 +51,13 @@ class ExternalSourceSettingsPage {
 
 		$handle = 'wp-media-helper-external-sources';
 
+		wp_enqueue_style(
+			'wp-media-helper-settings',
+			plugins_url( 'assets/css/settings.css', WP_MEDIA_HELPER_FILE ),
+			[],
+			WP_MEDIA_HELPER_VERSION
+		);
+
 		wp_enqueue_script(
 			$handle,
 			plugins_url( 'assets/js/external-source-settings.js', WP_MEDIA_HELPER_FILE ),
@@ -127,7 +134,7 @@ class ExternalSourceSettingsPage {
 			<?php endif; ?>
 
 			<?php if ( [] !== $disabledSources ) : ?>
-				<div class="notice notice-warning">
+				<div class="notice notice-warning is-dismissible">
 					<p><strong><?php esc_html_e( 'Some external sources are disabled.', 'wp-media-helper' ); ?></strong>
 						<?php
 						printf(
@@ -146,26 +153,13 @@ class ExternalSourceSettingsPage {
 			<?php endif; ?>
 
 			<?php $uploadsDirectory = $this->uploadsDirectory(); ?>
-			<?php if ( null === $pending && null !== $uploadsDirectory && ! UploadsSource::isConfigured( $sources, $uploadsDirectory ) ) : ?>
-				<div class="notice notice-info">
-					<p><strong><?php esc_html_e( 'Quick start: use the uploads directory.', 'wp-media-helper' ); ?></strong>
-						<?php esc_html_e( 'This adds one source on the WordPress uploads directory, so files added there by FTP, Nextcloud, a camera uploader or another plugin can be listed and imported. Files already in the Media Library show as imported.', 'wp-media-helper' ); ?>
-					</p>
-					<p>
-						<?php esc_html_e( 'The uploads directory may also hold private or technical files. These directories are never listed:', 'wp-media-helper' ); ?>
-						<code><?php echo esc_html( implode( ', ', BuiltInExclusions::names() ) ); ?></code>
-						<?php esc_html_e( 'The list is a default, not a guarantee: if you keep private files elsewhere in uploads, do not use this, and add a dedicated directory as a source instead.', 'wp-media-helper' ); ?>
-					</p>
-					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-						<input type="hidden" name="action" value="wp_media_helper_use_uploads" />
-						<?php wp_nonce_field( 'wp_media_helper_use_uploads' ); ?>
-						<p><button type="submit" class="button button-primary"><?php esc_html_e( 'Use the uploads directory', 'wp-media-helper' ); ?></button></p>
-					</form>
-				</div>
+			<?php $offerUploads = null === $pending && null !== $uploadsDirectory && ! UploadsSource::isConfigured( $sources, $uploadsDirectory ); ?>
+			<?php if ( $offerUploads && [] !== $sources ) : ?>
+				<?php $this->renderUploadsOffer( false ); ?>
 			<?php endif; ?>
 
 			<?php if ( [] !== $shadowed ) : ?>
-				<div class="notice notice-warning">
+				<div class="notice notice-warning is-dismissible">
 					<p><strong><?php esc_html_e( 'Some sources can never list a file.', 'wp-media-helper' ); ?></strong>
 						<?php esc_html_e( 'Their directory is inside the directory of an earlier source, which owns it. Move them before that source, or remove them.', 'wp-media-helper' ); ?>
 					</p>
@@ -187,7 +181,7 @@ class ExternalSourceSettingsPage {
 			<?php endif; ?>
 
 			<?php if ( [] !== $exposedUrls ) : ?>
-				<div class="notice notice-info">
+				<div class="notice notice-info is-dismissible">
 					<p><strong><?php esc_html_e( 'These directories are inside the uploads directory.', 'wp-media-helper' ); ?></strong>
 						<?php esc_html_e( 'Web servers usually serve that directory publicly, so anyone who knows or guesses a file URL can download it, and a script file added to these directories could be executed. Block HTTP access to these URLs if the files are private, and disable script execution there, in your web server configuration (see the plugin README).', 'wp-media-helper' ); ?>
 					</p>
@@ -197,6 +191,10 @@ class ExternalSourceSettingsPage {
 						<?php endforeach; ?>
 					</ul>
 				</div>
+			<?php endif; ?>
+
+			<?php if ( [] === $sources ) : ?>
+				<?php $this->renderEmptyState( $offerUploads ); ?>
 			<?php endif; ?>
 
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
@@ -227,21 +225,17 @@ class ExternalSourceSettingsPage {
 				</table>
 
 				<h2><?php esc_html_e( 'External media sources', 'wp-media-helper' ); ?></h2>
-				<p class="description"><?php esc_html_e( 'Add one or more directories that should be included in the external media workflow. The order matters: a file belongs to the first source whose directory contains it, so put the most specific directories first (for example uploads/photos before uploads). The thumbnail cache directory is never listed.', 'wp-media-helper' ); ?></p>
+				<p class="description"><?php esc_html_e( 'The order matters: a file belongs to the first source whose directory contains it, so put the most specific directories first (for example uploads/photos before uploads). Drag a source by its handle, use the arrows, or add a source before or after another one. The thumbnail cache directory is never listed.', 'wp-media-helper' ); ?></p>
 				<p class="description"><?php esc_html_e( 'Active: its files are listed and can be imported. Disabled: ignored as if it did not exist, its files are handled by the sources that follow. Excluded: not listed, and no other source lists its files either.', 'wp-media-helper' ); ?></p>
-
-				<p id="wp-media-helper-no-source" class="wp-media-helper-empty-state"<?php echo [] === $sources ? '' : ' hidden'; ?>>
-					<?php esc_html_e( 'No external source is configured. The plugin uses the WordPress media library only.', 'wp-media-helper' ); ?>
-				</p>
 
 				<div id="wp-media-helper-sources" class="wp-media-helper-source-list">
 					<?php foreach ( $sources as $index => $source ) : ?>
-						<?php $this->renderSource( $index, $source, $validationErrors[ $index ] ?? [], $allowedBase, null === $pending ); ?>
+						<?php $this->renderSource( $index, $source, $validationErrors[ $index ] ?? [], $allowedBase, false ); ?>
 					<?php endforeach; ?>
 				</div>
 
 				<template id="wp-media-helper-source-template">
-					<?php $this->renderSource( '__INDEX__', [ 'state' => SourceState::ACTIVE ], [], $allowedBase, false ); ?>
+					<?php $this->renderSource( '__INDEX__', [ 'state' => SourceState::ACTIVE ], [], $allowedBase, true ); ?>
 				</template>
 
 				<p class="submit">
@@ -250,7 +244,38 @@ class ExternalSourceSettingsPage {
 				</p>
 			</form>
 
-			<h2><?php esc_html_e( 'Reset', 'wp-media-helper' ); ?></h2>
+			<?php $indexRows = null === $pending ? $this->indexRows( $sources ) : []; ?>
+			<?php if ( [] !== $indexRows ) : ?>
+				<h2><?php esc_html_e( 'Index', 'wp-media-helper' ); ?></h2>
+				<p class="description"><?php esc_html_e( 'Files are indexed in the background, every half hour for what changed and once a week for everything. Re-scan reads a whole source again, for example after a large change.', 'wp-media-helper' ); ?></p>
+				<table class="widefat striped wp-media-helper-index-table">
+					<thead>
+						<tr>
+							<th scope="col"><?php esc_html_e( 'Source', 'wp-media-helper' ); ?></th>
+							<th scope="col"><?php esc_html_e( 'Files', 'wp-media-helper' ); ?></th>
+							<th scope="col"><?php esc_html_e( 'Directories', 'wp-media-helper' ); ?></th>
+							<th scope="col"><?php esc_html_e( 'Last scan', 'wp-media-helper' ); ?></th>
+							<th scope="col"><?php esc_html_e( 'State', 'wp-media-helper' ); ?></th>
+							<th scope="col"><span class="screen-reader-text"><?php esc_html_e( 'Actions', 'wp-media-helper' ); ?></span></th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php foreach ( $indexRows as $row ) : ?>
+							<tr>
+								<th scope="row"><?php echo esc_html( $row['name'] ); ?></th>
+								<td><?php echo esc_html( number_format_i18n( $row['files'] ) ); ?></td>
+								<td><?php echo esc_html( number_format_i18n( $row['directories'] ) ); ?></td>
+								<td><?php echo '' === $row['last'] ? '&mdash;' : esc_html( $row['last'] ); ?></td>
+								<td><?php echo esc_html( $row['state'] ); ?></td>
+								<td><a class="button button-small" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=wp_media_helper_rescan&source=' . rawurlencode( $row['id'] ) ), 'wp_media_helper_rescan_' . $row['id'] ) ); ?>"><?php esc_html_e( 'Re-scan now', 'wp-media-helper' ); ?></a></td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+			<?php endif; ?>
+
+			<details class="wp-media-helper-danger"<?php echo isset( $_GET['reset_confirm'] ) ? ' open' : ''; ?>>
+			<summary><h2><?php esc_html_e( 'Reset', 'wp-media-helper' ); ?></h2></summary>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wp-media-helper-reset">
 				<input type="hidden" name="action" value="wp_media_helper_reset" />
 				<?php wp_nonce_field( 'wp_media_helper_reset' ); ?>
@@ -272,66 +297,8 @@ class ExternalSourceSettingsPage {
 					<button type="submit" class="button button-secondary"><?php esc_html_e( 'Reset the selected items', 'wp-media-helper' ); ?></button>
 				</p>
 			</form>
+			</details>
 		</div>
-
-		<style>
-			.wp-media-helper-source-list {
-				display: flex;
-				flex-direction: column;
-				gap: 1rem;
-				margin-top: 1.5rem;
-			}
-			.wp-media-helper-source {
-				background: #fff;
-				border: 1px solid #dcdcde;
-				border-radius: 8px;
-				padding: 1rem 1.25rem;
-				box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-			}
-			.wp-media-helper-source-header {
-				display: flex;
-				justify-content: space-between;
-				align-items: center;
-				gap: 1rem;
-				margin-bottom: 0.5rem;
-				padding-bottom: 0.75rem;
-				border-bottom: 1px solid #f0f0f1;
-			}
-			.wp-media-helper-source-header strong {
-				margin-right: auto;
-			}
-			.wp-media-helper-priority {
-				color: #646970;
-			}
-			.wp-media-helper-toggle {
-				display: inline-flex;
-				align-items: center;
-				gap: 0.4rem;
-				font-weight: 600;
-			}
-
-			.wp-media-helper-source .form-table th {
-				width: 190px;
-			}
-			.wp-media-helper-root-prefix {
-				display: inline-block;
-				margin-right: 0.25rem;
-				vertical-align: middle;
-			}
-			.is-invalid {
-				border-color: #d63638;
-				box-shadow: 0 0 0 1px #d63638;
-			}
-			.wp-media-helper-empty-state {
-				margin-top: 1.5rem;
-				color: #50575e;
-				font-style: italic;
-			}
-			.wp-media-helper-field-error {
-				color: #d63638;
-				font-weight: 600;
-			}
-		</style>
 
 		<?php
 	}
@@ -537,35 +504,102 @@ class ExternalSourceSettingsPage {
 	}
 
 	/**
-	 * Renders one source card. Used for the stored sources and, with __INDEX__ as
-	 * index, for the template cloned by the "Add source" button, so both always match.
+	 * The offer to use the uploads directory as a source, with what to know before.
 	 *
-	 * @param array<string,mixed>  $source
-	 * @param array<string,string> $errors
+	 * @param bool $firstUse Shown as one of the two ways to start, rather than as a notice.
 	 */
-	private function renderSource( int|string $index, array $source, array $errors, ?string $allowedBase, bool $showIndex ): void {
+	private function renderUploadsOffer( bool $firstUse ): void {
 		?>
-		<div class="wp-media-helper-source">
+		<div class="<?php echo $firstUse ? 'wp-media-helper-offer' : 'notice notice-info is-dismissible'; ?>">
+			<p><strong><?php esc_html_e( 'Quick start: use the uploads directory.', 'wp-media-helper' ); ?></strong>
+				<?php esc_html_e( 'This adds one source on the WordPress uploads directory, so files added there by FTP, Nextcloud, a camera uploader or another plugin can be listed and imported. Files already in the Media Library show as imported.', 'wp-media-helper' ); ?>
+			</p>
+			<p>
+				<?php esc_html_e( 'The uploads directory may also hold private or technical files. These directories are never listed:', 'wp-media-helper' ); ?>
+				<code><?php echo esc_html( implode( ', ', BuiltInExclusions::names() ) ); ?></code>
+				<?php esc_html_e( 'The list is a default, not a guarantee: if you keep private files elsewhere in uploads, do not use this, and add a dedicated directory as a source instead.', 'wp-media-helper' ); ?>
+			</p>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="wp_media_helper_use_uploads" />
+				<?php wp_nonce_field( 'wp_media_helper_use_uploads' ); ?>
+				<p><button type="submit" class="button button-primary"><?php esc_html_e( 'Use the uploads directory', 'wp-media-helper' ); ?></button></p>
+			</form>
+		</div>
+		<?php
+	}
+
+	/**
+	 * What shows before the first source exists: two ways to start.
+	 */
+	private function renderEmptyState( bool $offerUploads ): void {
+		?>
+		<div id="wp-media-helper-no-source" class="wp-media-helper-empty-state">
+			<h2><?php esc_html_e( 'No source yet', 'wp-media-helper' ); ?></h2>
+			<p><?php esc_html_e( 'Until a source is added, the plugin works with the WordPress Media Library only. There are two ways to start:', 'wp-media-helper' ); ?></p>
+			<?php if ( $offerUploads ) : ?>
+				<?php $this->renderUploadsOffer( true ); ?>
+			<?php endif; ?>
+			<div class="wp-media-helper-offer">
+				<p><strong><?php esc_html_e( 'Add a directory of your own.', 'wp-media-helper' ); ?></strong>
+					<?php esc_html_e( 'For example the folder where your phone or Nextcloud puts photos. Several sources can be added, most specific first.', 'wp-media-helper' ); ?>
+				</p>
+				<p><button type="button" class="button wp-media-helper-add-first"><?php esc_html_e( 'Add a source', 'wp-media-helper' ); ?></button></p>
+			</div>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Renders one source card. Used for the stored sources and, with __INDEX__ as
+	 * index, for the template cloned by the "Add source" buttons, so both always match.
+	 *
+	 * The card is a header that always shows (position, name, state, the buttons to move,
+	 * add around and remove it) and a body with its settings, closed unless it has errors
+	 * or is new. The rarely used settings are in a second, closed part.
+	 *
+	 * @param array<string, mixed>  $source
+	 * @param array<string, string> $errors
+	 */
+	private function renderSource( int|string $index, array $source, array $errors, ?string $allowedBase, bool $open ): void {
+		$bodyId   = 'wp-media-helper-source-body-' . $index;
+		$name     = (string) ( $source['name'] ?? '' );
+		$root     = AllowedBase::toRelative( $allowedBase, (string) ( $source['root'] ?? '' ) );
+		$expanded = $open || [] !== $errors;
+		$advanced = isset( $errors['path_pattern'] ) || isset( $errors['name_patterns'] );
+		?>
+		<div class="wp-media-helper-source<?php echo [] !== $errors ? ' has-errors' : ''; ?>" data-state="<?php echo esc_attr( SourceState::of( $source ) ); ?>">
 			<input type="hidden" name="sources[<?php echo esc_attr( $index ); ?>][id]" value="<?php echo esc_attr( (string) ( $source['id'] ?? '' ) ); ?>" />
 
 			<div class="wp-media-helper-source-header">
-				<strong><?php echo esc_html( (string) ( $source['name'] ?? '' ) ?: __( 'New source', 'wp-media-helper' ) ); ?></strong>
+				<span class="wp-media-helper-drag-handle" title="<?php esc_attr_e( 'Drag to change the order', 'wp-media-helper' ); ?>" aria-hidden="true">&#8942;&#8942;</span>
 				<span class="wp-media-helper-priority" title="<?php esc_attr_e( 'Priority: the first source owns the files inside its directory.', 'wp-media-helper' ); ?>">#<span class="wp-media-helper-priority-number"><?php echo esc_html( is_int( $index ) ? (string) ( $index + 1 ) : '' ); ?></span></span>
+				<button type="button" class="wp-media-helper-source-toggle" aria-expanded="<?php echo $expanded ? 'true' : 'false'; ?>" aria-controls="<?php echo esc_attr( $bodyId ); ?>">
+					<span class="wp-media-helper-chevron" aria-hidden="true"></span>
+					<strong class="wp-media-helper-source-title"><?php echo esc_html( '' !== $name ? $name : __( 'New source', 'wp-media-helper' ) ); ?></strong>
+					<code class="wp-media-helper-source-summary"><?php echo esc_html( $root ); ?></code>
+				</button>
 				<label class="wp-media-helper-toggle">
 					<span class="screen-reader-text"><?php esc_html_e( 'State', 'wp-media-helper' ); ?></span>
-					<select name="sources[<?php echo esc_attr( $index ); ?>][state]">
+					<select name="sources[<?php echo esc_attr( $index ); ?>][state]" class="wp-media-helper-state">
 						<option value="<?php echo esc_attr( SourceState::ACTIVE ); ?>" <?php selected( SourceState::of( $source ), SourceState::ACTIVE ); ?>><?php esc_html_e( 'Active', 'wp-media-helper' ); ?></option>
 						<option value="<?php echo esc_attr( SourceState::DISABLED ); ?>" <?php selected( SourceState::of( $source ), SourceState::DISABLED ); ?>><?php esc_html_e( 'Disabled', 'wp-media-helper' ); ?></option>
 						<option value="<?php echo esc_attr( SourceState::EXCLUDED ); ?>" <?php selected( SourceState::of( $source ), SourceState::EXCLUDED ); ?>><?php esc_html_e( 'Excluded', 'wp-media-helper' ); ?></option>
 					</select>
 				</label>
-				<button type="button" class="button-link wp-media-helper-move-source" data-direction="-1" aria-label="<?php esc_attr_e( 'Move up', 'wp-media-helper' ); ?>">&uarr;</button>
-				<button type="button" class="button-link wp-media-helper-move-source" data-direction="1" aria-label="<?php esc_attr_e( 'Move down', 'wp-media-helper' ); ?>">&darr;</button>
-				<button type="button" class="button-link-delete wp-media-helper-remove-source"><?php esc_html_e( 'Remove', 'wp-media-helper' ); ?></button>
+				<span class="wp-media-helper-source-actions">
+					<button type="button" class="button-link wp-media-helper-move-source" data-direction="-1" aria-label="<?php esc_attr_e( 'Move up', 'wp-media-helper' ); ?>" title="<?php esc_attr_e( 'Move up', 'wp-media-helper' ); ?>">&uarr;</button>
+					<button type="button" class="button-link wp-media-helper-move-source" data-direction="1" aria-label="<?php esc_attr_e( 'Move down', 'wp-media-helper' ); ?>" title="<?php esc_attr_e( 'Move down', 'wp-media-helper' ); ?>">&darr;</button>
+					<button type="button" class="button-link wp-media-helper-add-around" data-where="before" aria-label="<?php esc_attr_e( 'Add a source before this one', 'wp-media-helper' ); ?>" title="<?php esc_attr_e( 'Add a source before this one', 'wp-media-helper' ); ?>">+&uarr;</button>
+					<button type="button" class="button-link wp-media-helper-add-around" data-where="after" aria-label="<?php esc_attr_e( 'Add a source after this one', 'wp-media-helper' ); ?>" title="<?php esc_attr_e( 'Add a source after this one', 'wp-media-helper' ); ?>">+&darr;</button>
+					<button type="button" class="button-link-delete wp-media-helper-remove-source"><?php esc_html_e( 'Remove', 'wp-media-helper' ); ?></button>
+				</span>
 			</div>
 
-			<table class="form-table" role="presentation">
-				<tbody>
+			<p class="wp-media-helper-shadow-note" role="status" hidden></p>
+
+			<div class="wp-media-helper-source-body" id="<?php echo esc_attr( $bodyId ); ?>"<?php echo $expanded ? '' : ' hidden'; ?>>
+				<table class="form-table" role="presentation">
+					<tbody>
 					<tr>
 						<th scope="row"><label for="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Name', 'wp-media-helper' ); ?></label></th>
 						<td>
@@ -618,6 +652,13 @@ class ExternalSourceSettingsPage {
 							<?php endif; ?>
 						</td>
 					</tr>
+					</tbody>
+				</table>
+
+				<details class="wp-media-helper-advanced"<?php echo $advanced ? ' open' : ''; ?>>
+					<summary><?php esc_html_e( 'Advanced settings', 'wp-media-helper' ); ?></summary>
+					<table class="form-table" role="presentation">
+						<tbody>
 					<tr>
 						<th scope="row"><label for="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Path pattern', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
 						<td>
@@ -683,59 +724,50 @@ class ExternalSourceSettingsPage {
 							<p class="description"><?php esc_html_e( 'When unchecked, a file whose name has no date is not placed on any day.', 'wp-media-helper' ); ?></p>
 						</td>
 					</tr>
-					<?php if ( $showIndex && ! empty( $source['id'] ) ) : ?>
-						<?php $indexStatus = $this->indexStatus( $source ); ?>
-						<tr>
-							<th scope="row"><?php esc_html_e( 'Index', 'wp-media-helper' ); ?></th>
-							<td>
-								<p><?php echo esc_html( $indexStatus ); ?></p>
-								<p>
-									<a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=wp_media_helper_rescan&source=' . rawurlencode( (string) $source['id'] ) ), 'wp_media_helper_rescan_' . (string) $source['id'] ) ); ?>"><?php esc_html_e( 'Re-scan now', 'wp-media-helper' ); ?></a>
-								</p>
-							</td>
-						</tr>
-					<?php endif; ?>
-				</tbody>
-			</table>
+						</tbody>
+					</table>
+				</details>
+			</div>
 		</div>
 		<?php
 	}
 
 	/**
-	 * Where the index of a source stands, as a sentence.
+	 * What the index table shows for each active source: counts, last scan and state.
 	 *
-	 * @param array<string, mixed> $source
+	 * @param array<int, array<string, mixed>> $sources
+	 * @return array<int, array{id:string, name:string, files:int, directories:int, last:string, state:string}>
 	 */
-	private function indexStatus( array $source ): string {
-		$status = DayIndex::forWordPress()->manager()->status( $source );
+	private function indexRows( array $sources ): array {
+		$manager = DayIndex::forWordPress()->manager();
+		$rows    = [];
+		foreach ( $sources as $source ) {
+			if ( ! is_array( $source ) || empty( $source['id'] ) || SourceState::ACTIVE !== SourceState::of( $source ) ) {
+				continue;
+			}
 
-		if ( ! $status['indexed'] ) {
-			return sprintf(
-				/* translators: 1: number of files, 2: number of directories. */
-				__( 'Not indexed yet: the first scan runs in the background (%1$d files in %2$d directories found so far).', 'wp-media-helper' ),
-				$status['files'],
-				$status['directories']
-			);
+			$status = $manager->status( $source );
+			if ( $status['in_progress'] ) {
+				$state = __( 'Scanning…', 'wp-media-helper' );
+			} elseif ( '' !== $status['pending'] || ! $status['indexed'] ) {
+				$state = __( 'Waiting for the next background run', 'wp-media-helper' );
+			} else {
+				$state = __( 'Up to date', 'wp-media-helper' );
+			}
+
+			$rows[] = [
+				'id'          => (string) $source['id'],
+				'name'        => (string) ( $source['name'] ?? $source['id'] ),
+				'files'       => $status['files'],
+				'directories' => $status['directories'],
+				'last'        => $status['indexed'] ? sprintf( /* translators: %s: time since the last scan, such as "2 hours". */ __( '%s ago', 'wp-media-helper' ), human_time_diff( $status['finished_at'], time() ) ) : '',
+				'state'       => $state,
+			];
 		}
 
-		$text = sprintf(
-			/* translators: 1: number of files, 2: number of directories, 3: time since the last scan, such as "2 hours". */
-			__( '%1$d files in %2$d directories. Last scan finished %3$s ago.', 'wp-media-helper' ),
-			$status['files'],
-			$status['directories'],
-			human_time_diff( $status['finished_at'], time() )
-		);
-
-		if ( $status['in_progress'] || '' !== $status['pending'] ) {
-			$text .= ' ' . __( 'A scan is in progress or waiting.', 'wp-media-helper' );
-		}
-
-		return $text;
+		return $rows;
 	}
 
-	/**
-	 * Asks for a full scan of a source, run in the background.
-	 */
 	/**
 	 * What can be reset, in the order shown.
 	 *

@@ -1,0 +1,262 @@
+/* SPDX-FileCopyrightText: 2026 Eric van der Vlist <vdv@dyomedea.com> */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+
+/* Settings page of WP Media Helper. Colours come from the admin colour scheme where WordPress gives one. */
+
+.wp-media-helper-settings {
+	--wpmh-border: #c3c4c7;
+	--wpmh-muted: #646970;
+	--wpmh-accent: var(--wp-admin-theme-color, #2271b1);
+	--wpmh-error: #d63638;
+}
+
+/* ---- Sources ---- */
+
+.wp-media-helper-source-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	margin-top: 1rem;
+}
+
+.wp-media-helper-source {
+	background: #fff;
+	border: 1px solid var(--wpmh-border);
+	border-radius: 4px;
+}
+
+.wp-media-helper-source.has-errors {
+	border-color: var(--wpmh-error);
+}
+
+.wp-media-helper-source[data-state="disabled"] .wp-media-helper-source-title,
+.wp-media-helper-source[data-state="disabled"] .wp-media-helper-source-summary {
+	opacity: 0.6;
+}
+
+.wp-media-helper-source[data-state="excluded"] {
+	border-style: dashed;
+}
+
+.wp-media-helper-source.is-dragging {
+	opacity: 0.45;
+}
+
+.wp-media-helper-source.drop-before {
+	box-shadow: 0 -3px 0 0 var(--wpmh-accent);
+}
+
+.wp-media-helper-source.drop-after {
+	box-shadow: 0 3px 0 0 var(--wpmh-accent);
+}
+
+.wp-media-helper-source-header {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	padding: 0.5rem 0.75rem;
+}
+
+.wp-media-helper-drag-handle {
+	cursor: grab;
+	color: var(--wpmh-muted);
+	letter-spacing: -0.2em;
+	user-select: none;
+	touch-action: none;
+}
+
+.wp-media-helper-priority {
+	color: var(--wpmh-muted);
+	min-width: 2em;
+}
+
+.wp-media-helper-source-toggle {
+	display: flex;
+	align-items: baseline;
+	gap: 0.6rem;
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 0.25rem 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.wp-media-helper-source-toggle:focus-visible {
+	outline: 2px solid var(--wpmh-accent);
+	outline-offset: 2px;
+}
+
+.wp-media-helper-chevron {
+	flex: 0 0 auto;
+	width: 0.5rem;
+	height: 0.5rem;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: rotate(-45deg);
+	transition: transform 0.12s;
+	align-self: center;
+}
+
+.wp-media-helper-source-toggle[aria-expanded="true"] .wp-media-helper-chevron {
+	transform: rotate(45deg);
+}
+
+.wp-media-helper-source-title {
+	flex: 0 1 auto;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wp-media-helper-source-summary {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--wpmh-muted);
+	background: none;
+}
+
+.wp-media-helper-source-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.6rem;
+	flex: 0 0 auto;
+}
+
+.wp-media-helper-source-actions .button-link {
+	text-decoration: none;
+	min-width: 1.5em;
+}
+
+.wp-media-helper-source-body {
+	padding: 0 1rem 0.75rem;
+	border-top: 1px solid #f0f0f1;
+}
+
+.wp-media-helper-source .form-table th {
+	width: 190px;
+}
+
+.wp-media-helper-advanced {
+	margin-top: 0.25rem;
+	border-top: 1px dashed #dcdcde;
+	padding-top: 0.5rem;
+}
+
+.wp-media-helper-advanced > summary {
+	cursor: pointer;
+	color: var(--wpmh-accent);
+}
+
+.wp-media-helper-root-prefix {
+	display: inline-block;
+	margin-right: 0.25rem;
+	vertical-align: middle;
+}
+
+.wp-media-helper-pattern-tools {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.is-invalid {
+	border-color: var(--wpmh-error);
+	box-shadow: 0 0 0 1px var(--wpmh-error);
+}
+
+.wp-media-helper-field-error {
+	color: var(--wpmh-error);
+	font-weight: 600;
+}
+
+/* ---- First use ---- */
+
+.wp-media-helper-empty-state {
+	margin: 1rem 0;
+	padding: 0.5rem 1.25rem 1rem;
+	background: #fff;
+	border: 1px solid var(--wpmh-border);
+	border-left: 4px solid var(--wpmh-accent);
+}
+
+.wp-media-helper-offer {
+	margin: 0.75rem 0;
+	padding: 0.25rem 1rem;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+}
+
+/* ---- Index ---- */
+
+.wp-media-helper-index-table {
+	max-width: 60rem;
+}
+
+.wp-media-helper-index-table td,
+.wp-media-helper-index-table th {
+	vertical-align: middle;
+}
+
+/* ---- Reset ---- */
+
+.wp-media-helper-danger {
+	margin-top: 2.5rem;
+	padding: 0 1rem;
+	border: 1px solid #dcdcde;
+	border-left: 4px solid var(--wpmh-error);
+	background: #fff;
+}
+
+.wp-media-helper-danger > summary {
+	cursor: pointer;
+	list-style-position: inside;
+}
+
+.wp-media-helper-danger > summary h2 {
+	display: inline;
+	font-size: 1.1em;
+}
+
+.wp-media-helper-danger form {
+	padding-bottom: 1rem;
+}
+
+/* ---- Narrow screens ---- */
+
+@media (max-width: 782px) {
+	.wp-media-helper-source-header {
+		flex-wrap: wrap;
+	}
+
+	.wp-media-helper-source-toggle {
+		flex-basis: 60%;
+	}
+
+	.wp-media-helper-source-actions {
+		flex-basis: 100%;
+		justify-content: flex-end;
+	}
+
+	.wp-media-helper-source .form-table th {
+		width: auto;
+	}
+
+	.wp-media-helper-index-table {
+		display: block;
+		overflow-x: auto;
+	}
+}
+
+.wp-media-helper-shadow-note {
+	margin: 0;
+	padding: 0.35rem 0.75rem 0.5rem 3.2rem;
+	color: #8a4600;
+	font-size: 12px;
+}

@@ -81,6 +81,11 @@ See [Dates in WP Media Helper](docs/IA/date-model.md) for how the panel date, th
 patterns, the attachment date and the dates of the files relate, and why a date in a
 folder name can be misleading.
 
+The settings page shows each source as a card (position, name, state, the buttons to move it, add a
+source before or after it, or remove it; drag it by its handle). Its settings open under it, with
+the rarely used ones in *Advanced settings*. An *Index* table below shows the state of each source
+with a *Re-scan now* button, and *Reset* is a closed block at the bottom.
+
 Each external directory can define its own path pattern and optional filter
 pattern. This makes it possible to target different user trees without scanning
 large directory hierarchies.
