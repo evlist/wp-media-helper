@@ -533,9 +533,10 @@ class ExternalSourceSettingsPage {
 								<?php
 								if ( null !== $allowedBase ) {
 									printf(
-										/* translators: %s: example directory path relative to the base directory, wrapped in a code element. */
-										esc_html__( 'Directory of the external media, relative to the base directory shown on the left, for example %s.', 'wp-media-helper' ),
-										'<code>nextcloud/photos</code>'
+										/* translators: 1: example directory path relative to the base directory, 2: a dot, both wrapped in a code element. */
+										esc_html__( 'Directory of the external media, relative to the base directory shown on the left, for example %1$s. The field cannot be left empty: type %2$s for the base directory itself.', 'wp-media-helper' ),
+										'<code>nextcloud/photos</code>',
+										'<code>.</code>'
 									);
 								} else {
 									printf(
