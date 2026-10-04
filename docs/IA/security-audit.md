@@ -250,6 +250,8 @@ listed in the README rule, not on the page).
   new exposure; that was wrong, since it is the same exposure as the originals.
 - Recommendation: add the cache directory to the rules that deny access to private sources, and
   list its public URL on the settings page next to those of the sources.
+- The lasting answer to R1 and R12 together is [slice 030](../slices/030-authenticated-file-access.md):
+  serving originals and thumbnails of non-public sources through an authenticated endpoint.
 - Hiding a file deletes its previews (slice 027).
 
 ### R13 - Low to medium: previews are generated on request by any user who can upload
