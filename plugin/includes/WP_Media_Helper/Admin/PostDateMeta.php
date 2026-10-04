@@ -11,11 +11,20 @@ class PostDateMeta {
 	private const POST_TYPES = [ 'post', 'page' ];
 
 	public function __construct() {
-		add_action( 'init', [ $this, 'register' ] );
+		add_action( 'init', [ $this, 'register' ], 99 );
 	}
 
 	public function register(): void {
-		foreach ( self::POST_TYPES as $postType ) {
+		$postTypes = array_unique( array_merge(
+			self::POST_TYPES,
+			get_post_types( [ 'show_in_rest' => true ] )
+		) );
+
+		foreach ( $postTypes as $postType ) {
+			if ( ! post_type_supports( $postType, 'custom-fields' ) ) {
+				continue;
+			}
+
 			register_post_meta(
 				$postType,
 				self::META_KEY,

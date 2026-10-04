@@ -244,6 +244,22 @@
 		const [ lastRefreshedAt, setLastRefreshedAt ] = useState( null );
 		const [ , setTick ] = useState( 0 );
 
+		// The editor loads the post asynchronously: on a page reload the stored meta
+		// can arrive after this component first rendered with the default date.
+		const storedDate = wp.data.useSelect( function ( select ) {
+			const meta = select( 'core/editor' ).getEditedPostAttribute( 'meta' ) || {};
+
+			return meta[ dateMetaKey ] || '';
+		}, [] );
+
+		useEffect( function () {
+			if ( storedDate ) {
+				setFiltersState( function ( currentFilters ) {
+					return currentFilters.date === storedDate ? currentFilters : Object.assign( {}, currentFilters, { date: storedDate } );
+				} );
+			}
+		}, [ storedDate ] );
+
 		const setDate = function ( value ) {
 			setPage( 1 );
 			setFiltersState( function ( currentFilters ) {
