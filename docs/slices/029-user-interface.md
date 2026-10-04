@@ -45,6 +45,16 @@ thumbnails** over the full width of the panel.
 - **Counts.** The number of files matching the filters is always shown, and the number selected.
 - The table is not kept.
 
+### Featured image (added)
+
+One action, *Set as featured image* (and *Remove featured image* on the current one), for images
+and for users who may upload, when the post type supports a featured image. It is not an
+attachment to the post: a file that is not in the Media Library is imported first (the existing
+`import` action returns the attachment), then `featured_media` is set in the editor store, so the
+change is saved with *Update* like any other and a snackbar says so. The listing carries the
+identifiers of the attachments of each imported file (`attachment_ids`) so the tile of the current
+featured image shows a star. There is no bulk action.
+
 ### Delivery
 
 1. **Foundations** (done): file count in the panel; dimensions of images in the index (`width`,

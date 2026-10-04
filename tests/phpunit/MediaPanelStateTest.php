@@ -539,4 +539,12 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertSame( [ 1234, '2026-10-02 12:15:49', 'embedded' ], [ $marked[0]['file_size'], $marked[0]['effective_date'], $marked[0]['date_source'] ] );
 		$this->assertArrayNotHasKey( 'file_size', $marked[1] );
 	}
+
+	public function test_imported_items_carry_the_identifiers_of_their_attachments(): void {
+		$items = MediaPanelState::enrichFiles( [ '/u/a.jpg', '/u/b.jpg' ], 's', '2026-10-02' );
+
+		$marked = MediaPanelState::setAttachmentIds( $items, [ '/u/a.jpg' => [ 12, 15 ], '/u/none.jpg' => [] ] );
+		$this->assertSame( [ 12, 15 ], $marked[0]['attachment_ids'] );
+		$this->assertArrayNotHasKey( 'attachment_ids', $marked[1] );
+	}
 }

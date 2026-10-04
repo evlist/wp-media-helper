@@ -15,6 +15,7 @@
 	const nonce = wpMediaHelperEditorPanel.nonce;
 	const defaultDate = wpMediaHelperEditorPanel.date;
 	const canHide = !! wpMediaHelperEditorPanel.canHide;
+	const canUpload = !! wpMediaHelperEditorPanel.canUpload;
 	const canSeeHidden = !! wpMediaHelperEditorPanel.canSeeHidden;
 	const defaultPanelMode = 'advanced' === wpMediaHelperEditorPanel.panelMode ? 'advanced' : 'simple';
 	const dateMetaKey = 'wp_media_helper_date';
@@ -142,6 +143,7 @@
 			thumbnail_large_url: item && item.thumbnail_large_url ? item.thumbnail_large_url : '',
 			width: item && item.width ? item.width : 0,
 			height: item && item.height ? item.height : 0,
+			attachment_ids: item && Array.isArray( item.attachment_ids ) ? item.attachment_ids : [],
 			file_size: item && item.file_size ? item.file_size : 0,
 			effective_date: item && item.effective_date ? item.effective_date : '',
 			date_source: item && item.date_source ? item.date_source : '',
@@ -440,6 +442,15 @@
 		const [ density, setDensity ] = useState( readDensity );
 		const [ galleryWidth, setGalleryWidth ] = useState( 0 );
 		const [ hasNews, setHasNews ] = useState( false );
+		// The featured image of the post being edited (undefined when its type has none).
+		const featuredMedia = wp.data.useSelect( function ( select ) {
+			return select( 'core/editor' ).getEditedPostAttribute( 'featured_media' );
+		}, [] );
+		const featuredSupported = 'undefined' !== typeof featuredMedia;
+		const isFeatured = function ( item ) {
+			return featuredSupported && featuredMedia > 0 && item.attachment_ids.includes( featuredMedia );
+		};
+
 		const [ menu, setMenu ] = useState( null );
 		const [ sheetKey, setSheetKey ] = useState( null );
 		const [ operationNotice, setOperationNotice ] = useState( null );
@@ -884,6 +895,9 @@
 					if ( Object.prototype.hasOwnProperty.call( result, 'is_attached_to_current_post' ) ) {
 						nextItem.is_attached_to_current_post = !! result.is_attached_to_current_post;
 					}
+					if ( result.attachment_id ) {
+						nextItem.attachment_ids = [ result.attachment_id ];
+					}
 					if ( Object.prototype.hasOwnProperty.call( result, 'is_hidden' ) ) {
 						nextItem.is_hidden = !! result.is_hidden;
 						// Hiding deletes the previews; showing again brings new addresses. Until then
@@ -958,6 +972,14 @@
 			if ( ! item || ! item.path ) {
 				return;
 			}
+			if ( 'feature' === action ) {
+				handleFeature( item );
+				return;
+			}
+			if ( 'unfeature' === action ) {
+				setFeatured( 0 );
+				return;
+			}
 			const postId = getCurrentPostId();
 			if ( [ 'attach', 'detach', 'remove' ].includes( action ) && 0 === postId ) {
 				setOperationNotice( __( 'Save the post before changing media attachments.', 'wp-media-helper' ) );
@@ -979,6 +1001,43 @@
 				} );
 		};
 
+		const announce = function ( message ) {
+			try {
+				wp.data.dispatch( 'core/notices' ).createNotice( 'success', message, { type: 'snackbar', isDismissible: true } );
+			} catch ( error ) {
+				// The notice is a courtesy: the change is in the editor either way.
+			}
+		};
+
+		const setFeatured = function ( attachmentId ) {
+			wp.data.dispatch( 'core/editor' ).editPost( { featured_media: attachmentId } );
+			announce( attachmentId > 0
+				? __( 'Featured image set. Update the post to save it.', 'wp-media-helper' )
+				: __( 'Featured image removed. Update the post to save it.', 'wp-media-helper' ) );
+		};
+
+		// A file that is not in the Media Library yet is imported first: a featured image is an attachment.
+		const handleFeature = function ( item ) {
+			if ( item.attachment_ids.length > 0 ) {
+				setFeatured( item.attachment_ids[ 0 ] );
+				return;
+			}
+
+			setLoading( true );
+			setOperationNotice( null );
+			bulkMediaItems( 'import', [ item ], getCurrentPostId() )
+				.then( function ( payload ) {
+					const result = payload && payload.success && payload.data.results ? payload.data.results[ 0 ] : null;
+					if ( result && result.success && result.attachment_id ) {
+						applyBulkResults( payload );
+						setFeatured( result.attachment_id );
+					} else {
+						setOperationNotice( result && result.message ? result.message : __( 'The image could not be imported.', 'wp-media-helper' ) );
+					}
+				} )
+				.finally( function () { setLoading( false ); } );
+		};
+
 		// What can be done with an item, depending on the mode and on where it is attached.
 		const actionsFor = function ( item ) {
 			if ( item.is_hidden ) {
@@ -986,6 +1045,12 @@
 			}
 
 			const actions = [];
+			// One image is the featured image: no bulk action, and only a picture can be.
+			if ( featuredSupported && canUpload && 'image' === item.media_type ) {
+				actions.push( isFeatured( item )
+					? { action: 'unfeature', label: __( 'Remove featured image', 'wp-media-helper' ) }
+					: { action: 'feature', label: __( 'Set as featured image', 'wp-media-helper' ) } );
+			}
 			if ( ! item.is_attached_to_other_post ) {
 				if ( 'simple' === panelMode ) {
 					actions.push( item.is_attached_to_current_post
@@ -1097,6 +1162,9 @@
 					wp.element.createElement( AttachmentBadge, { item: item } ),
 					item.is_imported
 						? wp.element.createElement( CornerBadge, { icon: 'admin-media', label: __( 'In the WordPress media library', 'wp-media-helper' ), position: { left: '3px' }, colour: '#2271b1' } )
+						: null,
+					isFeatured( item )
+						? wp.element.createElement( CornerBadge, { icon: 'star-filled', label: __( 'Featured image', 'wp-media-helper' ), position: { left: '24px' }, colour: '#b8860b' } )
 						: null,
 					item.is_hidden
 						? wp.element.createElement( CornerBadge, { icon: 'hidden', label: __( 'Hidden', 'wp-media-helper' ), position: { right: '3px' }, colour: '#8a2424' } )
@@ -1218,6 +1286,7 @@
 							? [ ' ', wp.element.createElement( 'a', { key: 'edit', href: item.other_post_edit_url, target: '_blank', rel: 'noreferrer', style: { fontWeight: 400 } }, __( 'Open that post', 'wp-media-helper' ) ) ]
 							: null,
 						item.is_imported ? wp.element.createElement( 'span', { style: { color: '#2271b1', fontWeight: 400 } }, ' · ' + __( 'In the WordPress media library', 'wp-media-helper' ) ) : null,
+						isFeatured( item ) ? wp.element.createElement( 'span', { style: { color: '#b8860b', fontWeight: 400 } }, ' · ' + __( 'Featured image', 'wp-media-helper' ) ) : null,
 						item.is_hidden ? wp.element.createElement( 'span', { style: { color: '#8a2424', fontWeight: 400 } }, ' · ' + __( 'Hidden', 'wp-media-helper' ) ) : null
 					),
 					wp.element.createElement( 'dl', { style: { display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '2px 12px', margin: '0 0 12px', fontSize: '12px' } },

@@ -26,6 +26,7 @@ class EditorPanel {
 				'nonce' => wp_create_nonce( 'wp_media_helper_media_panel' ),
 				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 				'sourceId' => '',
+				'canUpload' => current_user_can( 'upload_files' ),
 				'canHide' => HiddenFiles::canHide(),
 				'canSeeHidden' => HiddenFiles::canSeeHidden(),
 				'date' => current_time( 'Y-m-d' ),

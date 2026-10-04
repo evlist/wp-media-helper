@@ -727,6 +727,7 @@ class EditorMediaController {
 		$merged['files'] = MediaPanelState::setImportState( $merged['files'], $attachmentStates['imported_paths'] );
 		$merged['files'] = MediaPanelState::setAttachmentState( $merged['files'], $attachmentStates['attached_paths'] );
 		$merged['files'] = MediaPanelState::setOtherPostState( $merged['files'], $attachmentStates['other_post_by_path'] );
+		$merged['files'] = MediaPanelState::setAttachmentIds( $merged['files'], $attachmentStates['attachment_ids'] );
 		$merged['files'] = MediaPanelState::filterByAttachmentScope( $merged['files'], $filters['attachment_scope'] );
 		$merged['files'] = MediaPanelState::filterByMediaType( $merged['files'], $filters['media_type'] );
 		$merged['files'] = MediaPanelState::filterByFilename( $merged['files'], $filters['filename'] );
@@ -813,10 +814,12 @@ class EditorMediaController {
 		$imported = [];
 		$attached = [];
 		$otherPostByPath = [];
+		$attachmentIds = [];
 
 		foreach ( ( new AttachmentRegistry() )->statesFor( $candidatePaths ) as $path => $rows ) {
 			$path = (string) $path;
 			$imported[] = $path;
+			$attachmentIds[ $path ] = array_values( array_map( static fn ( array $row ): int => (int) $row['id'], $rows ) );
 			foreach ( $rows as $row ) {
 				$parent = (int) $row['parent'];
 				if ( 0 !== $postId && $postId === $parent ) {
@@ -834,6 +837,7 @@ class EditorMediaController {
 			'imported_paths' => $imported,
 			'attached_paths' => $attached,
 			'other_post_by_path' => $otherPostByPath,
+			'attachment_ids' => $attachmentIds,
 		];
 	}
 }

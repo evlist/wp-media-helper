@@ -236,7 +236,12 @@ the one used by Thumbnails Folder: its existing files are reused, with its URLs.
   (large preview, type, dimensions, size, date and where it comes from, source, state and actions,
   with previous and next buttons and the arrow keys). A right click, the ⋮ button shown on hover and
   focus (always shown on a touch screen) or the menu key of the keyboard opens the menu of the file
-  (*Details*, its actions, *Select*), which the arrow keys and Escape drive. A long press (or Ctrl/Shift+click, or the *Select* button) enters
+  (*Details*, its actions, *Select*), which the arrow keys and Escape drive.
+- **Featured image.** *Set as featured image* (in the menu and the sheet, for images, when the post
+  type has a featured image) imports the file if it is not in the Media Library yet and makes it the
+  featured image of the post being edited; the tile shows a star, and *Remove featured image*
+  undoes it. There is only one, so there is no bulk action. Like any change in the editor it is
+  saved with *Update*. A long press (or Ctrl/Shift+click, or the *Select* button) enters
   selection mode, with a mark on every thumbnail and the bulk actions above. The list is not replaced
   behind your back: when files appear, a notice offers to refresh it. When it is not in the cache yet the browser asks an authenticated endpoint
   (`admin-ajax.php?action=wp_media_helper_thumbnail`) that creates and returns it; only

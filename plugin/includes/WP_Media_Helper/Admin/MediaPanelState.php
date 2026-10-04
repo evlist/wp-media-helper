@@ -153,6 +153,25 @@ class MediaPanelState {
 	}
 
 	/**
+	 * Gives the imported items the identifiers of their attachments, so the panel can tell which
+	 * one is the featured image of the post.
+	 *
+	 * @param array<int, array<string, mixed>> $items
+	 * @param array<string, int[]>             $idsByPath Keyed by the path of the listed item.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function setAttachmentIds( array $items, array $idsByPath ): array {
+		foreach ( $items as $index => $item ) {
+			$ids = $idsByPath[ (string) ( $item['path'] ?? $item['name'] ?? '' ) ] ?? null;
+			if ( is_array( $item ) && null !== $ids && [] !== $ids ) {
+				$items[ $index ]['attachment_ids'] = $ids;
+			}
+		}
+
+		return $items;
+	}
+
+	/**
 	 * @param array<int, array<string, mixed>> $items
 	 * @param array<string, array{post_id:int}> $otherPostByPath keyed by the path of the listed item
 	 * @return array<int, array<string, mixed>>
