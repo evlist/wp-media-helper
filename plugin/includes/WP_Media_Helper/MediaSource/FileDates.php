@@ -31,7 +31,7 @@ class FileDates {
 	/**
 	 * Changes when the way embedded dates are read changes, so stored dates are recomputed.
 	 */
-	private const EMBEDDED_VERSION = 'e1';
+	private const EMBEDDED_VERSION = 'e2';
 
 	private const FORMAT = 'Y-m-d H:i:s';
 
@@ -106,6 +106,27 @@ class FileDates {
 	}
 
 	/**
+	 * The date a name gives, with its time refined by the file when the name has a day only.
+	 *
+	 * A day alone is placed at the median time of the day. When the file says the same day
+	 * (the capture date of a photo, the creation date of a video) its time is used instead,
+	 * so a file named after its day sorts in the order it was taken. When the days differ, for
+	 * example a video assembled later, the median time is kept: the name is the user's statement
+	 * of the day.
+	 *
+	 * @param array{date:DateTimeImmutable, precision:string} $name
+	 */
+	public static function refineTime( array $name, ?DateTimeImmutable $embedded, DateTimeZone $timezone ): DateTimeImmutable {
+		if ( NamePattern::PRECISION_DAY !== $name['precision'] || null === $embedded ) {
+			return $name['date'];
+		}
+
+		$local = $embedded->setTimezone( $timezone );
+
+		return $local->format( 'Y-m-d' ) === $name['date']->setTimezone( $timezone )->format( 'Y-m-d' ) ? $local : $name['date'];
+	}
+
+	/**
 	 * @param NamePattern[] $patterns
 	 * @return array{date:DateTimeImmutable, precision:string}|null
 	 */
@@ -128,10 +149,11 @@ class FileDates {
 	public static function effective( string $name, ?int $mtime, array $patterns, bool $mtimeFallback, DateTimeZone $timezone, int $now, ?DateTimeImmutable $embedded = null ): array {
 		$found = self::nameDate( $name, $patterns, $timezone, $now );
 		if ( null !== $found ) {
-			$formatted = self::format( $found['date'], $timezone );
+			$named     = self::format( $found['date'], $timezone );
+			$formatted = self::format( self::refineTime( $found, $embedded, $timezone ), $timezone );
 
 			return [
-				'name_date' => $formatted['local'],
+				'name_date' => $named['local'],
 				'precision' => $found['precision'],
 				'local'     => $formatted['local'],
 				'gmt'       => $formatted['gmt'],

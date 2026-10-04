@@ -130,4 +130,18 @@ class AttachmentDateTest extends TestCase {
 		$this->assertSame( '2026-10-02 12:00:00', $date['local'] );
 		$this->assertSame( '2026-10-01 23:00:00', $date['gmt'] );
 	}
+
+	public function test_a_name_with_a_day_only_takes_the_time_of_the_capture_on_the_same_day(): void {
+		$capture = strtotime( '2026-10-02 18:45:10 UTC' ); // Camera clock time, read as site time.
+
+		$same = AttachmentDate::resolve( $capture, null, 'trip-20261002.jpg', null, $this->paris, $this->now );
+		$this->assertSame( '2026-10-02 18:45:10', $same['local'] );
+		$this->assertSame( 'filename', $same['source'] );
+
+		$other = AttachmentDate::resolve( $capture, null, 'trip-20260920.jpg', null, $this->paris, $this->now );
+		$this->assertSame( '2026-09-20 12:00:00', $other['local'] );
+
+		$withTime = AttachmentDate::resolve( $capture, null, 'trip-20261002_080000.jpg', null, $this->paris, $this->now );
+		$this->assertSame( '2026-10-02 08:00:00', $withTime['local'] );
+	}
 }

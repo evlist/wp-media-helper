@@ -166,4 +166,21 @@ class NamePatternTest extends TestCase {
 		$this->assertNotSame( FileDates::configHash( [ 'name_patterns' => [ 'a{date:Ymd}' ] ] ), FileDates::configHash( [ 'name_patterns' => [ 'b{date:Ymd}' ] ] ) );
 		$this->assertSame( FileDates::configHash( [ 'filter_pattern' => '{date:Ymd}' ] ), FileDates::configHash( [ 'name_patterns' => [ '{date:Ymd}' ] ] ) );
 	}
+
+	public function test_the_time_of_a_file_refines_a_day_only_name_on_the_same_day_only(): void {
+		$day  = [ 'date' => new DateTimeImmutable( '2026-10-02 12:00:00', $this->paris ), 'precision' => 'day' ];
+		$time = [ 'date' => new DateTimeImmutable( '2026-10-02 08:30:00', $this->paris ), 'precision' => 'second' ];
+		$same = new DateTimeImmutable( '2026-10-02 18:45:10', $this->paris );
+		$other = new DateTimeImmutable( '2026-10-05 18:45:10', $this->paris );
+		$fmt = static fn ( DateTimeImmutable $d ): string => $d->format( 'Y-m-d H:i:s' );
+
+		$this->assertSame( '2026-10-02 18:45:10', $fmt( FileDates::refineTime( $day, $same, $this->paris ) ) );
+		$this->assertSame( '2026-10-02 12:00:00', $fmt( FileDates::refineTime( $day, $other, $this->paris ) ) );
+		$this->assertSame( '2026-10-02 12:00:00', $fmt( FileDates::refineTime( $day, null, $this->paris ) ) );
+		$this->assertSame( '2026-10-02 08:30:00', $fmt( FileDates::refineTime( $time, $same, $this->paris ) ), 'A time in the name is never replaced.' );
+
+		// The same instant seen from another time zone is the same day only in the site's zone.
+		$utc = new DateTimeImmutable( '2026-10-02 22:30:00', new DateTimeZone( 'UTC' ) ); // 00:30 on the 3rd in Paris.
+		$this->assertSame( '2026-10-02 12:00:00', $fmt( FileDates::refineTime( $day, $utc, $this->paris ) ) );
+	}
 }

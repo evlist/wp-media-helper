@@ -148,12 +148,19 @@ Done:
   indexed, or when its size or time changed, only if the name has no date; the result is stored
   (`embedded_date`, `embedded_state` 1 read / 2 none) so changing the patterns recomputes the
   dates without opening the files again. The date source of the index is `embedded`.
+- **Refining the median time** of a name that has a day only (`FileDates::refineTime`): when
+  the capture date of the photo (or the creation date of a video, at registration) falls on
+  the **same day in site time**, its time replaces 12:00:00; when the days differ (a video
+  assembled later) the median time is kept, and the capture date never moves a file named
+  with a day. A name with a time is never changed. Such photos are now opened once at
+  indexing, like those without a date in the name; `name_date` keeps the median time and
+  `effective_date` has the refined one. Registration (`AttachmentDate`) follows the same rule,
+  so the panel and the Media Library agree.
 
 Not done yet:
 
 - Embedded dates of **video, audio and GPX**, and the bounded XML reader they need.
 - The **date set by the user** (`date_override`, a *Set date* action).
-- The embedded time **refining** the median time of a name that has a day only.
 - A per-source **time zone**.
 - Showing the **date and its source** for an item in the panel (the index stores the source).
 - A cap on the number of photos opened per scan run: a directory with thousands of new photos

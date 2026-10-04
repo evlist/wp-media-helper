@@ -48,7 +48,9 @@ The effective date of a file is, in this order:
 1. a date written in its **name**: first the source's *name date pattern* (for
    example `{date:Ymd}`, `IMG_{date:Ymd}_{date:His}`), then the generic forms
    (`20261002_121549`, `2026-10-02`, `2026-10-02 12.15.49`). The time is read when
-   there is one; a date alone is placed at 12:00:00 site time;
+   there is one; a date alone is placed at 12:00:00 site time, unless the file itself
+   (the capture date of a photo) gives a time on that same day, which then replaces the
+   median time (a capture on another day changes nothing: the name states the day);
 2. for a **photo** (JPEG, TIFF) whose name has no date, its **capture date** (IPTC
    creation date, else EXIF), read once when the file is indexed and read again
    only if its size or time changed (slice 026). EXIF has no time zone, so the
@@ -172,8 +174,8 @@ places files on misleading days.
 ## 5. Known limitations of the current version
 
 - Dates embedded in videos, audio and GPX files are not read, and the user cannot set
-  a date (rest of slice 026). Photos with a date in their name are not opened, so
-  their capture time does not refine the median time of the name.
+  a date (rest of slice 026). Videos and GPX files do not refine the median time of a
+  name with a day only at indexing (a video registered as an attachment does).
 - A file's source of date is stored in the index but not shown, and the order is
   fixed.
 - Modification times can be changed by copies and synchronisation.
@@ -200,9 +202,9 @@ files, and the target library of about 5,000 directories and 110,000 files.
 
 **Still open.**
 
-- When the name gives a day without a time and the embedded metadata gives a time
-  on the same day, whether to refine the median time with the embedded one (and keep
-  12:00:00 when the days differ, as for a video assembled later).
+- (Decided, slice 026.) When the name gives a day without a time and the embedded
+  metadata gives a time on the same day, the embedded time is used; it is ignored when
+  the days differ, as for a video assembled later.
 - A date range or a tolerance, for photos taken around midnight (the response
   already has an unused `date_range`).
 - Whether the attachment date should be recomputed when the index learns a better

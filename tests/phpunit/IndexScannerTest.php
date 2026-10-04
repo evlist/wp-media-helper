@@ -368,15 +368,38 @@ class IndexScannerTest extends TestCase {
 		$this->assertSame( [ 'cam.jpg', 'cam.jpg' ], $reads );
 	}
 
-	public function test_a_photo_with_a_date_in_its_name_is_never_opened(): void {
-		touch( $this->root . '/2026/10/02/holiday-20260720.jpg' );
+	public function test_a_photo_whose_name_has_a_date_and_a_time_is_never_opened(): void {
+		touch( $this->root . '/2026/10/02/holiday-20260720_101500.jpg' );
 		$this->age();
 		$reads = [];
-		$scanner = $this->embeddedScanner( [ 'holiday-20260720.jpg' => strtotime( '2026-08-15 10:00:00 UTC' ) ], $reads );
-		// The generic recogniser finds the date in the name: the file is never opened.
+		$scanner = $this->embeddedScanner( [ 'holiday-20260720_101500.jpg' => strtotime( '2026-08-15 10:00:00 UTC' ) ], $reads );
+
 		$scanner->scan( $this->source(), 1, new ScanBudget( 30 ) );
 
 		$this->assertSame( [], $reads );
-		$this->assertContains( 'holiday-20260720.jpg', $this->day( '2026-07-20' ) );
+		$this->assertContains( 'holiday-20260720_101500.jpg', $this->day( '2026-07-20' ) );
+	}
+
+	public function test_a_name_with_a_day_only_takes_its_time_from_the_photo_when_the_day_is_the_same(): void {
+		touch( $this->root . '/2026/10/02/trip-20260720.jpg' );
+		touch( $this->root . '/2026/10/02/later-20260720.jpg' );
+		$this->age();
+		$reads = [];
+		$scanner = $this->embeddedScanner( [
+			'trip-20260720.jpg'  => strtotime( '2026-07-20 16:45:10 UTC' ),
+			'later-20260720.jpg' => strtotime( '2026-08-15 10:00:00 UTC' ),
+		], $reads );
+
+		$scanner->scan( $this->source(), 1, new ScanBudget( 30 ) );
+
+		$rows = [];
+		foreach ( $this->store->filesForDay( [ 's' ], '2026-07-20' ) as $row ) {
+			$rows[ $row['name'] ] = $row;
+		}
+		$this->assertSame( '2026-07-20 16:45:10', $rows['trip-20260720.jpg']['effective_date'], 'The time of the photo refines the median time.' );
+		$this->assertSame( 'name', $rows['trip-20260720.jpg']['date_source'], 'The day still comes from the name.' );
+		$this->assertSame( '2026-07-20 12:00:00', $rows['trip-20260720.jpg']['name_date'] );
+		$this->assertSame( '2026-07-20 12:00:00', $rows['later-20260720.jpg']['effective_date'], 'A photo of another day keeps the median time: the name is the statement of the day.' );
+		$this->assertSame( [], $this->day( '2026-08-15' ), 'The capture date never moves a file named with a day.' );
 	}
 }

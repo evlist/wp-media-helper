@@ -14,7 +14,8 @@ use DateTimeZone;
  * also covers files without metadata and videos assembled by a tool that writes
  * unrelated metadata), the capture date of an image, the creation date of a video
  * or audio file, the modification time when the source allows it, then the current
- * time. The name and the modification time follow the same rule as the file index
+ * time. A name with a day only takes its time from the capture or creation date when
+ * that falls on the same day. The name and the modification time follow the same rule as the file index
  * ({@see FileDates}).
  */
 class AttachmentDate {
@@ -39,20 +40,25 @@ class AttachmentDate {
 	public static function resolve( ?int $captureWallClock, ?int $mediaInstant, string $basename, ?int $mtime, DateTimeZone $timezone, int $now, ?array $source = null ): array {
 		$source = $source ?? [];
 
+		$capture = null;
+		if ( FileDates::isPlausible( $captureWallClock, $now ) ) {
+			$date    = DateTimeImmutable::createFromFormat( self::FORMAT, gmdate( self::FORMAT, (int) $captureWallClock ), $timezone );
+			$capture = false === $date ? null : $date;
+		}
+		$media = FileDates::isPlausible( $mediaInstant, $now ) ? new DateTimeImmutable( '@' . (int) $mediaInstant ) : null;
+
+		// A name with a day only takes its time from the file when the file says the same day.
 		$name = FileDates::nameDate( $basename, FileDates::patterns( $source ), $timezone, $now );
 		if ( null !== $name ) {
-			return self::format( $name['date'], $timezone, self::SOURCE_FILENAME );
+			return self::format( FileDates::refineTime( $name, $capture ?? $media, $timezone ), $timezone, self::SOURCE_FILENAME );
 		}
 
-		if ( FileDates::isPlausible( $captureWallClock, $now ) ) {
-			$date = DateTimeImmutable::createFromFormat( self::FORMAT, gmdate( self::FORMAT, (int) $captureWallClock ), $timezone );
-			if ( false !== $date ) {
-				return self::format( $date, $timezone, self::SOURCE_CAPTURE );
-			}
+		if ( null !== $capture ) {
+			return self::format( $capture, $timezone, self::SOURCE_CAPTURE );
 		}
 
-		if ( FileDates::isPlausible( $mediaInstant, $now ) ) {
-			return self::format( new DateTimeImmutable( '@' . (int) $mediaInstant ), $timezone, self::SOURCE_MEDIA );
+		if ( null !== $media ) {
+			return self::format( $media, $timezone, self::SOURCE_MEDIA );
 		}
 
 		if ( FileDates::usesMtimeFallback( $source ) && FileDates::isPlausible( $mtime, $now ) ) {

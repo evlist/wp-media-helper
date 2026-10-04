@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use WP_Media_Helper\Admin\MediaPanelState;
 use WP_Media_Helper\MediaSource\FileDates;
+use WP_Media_Helper\MediaSource\NamePattern;
 use WP_Media_Helper\MediaSource\PathConfinement;
 use WP_Media_Helper\Settings\SourceOwnership;
 
@@ -322,7 +323,7 @@ class IndexScanner {
 
 	/**
 	 * The date embedded in a file: read from the content only for an image whose name
-	 * has no date, and only when it was never read or when its size or time changed.
+	 * has no date or a day only, and only when it was never read or when its size or time changed.
 	 * What was read is kept in the index (`embedded_state`: 0 not read, 1 read, 2 none), so a
 	 * change of the patterns recomputes the dates without opening the files again.
 	 *
@@ -337,7 +338,7 @@ class IndexScanner {
 
 		$changed = null !== $row && ( (int) $row['size'] !== $file['size'] || (int) $row['mtime'] !== $file['mtime'] );
 		$wanted  = 'image' === $kind && null !== $this->embeddedReader && 1 === preg_match( '/\.(jpe?g|tiff?)$/i', $name );
-		if ( $wanted && ( 0 === $state || $changed ) && null === FileDates::nameDate( $name, $context['patterns'], $this->timezone, $this->now() ) ) {
+		if ( $wanted && ( 0 === $state || $changed ) && $this->needsEmbedded( $name, $context ) ) {
 			$timestamp = ( $this->embeddedReader )( $file['path'] );
 			// The reader gives the local clock time as if it were UTC, like the core reader.
 			$stored = is_int( $timestamp ) && $timestamp > 0 ? gmdate( 'Y-m-d H:i:s', $timestamp ) : null;
@@ -347,6 +348,18 @@ class IndexScanner {
 		$date = null === $stored ? null : DateTimeImmutable::createFromFormat( 'Y-m-d H:i:s', $stored, $this->timezone );
 
 		return [ 'date' => false === $date ? null : $date, 'stored' => $stored, 'state' => $state ];
+	}
+
+	/**
+	 * Whether the content of the file is needed: the name has no date, or a day only
+	 * (the capture time then refines the median time).
+	 *
+	 * @param array<string, mixed> $context
+	 */
+	private function needsEmbedded( string $name, array $context ): bool {
+		$found = FileDates::nameDate( $name, $context['patterns'], $this->timezone, $this->now() );
+
+		return null === $found || NamePattern::PRECISION_DAY === $found['precision'];
 	}
 
 	/**
