@@ -7,6 +7,7 @@ namespace WP_Media_Helper\Admin;
 use InvalidArgumentException;
 use WP_Media_Helper\MediaSource\PathConfinement;
 use WP_Media_Helper\Index\DayIndex;
+use WP_Media_Helper\Maintenance\Reset;
 use WP_Media_Helper\Settings\AllowedBase;
 use WP_Media_Helper\Settings\ExternalSourceSettings;
 use WP_Media_Helper\Settings\GeneralSettings;
@@ -23,6 +24,7 @@ class ExternalSourceSettingsPage {
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueueAssets' ] );
 		add_action( 'admin_post_wp_media_helper_save_external_sources', [ $this, 'save' ] );
 		add_action( 'admin_post_wp_media_helper_rescan', [ $this, 'rescan' ] );
+		add_action( 'admin_post_wp_media_helper_reset', [ $this, 'reset' ] );
 	}
 
 	public function register(): void {
@@ -210,6 +212,29 @@ class ExternalSourceSettingsPage {
 				<p class="submit">
 					<button type="button" id="wp-media-helper-add-source" class="button"><?php esc_html_e( 'Add source', 'wp-media-helper' ); ?></button>
 					<button type="submit" class="button button-primary"><?php esc_html_e( 'Save changes', 'wp-media-helper' ); ?></button>
+				</p>
+			</form>
+
+			<h2><?php esc_html_e( 'Reset', 'wp-media-helper' ); ?></h2>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="wp-media-helper-reset">
+				<input type="hidden" name="action" value="wp_media_helper_reset" />
+				<?php wp_nonce_field( 'wp_media_helper_reset' ); ?>
+				<p class="description"><?php esc_html_e( 'Remove what this plugin stored, to start again from nothing. Media files and the files of your sources are never deleted; only thumbnails are.', 'wp-media-helper' ); ?></p>
+				<fieldset>
+					<?php foreach ( $this->resetChoices() as $item => $choice ) : ?>
+						<p>
+							<label>
+								<input type="checkbox" name="reset_items[]" value="<?php echo esc_attr( $item ); ?>" <?php checked( $choice['default'] ); ?> />
+								<strong><?php echo esc_html( $choice['label'] ); ?></strong>
+								<span class="description"> &mdash; <?php echo esc_html( $choice['description'] ); ?></span>
+							</label>
+						</p>
+					<?php endforeach; ?>
+				</fieldset>
+				<p>
+					<label for="wp-media-helper-reset-confirm"><?php esc_html_e( 'Type RESET to confirm', 'wp-media-helper' ); ?></label>
+					<input id="wp-media-helper-reset-confirm" type="text" name="confirm" class="small-text" autocomplete="off" />
+					<button type="submit" class="button button-secondary"><?php esc_html_e( 'Reset the selected items', 'wp-media-helper' ); ?></button>
 				</p>
 			</form>
 		</div>
@@ -662,6 +687,59 @@ class ExternalSourceSettingsPage {
 	/**
 	 * Asks for a full scan of a source, run in the background.
 	 */
+	/**
+	 * What can be reset, in the order shown.
+	 *
+	 * @return array<string, array{label:string, description:string, default:bool}>
+	 */
+	private function resetChoices(): array {
+		return [
+			Reset::SETTINGS    => [ 'label' => __( 'Settings and sources', 'wp-media-helper' ), 'description' => __( 'the list of sources and the general settings', 'wp-media-helper' ), 'default' => true ],
+			Reset::INDEX       => [ 'label' => __( 'File index', 'wp-media-helper' ), 'description' => __( 'the index tables, the scan state and the scheduled scans (rebuilt when a source is added)', 'wp-media-helper' ), 'default' => true ],
+			Reset::USER_DATA   => [ 'label' => __( 'Dates and preferences', 'wp-media-helper' ), 'description' => __( 'the date of each post, and the filters and panel mode of each user', 'wp-media-helper' ), 'default' => true ],
+			Reset::THUMBNAILS  => [ 'label' => __( 'Thumbnails of imported media', 'wp-media-helper' ), 'description' => __( 'the cached sizes of the attachments imported by this plugin', 'wp-media-helper' ), 'default' => true ],
+			Reset::CACHE       => [ 'label' => __( 'The whole thumbnail cache', 'wp-media-helper' ), 'description' => __( 'every file of the cache directory, including previews of files never imported and files written by other tools such as Thumbnails Folder', 'wp-media-helper' ), 'default' => false ],
+			Reset::ATTACHMENTS => [ 'label' => __( 'Media imported by this plugin', 'wp-media-helper' ), 'description' => __( 'removes them from the Media Library (the files stay on disk) and detaches them from their posts', 'wp-media-helper' ), 'default' => false ],
+		];
+	}
+
+	public function reset(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You are not allowed to do this.', 'wp-media-helper' ), 403 );
+		}
+		check_admin_referer( 'wp_media_helper_reset' );
+
+		if ( 'RESET' !== trim( (string) wp_unslash( $_POST['confirm'] ?? '' ) ) ) {
+			wp_safe_redirect( add_query_arg( 'reset_confirm', '1', $this->pageUrl() ) );
+			exit;
+		}
+
+		$items  = array_map( 'sanitize_key', (array) wp_unslash( $_POST['reset_items'] ?? [] ) );
+		$report = Reset::run( $items );
+		set_transient( 'wp_media_helper_reset_report_' . get_current_user_id(), $report, 5 * MINUTE_IN_SECONDS );
+
+		wp_safe_redirect( add_query_arg( 'reset', '1', $this->pageUrl() ) );
+		exit;
+	}
+
+	private function resetMessage(): string {
+		$key    = 'wp_media_helper_reset_report_' . get_current_user_id();
+		$report = get_transient( $key );
+		delete_transient( $key );
+		if ( ! is_array( $report ) || [] === $report ) {
+			return __( 'Nothing was selected, so nothing was reset.', 'wp-media-helper' );
+		}
+
+		$labels = $this->resetChoices();
+		$parts  = [];
+		foreach ( $report as $item => $count ) {
+			$parts[] = sprintf( '%s: %d', $labels[ $item ]['label'] ?? $item, (int) $count );
+		}
+
+		/* translators: %s: list of reset items with a count each. */
+		return sprintf( __( 'Reset done. %s.', 'wp-media-helper' ), implode( '; ', $parts ) );
+	}
+
 	public function rescan(): void {
 		$sourceId = sanitize_text_field( wp_unslash( $_GET['source'] ?? '' ) );
 		if ( ! current_user_can( 'manage_options' ) ) {

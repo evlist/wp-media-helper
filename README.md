@@ -219,6 +219,23 @@ the one used by Thumbnails Folder: its existing files are reused, with its URLs.
   `wp_media_helper_background_thumbnails` (force or prevent the background event) and
   `wp_media_helper_thumbnail_max_pixels` (images larger than 100 megapixels are skipped).
 
+## Reset
+
+The bottom of the settings page has a **Reset** section to start again from nothing
+(tests, a clean configuration). Pick what to remove, type `RESET` and confirm:
+
+| Item | What it removes |
+|------|-----------------|
+| Settings and sources | The list of sources and the general settings |
+| File index | The index tables, the scan state and the scheduled scans (rebuilt when a source is added) |
+| Dates and preferences | The date of each post, and the filters and panel mode of each user |
+| Thumbnails of imported media | The cached sizes of the attachments imported by this plugin |
+| The whole thumbnail cache | Every file of the cache directory, including previews of files never imported and files written by other tools (off by default) |
+| Media imported by this plugin | Removes them from the Media Library, the files stay on disk (off by default) |
+
+Media files and the files of your sources are never deleted; only thumbnails are.
+Only administrators (`manage_options`) can reset, with a nonce and the confirmation word.
+
 ## Pagination
 
 The editor panel never loads every matching file at once. Results are sorted,
