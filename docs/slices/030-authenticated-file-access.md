@@ -3,7 +3,7 @@
 
 # Slice 030: Authenticated access to files and thumbnails
 
-Status: **proposed** (design only, not implemented). Answers residual risks R1 and R12 of the
+Status: **proposed, not scheduled** (design and open questions only, to be taken up later). Answers residual risks R1 and R12 of the
 [security audit](../IA/security-audit.md). Builds on slices
 [021](021-allowed-base-directory.md), [023](023-thumbnails-in-cache.md),
 [024](024-source-priority-and-ownership.md) and [027](027-hidden-files.md).
