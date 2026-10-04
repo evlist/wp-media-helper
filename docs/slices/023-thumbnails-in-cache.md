@@ -221,3 +221,15 @@ Not done (later):
 - A settings screen for the cache directory.
 - Per-target locks: concurrent requests may both create a size; the result is the same
   and the rename is atomic.
+
+### Previews in the editor panel (added)
+
+The panel lists files that may have no attachment, so a preview cannot come from
+`image_downsize`. `PanelThumbnail` gives each listed image the URL of its `thumbnail`
+size in the cache (same layout, so import reuses it), or, when missing, the URL of an
+**authenticated** AJAX endpoint (nonce, `upload_files`, path resolved to an active source
+by the ownership rules, images only, pixel limit) that creates it and sends it. This
+is not the public handler the design rules out: a URL alone, without a session and the
+nonce, creates nothing. The browser loads the rows on screen only (`loading="lazy"`).
+An image that cannot be reduced is sent as it is up to 1 MB; otherwise the preview is
+hidden and the row shows the name only.

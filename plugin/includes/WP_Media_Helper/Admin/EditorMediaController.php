@@ -4,6 +4,8 @@
 
 namespace WP_Media_Helper\Admin;
 
+use WP_Media_Helper\Thumbnails\PanelThumbnail;
+use WP_Media_Helper\Thumbnails\Thumbnails;
 use DateTimeImmutable;
 use WP_Media_Helper\MediaSource\AttachmentRegistrar;
 use WP_Media_Helper\MediaSource\AttachmentRegistry;
@@ -240,6 +242,7 @@ class EditorMediaController {
 		add_action( 'wp_ajax_wp_media_helper_bulk_media', [ $this, 'handleBulk' ] );
 		add_action( 'wp_ajax_wp_media_helper_panel_mode', [ $this, 'handlePanelMode' ] );
 		add_action( 'wp_ajax_wp_media_helper_save_filter', [ $this, 'handleSaveFilter' ] );
+		PanelThumbnail::register();
 	}
 
 	private function makeMediaFilters(): MediaFilters {
@@ -689,7 +692,7 @@ class EditorMediaController {
 		$merged['files'] = MediaPanelState::filterByMediaType( $merged['files'], $filters['media_type'] );
 		$merged['files'] = MediaPanelState::filterByFilename( $merged['files'], $filters['filename'] );
 		$pageData = MediaPanelState::paginate( $merged['files'], $page, $maxEntries );
-		$merged['files'] = $this->enrichOtherPostInfo( $pageData['items'] );
+		$merged['files'] = $this->addThumbnailUrls( $this->enrichOtherPostInfo( $pageData['items'] ) );
 		unset( $pageData['items'] );
 		$merged['pagination'] = $pageData;
 		// Absolute server directories are not exposed to the browser.
@@ -697,6 +700,30 @@ class EditorMediaController {
 		$merged['status'] = $merged['refresh_required'] ? 'stale' : 'fresh';
 		$merged['filters'] = $filters;
 		wp_send_json_success( $merged );
+	}
+
+	/**
+	 * Adds the URL of a preview to the listed images. Only for users who may upload,
+	 * since the preview shows what the file contains.
+	 *
+	 * @param array<int, array<string, mixed>> $files
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function addThumbnailUrls( array $files ): array {
+		if ( ! current_user_can( 'upload_files' ) ) {
+			return $files;
+		}
+
+		$nonce   = wp_create_nonce( PanelThumbnail::NONCE );
+		$service = Thumbnails::serviceForWordPress();
+		foreach ( $files as $index => $file ) {
+			$url = 'image' === ( $file['media_type'] ?? '' ) && ! empty( $file['path'] ) ? PanelThumbnail::urlFor( (string) $file['path'], $nonce, $service ) : null;
+			if ( null !== $url ) {
+				$files[ $index ]['thumbnail_url'] = $url;
+			}
+		}
+
+		return $files;
 	}
 
 	/**

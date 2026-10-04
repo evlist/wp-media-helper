@@ -226,20 +226,26 @@ final class Thumbnails {
 	}
 
 	private function service(): ?ThumbnailService {
-		if ( $this->serviceBuilt ) {
-			return $this->service;
+		if ( ! $this->serviceBuilt ) {
+			$this->serviceBuilt = true;
+			$this->service      = self::serviceForWordPress();
 		}
-		$this->serviceBuilt = true;
 
+		return $this->service;
+	}
+
+	/**
+	 * The service for the uploads directory and the cache of this site, or null when
+	 * there is no usable cache.
+	 */
+	public static function serviceForWordPress(): ?ThumbnailService {
 		$uploads  = wp_upload_dir( null, false );
 		$cacheDir = ThumbnailCache::directory();
 		if ( null === $cacheDir || ! is_array( $uploads ) || empty( $uploads['basedir'] ) || empty( $uploads['baseurl'] ) ) {
 			return null;
 		}
 
-		$this->service = new ThumbnailService( (string) ( realpath( (string) $uploads['basedir'] ) ?: $uploads['basedir'] ), (string) $uploads['baseurl'], $cacheDir, [ self::class, 'resize' ] );
-
-		return $this->service;
+		return new ThumbnailService( (string) ( realpath( (string) $uploads['basedir'] ) ?: $uploads['basedir'] ), (string) $uploads['baseurl'], $cacheDir, [ self::class, 'resize' ] );
 	}
 
 	/**

@@ -44,6 +44,15 @@ final class ThumbnailService {
 		return null !== $path && is_file( $path ) ? $path : null;
 	}
 
+	/**
+	 * The file a size of `$width` x `$height` has in the cache, when it exists.
+	 */
+	public function existingSize( string $relative, int $width, int $height ): ?string {
+		$path = ThumbnailLayout::pathForFile( $this->cacheDir, $relative, ThumbnailLayout::fileName( basename( $relative ), $width, $height ) );
+
+		return null !== $path && is_file( $path ) ? $path : null;
+	}
+
 	public function url( string $path ): ?string {
 		return ThumbnailLayout::url( $this->baseDir, $this->baseUrl, $path );
 	}

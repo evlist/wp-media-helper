@@ -131,6 +131,7 @@
 			other_post_title: item && item.other_post_title ? item.other_post_title : '',
 			other_post_edit_url: item && item.other_post_edit_url ? item.other_post_edit_url : '',
 			media_type: item && item.media_type ? item.media_type : 'other',
+			thumbnail_url: item && item.thumbnail_url ? item.thumbnail_url : '',
 		};
 	};
 
@@ -809,8 +810,24 @@
 												} )
 											),
 											wp.element.createElement( 'td', { style: { padding: '0.4rem', overflowWrap: 'anywhere', verticalAlign: 'top' } },
-												wp.element.createElement( 'strong', { style: { fontSize: '12px' } }, item.name ),
-												wp.element.createElement( 'div', { style: { marginTop: '0.15rem', textTransform: 'uppercase', color: '#50575e', fontSize: '10px' } }, item.type )
+												wp.element.createElement( 'div', { style: { display: 'flex', gap: '0.5rem', alignItems: 'flex-start' } },
+													item.thumbnail_url
+														? wp.element.createElement( 'img', {
+															src: item.thumbnail_url,
+															alt: '',
+															loading: 'lazy',
+															width: 48,
+															height: 48,
+															style: { width: '48px', height: '48px', objectFit: 'cover', borderRadius: '2px', flex: '0 0 auto', background: '#f0f0f1' },
+															// A preview that cannot be made leaves the name alone.
+															onError: function ( event ) { event.target.style.display = 'none'; }
+														} )
+														: null,
+													wp.element.createElement( 'div', { style: { minWidth: 0 } },
+														wp.element.createElement( 'strong', { style: { fontSize: '12px' } }, item.name ),
+														wp.element.createElement( 'div', { style: { marginTop: '0.15rem', textTransform: 'uppercase', color: '#50575e', fontSize: '10px' } }, item.type )
+													)
+												)
 											),
 											wp.element.createElement( 'td', { style: { padding: '0.4rem', verticalAlign: 'top', overflowWrap: 'anywhere' } },
 												item.is_attached_to_other_post
