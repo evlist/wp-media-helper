@@ -57,8 +57,11 @@ thumbnails** over the full width of the panel.
    remembered in the browser, attachment paperclip and corner badges, selection mode (long press,
    Ctrl/Shift+click, *Select* button), infinite scroll, a notice instead of a silent replacement
    when the list changes. Tested in Chromium with a mock of `wp` and a fake server (250 files).
-   For now a click opens a menu with the information and the actions (the detail sheet and the
-   right-click menu are step 3).
+   (A click first opened a menu; the detail sheet and the right-click menu came in step 3.)
+   Width: the gallery is measured when it is attached to the page (the sidebar renders its content
+   when opened) and whenever its width changes, and the layout fills whatever width it gets, from a
+   narrow phone to a wide tablet: full rows end exactly at the edge, a very wide or tall picture
+   is cropped to a shape between 1:2 and 3:1 rather than stretching or squeezing a row.
 3. **Detail sheet and context menu** (done): a click opens a modal sheet (large preview, type,
    dimensions, size, date and its source from the index, source, state, actions, previous/next and
    arrow keys); a right click, the menu key or a ⋮ button (on hover/focus, always on touch screens)

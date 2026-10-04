@@ -309,15 +309,25 @@
 		return 'image' === item.media_type ? 1.5 : 1.25;
 	};
 
+	// The shape a thumbnail is given in the layout. A very wide or very tall picture is cropped
+	// (the image covers its tile) so that no row is stretched or squeezed to an extreme.
+	const MIN_ASPECT = 0.5;
+	const MAX_ASPECT = 3;
+
+	const tileAspect = function ( item ) {
+		return Math.min( MAX_ASPECT, Math.max( MIN_ASPECT, aspectOf( item ) ) );
+	};
+
 	// Rows of `perRow` thumbnails that fill the width, each keeping its proportions: the height of
-	// a row is what makes the widths of its images add up to the available width.
+	// a row is what makes the widths of its images add up to the available width, so a row never
+	// overflows nor leaves a gap, whatever the width of the screen.
 	const layoutRows = function ( items, width, perRow ) {
 		const rows = [];
-		const usable = Math.max( 1, width );
+		const usable = Math.max( 1, Math.floor( width ) );
 
 		for ( let index = 0; index < items.length; index += perRow ) {
 			const group = items.slice( index, index + perRow );
-			const total = group.reduce( function ( sum, item ) { return sum + aspectOf( item ); }, 0 );
+			const total = group.reduce( function ( sum, item ) { return sum + tileAspect( item ); }, 0 );
 			let height = Math.max( 1, usable - GAP * ( group.length - 1 ) ) / total;
 
 			if ( group.length < perRow ) {
@@ -325,10 +335,19 @@
 				height = Math.min( height, ( usable - GAP * ( perRow - 1 ) ) / ( perRow * 1.5 ) );
 			}
 
-			rows.push( {
-				items: group,
-				height: Math.round( Math.max( 48, Math.min( height, usable * 1.2 ) ) ),
-			} );
+			height = Math.max( 1, Math.floor( height ) );
+
+			// Whole pixels: what the rounding leaves goes to the last image of a full row, so that
+			// the row ends exactly at the edge (the picture covers its tile, a pixel or two of crop is invisible).
+			const widths = group.map( function ( item ) { return Math.max( 1, Math.floor( tileAspect( item ) * height ) ); } );
+			if ( group.length === perRow ) {
+				const spare = usable - GAP * ( group.length - 1 ) - widths.reduce( function ( sum, value ) { return sum + value; }, 0 );
+				if ( spare > 0 && spare < group.length * 2 + 2 ) {
+					widths[ widths.length - 1 ] += spare;
+				}
+			}
+
+			rows.push( { items: group, widths: widths, height: height } );
 		}
 
 		return rows;
@@ -419,7 +438,7 @@
 		const [ bulkAction, setBulkAction ] = useState( 'none' );
 		const [ panelMode, setPanelMode ] = useState( defaultPanelMode );
 		const [ density, setDensity ] = useState( readDensity );
-		const [ galleryWidth, setGalleryWidth ] = useState( 260 );
+		const [ galleryWidth, setGalleryWidth ] = useState( 0 );
 		const [ hasNews, setHasNews ] = useState( false );
 		const [ menu, setMenu ] = useState( null );
 		const [ sheetKey, setSheetKey ] = useState( null );
@@ -432,7 +451,7 @@
 		const sequence = useRef( 0 );
 		const loadingMore = useRef( false );
 		const sentinel = useRef( null );
-		const gallery = useRef( null );
+		const [ galleryElement, setGalleryElement ] = useState( null );
 		const longPress = useRef( { timer: null, fired: false } );
 
 		// The editor loads the post asynchronously: on a page reload the stored meta
@@ -634,25 +653,33 @@
 			return function () { observer.disconnect(); };
 		}, [ files.length, pagination.page, pagination.total_pages, loading ] );
 
-		// The width available to the gallery decides the height of its rows.
+		// The width available to the gallery decides the height of its rows. The gallery may be
+		// attached to the page after this component (the sidebar renders its content when it is
+		// opened), so it is observed from the moment it exists, not from the first render.
 		useEffect( function () {
-			const element = gallery.current;
-			if ( ! element ) {
+			if ( ! galleryElement ) {
 				return undefined;
 			}
 
-			setGalleryWidth( element.clientWidth || 260 );
+			const measure = function () {
+				const width = Math.floor( galleryElement.getBoundingClientRect().width );
+				if ( width > 0 ) {
+					setGalleryWidth( width );
+				}
+			};
+
+			measure();
 			if ( 'function' !== typeof window.ResizeObserver ) {
-				return undefined;
+				window.addEventListener( 'resize', measure );
+
+				return function () { window.removeEventListener( 'resize', measure ); };
 			}
 
-			const observer = new window.ResizeObserver( function () {
-				setGalleryWidth( element.clientWidth || 260 );
-			} );
-			observer.observe( element );
+			const observer = new window.ResizeObserver( measure );
+			observer.observe( galleryElement );
 
 			return function () { observer.disconnect(); };
-		}, [] );
+		}, [ galleryElement ] );
 
 		// The style of the "more" buttons, added once.
 		useEffect( function () {
@@ -1039,16 +1066,15 @@
 			}
 		};
 
-		const renderTile = function ( item, row ) {
+		const renderTile = function ( item, row, position ) {
 			const key = itemKey( item );
 			const selected = selectedIds.includes( key );
-			const ratio = aspectOf( item );
 
 			return wp.element.createElement( 'div', {
 				key: key,
 				role: 'listitem',
 				className: 'wpmh-tile',
-				style: { position: 'relative', flex: '0 0 auto', width: Math.floor( ratio * row.height ) + 'px', height: row.height + 'px' }
+				style: { position: 'relative', flex: '0 0 auto', width: row.widths[ position ] + 'px', height: row.height + 'px' }
 			},
 				wp.element.createElement( 'button', {
 					type: 'button',
@@ -1225,7 +1251,7 @@
 		const visibleItems = files.map( function ( file ) {
 			return normalizeMediaItem( file );
 		} );
-		const rows = layoutRows( visibleItems, galleryWidth, density );
+		const rows = galleryWidth > 0 ? layoutRows( visibleItems, galleryWidth, density ) : [];
 		const currentAttachmentScope = filters.attachment_scope || DEFAULT_ATTACHMENT_SCOPE;
 		const currentMediaType = filters.media_type || DEFAULT_MEDIA_TYPE;
 		const currentSourceFilter = filters.source || DEFAULT_SOURCE_FILTER;
@@ -1428,11 +1454,11 @@
 								),
 								wp.element.createElement( Button, { isSecondary: true, disabled: loading || 0 === visibleItems.length, onClick: function () { startSelection( null ); }, text: __( 'Select', 'wp-media-helper' ) } )
 							),
-						wp.element.createElement( 'div', { ref: gallery, role: 'list', 'aria-label': __( 'Media files', 'wp-media-helper' ), style: { display: 'flex', flexDirection: 'column', gap: GAP + 'px', width: '100%' } },
+						wp.element.createElement( 'div', { ref: setGalleryElement, role: 'list', 'aria-label': __( 'Media files', 'wp-media-helper' ), style: { display: 'flex', flexDirection: 'column', gap: GAP + 'px', width: '100%' } },
 							rows.map( function ( row, rowIndex ) {
 								return wp.element.createElement( 'div', { key: rowIndex, role: 'presentation', style: { display: 'flex', gap: GAP + 'px' } },
-									row.items.map( function ( item ) {
-										return renderTile( item, row );
+									row.items.map( function ( item, position ) {
+										return renderTile( item, row, position );
 									} )
 								);
 							} )
