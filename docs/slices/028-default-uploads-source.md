@@ -74,8 +74,7 @@ Other consequences, all acceptable:
 A source rooted at the uploads directory (the one-click source or one added by hand), never lists:
 
 - every directory whose name starts with a dot (already skipped by the scanner);
-- the thumbnail cache directories (slice 024), and the global cache when slice 023
-  exists;
+- the thumbnail cache directories (slice 024), and the global thumbnail cache (slice 023);
 - a **built-in list of private or technical directories**, relative to uploads
   (for example `woocommerce_uploads`, `wc-logs`, `cache`, `backup*`, `ai1wm-backups`,
   `wpforms`, `elementor`, `sucuri`), extensible by the site owner with a filter

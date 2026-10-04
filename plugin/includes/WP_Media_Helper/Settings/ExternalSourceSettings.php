@@ -29,40 +29,30 @@ class ExternalSourceSettings {
 	private ?Closure $allowedBase;
 
 	/**
+	 * @var (Closure(): ?string)|null
+	 */
+	private ?Closure $cacheDirectory;
+
+	/**
 	 * @param Closure(): mixed $loader
 	 * @param Closure(array<mixed>): void $saver
 	 * @param (Closure(): ?string)|null $allowedBase Returns the directory every root must be under, or null for no restriction.
+	 * @param (Closure(): ?string)|null $cacheDirectory Returns the site-wide thumbnail cache directory, which no root may be inside or equal to.
 	 */
-	public function __construct( Closure $loader, Closure $saver, ?Closure $allowedBase = null ) {
-		$this->loader      = $loader;
-		$this->saver       = $saver;
-		$this->allowedBase = $allowedBase;
+	public function __construct( Closure $loader, Closure $saver, ?Closure $allowedBase = null, ?Closure $cacheDirectory = null ) {
+		$this->loader         = $loader;
+		$this->saver          = $saver;
+		$this->allowedBase    = $allowedBase;
+		$this->cacheDirectory = $cacheDirectory;
 	}
 
 	/**
-	 * Whether a source may be used: its root, and its thumbnail cache when it
-	 * has one, are inside the allowed base directory.
+	 * Whether a source may be used: its root is inside the allowed base directory.
 	 *
 	 * @param array<string, mixed> $source
 	 */
 	public function isSourceAllowed( array $source ): bool {
-		if ( ! $this->isRootAllowed( (string) ( $source['root'] ?? '' ) ) ) {
-			return false;
-		}
-
-		$cache = trim( (string) ( $source['thumbnail_cache'] ?? '' ) );
-
-		return '' === $cache || $this->isCacheAllowed( $cache );
-	}
-
-	/**
-	 * Whether a thumbnail cache directory (which may not exist yet) is inside
-	 * the allowed base directory.
-	 */
-	public function isCacheAllowed( string $cache ): bool {
-		$base = null === $this->allowedBase ? null : ( $this->allowedBase )();
-
-		return null === $base || AllowedBase::containsDirectory( $base, $cache );
+		return $this->isRootAllowed( (string) ( $source['root'] ?? '' ) );
 	}
 
 	/**
@@ -128,26 +118,13 @@ class ExternalSourceSettings {
 				$entryErrors['name'] = __( 'Name is required.', 'wp-media-helper' );
 			}
 
-			$rootIsWritable = false;
 			if ( '' === $root ) {
 				$entryErrors['root'] = __( 'Root directory is required.', 'wp-media-helper' );
 			} else {
 				$rootError = $this->validateRootDirectory( $root, $enforceAllowedBase );
 				if ( null !== $rootError ) {
 					$entryErrors['root'] = $rootError;
-				} else {
-					$rootIsWritable = is_writable( $root );
 				}
-			}
-
-			$thumbnailCache = trim( (string) ( $source['thumbnail_cache'] ?? '' ) );
-			if ( '' !== $thumbnailCache ) {
-				$cacheError = $this->validateThumbnailCache( $thumbnailCache, $enforceAllowedBase );
-				if ( null !== $cacheError ) {
-					$entryErrors['thumbnail_cache'] = $cacheError;
-				}
-			} elseif ( SourceState::ACTIVE === SourceState::of( $source ) && ! isset( $entryErrors['root'] ) && ! $rootIsWritable ) {
-				$entryErrors['thumbnail_cache'] = __( 'A thumbnail cache directory is required because the root directory is read-only.', 'wp-media-helper' );
 			}
 
 			if ( '' !== $path ) {
@@ -184,43 +161,35 @@ class ExternalSourceSettings {
 	}
 
 	/**
-	 * Roots and thumbnail caches may overlap only in one way: a cache may lie inside
-	 * a root, because ownership excludes it from the listing. Two sources cannot
-	 * share a root, and no root may be inside or equal to a cache.
+	 * Roots may be nested, but two sources cannot share a root, and no root may be
+	 * inside or equal to the thumbnail cache (the cache itself may lie inside a root:
+	 * ownership keeps it out of every listing).
 	 *
 	 * @param array<int, mixed> $sources
 	 * @return array<int, array<string, string>>
 	 */
 	private function findOverlapErrors( array $sources ): array {
-		$roots  = [];
-		$caches = [];
+		$cache = null === $this->cacheDirectory ? null : ( $this->cacheDirectory )();
+		$cache = null === $cache ? null : AllowedBase::resolveDirectory( $cache );
+
+		$errors = [];
+		$seen   = [];
 		foreach ( $sources as $index => $source ) {
 			if ( ! is_array( $source ) ) {
 				continue;
 			}
 			$root = realpath( trim( (string) ( $source['root'] ?? '' ) ) );
-			if ( false !== $root && is_dir( $root ) ) {
-				$roots[ $index ] = $root;
+			if ( false === $root || ! is_dir( $root ) ) {
+				continue;
 			}
-			$cache = trim( (string) ( $source['thumbnail_cache'] ?? '' ) );
-			$real  = '' === $cache ? null : AllowedBase::resolveDirectory( $cache );
-			if ( null !== $real ) {
-				$caches[ $index ] = $real;
-			}
-		}
 
-		$errors = [];
-		$seen   = [];
-		foreach ( $roots as $index => $root ) {
 			if ( isset( $seen[ $root ] ) ) {
 				$errors[ $index ]['root'] = __( 'This root directory is already used by another source.', 'wp-media-helper' );
 			}
 			$seen[ $root ] = true;
 
-			foreach ( $caches as $cacheIndex => $cache ) {
-				if ( $root === $cache || PathConfinement::isWithin( $cache, $root ) ) {
-					$errors[ $cacheIndex ]['thumbnail_cache'] = __( 'A thumbnail cache directory cannot be, or contain, the root directory of a source.', 'wp-media-helper' );
-				}
+			if ( null !== $cache && ( $root === $cache || PathConfinement::isWithin( $cache, $root ) ) ) {
+				$errors[ $index ]['root'] = __( 'Root directory cannot be, or be inside, the thumbnail cache directory.', 'wp-media-helper' );
 			}
 		}
 
@@ -337,29 +306,6 @@ class ExternalSourceSettings {
 			);
 		}
 
-		$thumbnailCache = trim( (string) ( $source['thumbnail_cache'] ?? '' ) );
-		if ( '' !== $thumbnailCache ) {
-			$cacheError = $this->validateThumbnailCache( $thumbnailCache, true );
-			if ( null !== $cacheError ) {
-				throw new InvalidArgumentException(
-					sprintf(
-						/* translators: 1: source name, 2: validation message. */
-						__( 'External source "%1$s": %2$s', 'wp-media-helper' ),
-						$name,
-						$cacheError
-					)
-				);
-			}
-		} elseif ( SourceState::ACTIVE === SourceState::of( $source ) && ! is_writable( $root ) ) {
-			throw new InvalidArgumentException(
-				sprintf(
-					/* translators: %s: source name. */
-					__( 'External source "%s" is read-only and must define a thumbnail cache directory.', 'wp-media-helper' ),
-					$name
-				)
-			);
-		}
-
 		$filter = trim( (string) ( $source['filter_pattern'] ?? '' ) );
 
 		foreach ( [ 'path_pattern' => $path, 'filter_pattern' => $filter ] as $field => $value ) {
@@ -415,7 +361,6 @@ class ExternalSourceSettings {
 			'path_pattern' => $path,
 			'filter_pattern' => trim( (string) ( $source['filter_pattern'] ?? '' ) ),
 			'mtime_fallback' => filter_var( $source['mtime_fallback'] ?? true, FILTER_VALIDATE_BOOLEAN ),
-			'thumbnail_cache' => trim( (string) ( $source['thumbnail_cache'] ?? '' ) ),
 		];
 	}
 
@@ -453,43 +398,6 @@ class ExternalSourceSettings {
 				__( 'Root directory must be a sub-directory of %s.', 'wp-media-helper' ),
 				$base
 			);
-		}
-
-		return null;
-	}
-
-	/**
-	 * Checks that a thumbnail cache directory is writable, or can be created.
-	 */
-	private function validateThumbnailCache( string $cache, bool $enforceAllowedBase = true ): ?string {
-		if ( ! str_starts_with( $cache, '/' ) ) {
-			return __( 'Thumbnail cache directory must be an absolute path.', 'wp-media-helper' );
-		}
-
-		if ( $enforceAllowedBase && ! $this->isCacheAllowed( $cache ) ) {
-			$base = null === $this->allowedBase ? '' : (string) ( $this->allowedBase )();
-
-			return sprintf(
-				/* translators: %s: allowed base directory path. */
-				__( 'Thumbnail cache directory must be a sub-directory of %s.', 'wp-media-helper' ),
-				$base
-			);
-		}
-
-		if ( file_exists( $cache ) ) {
-			if ( ! is_dir( $cache ) ) {
-				return __( 'Thumbnail cache path is not a directory.', 'wp-media-helper' );
-			}
-
-			if ( ! is_writable( $cache ) ) {
-				return __( 'Thumbnail cache directory is not writable.', 'wp-media-helper' );
-			}
-
-			return null;
-		}
-
-		if ( ! is_writable( dirname( $cache ) ) ) {
-			return __( 'Thumbnail cache directory is not writable or creatable.', 'wp-media-helper' );
 		}
 
 		return null;

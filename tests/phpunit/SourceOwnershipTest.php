@@ -51,8 +51,8 @@ class SourceOwnershipTest extends TestCase {
 	public function test_a_broad_source_after_a_narrow_one_does_not_list_its_tree_nor_the_cache(): void {
 		$listing = SourceOwnership::listing( [
 			$this->source( 'photos', 'uploads/photos' ),
-			$this->source( 'uploads', 'uploads', [ 'thumbnail_cache' => $this->base . '/uploads/thumbnails' ] ),
-		] );
+			$this->source( 'uploads', 'uploads' ),
+		], null, $this->base . '/uploads/thumbnails' );
 
 		$this->assertSame( [ 'photos' => [], 'uploads' => [ 'uploads/photos', 'uploads/thumbnails' ] ], $this->exclusions( $listing ) );
 	}
@@ -95,8 +95,8 @@ class SourceOwnershipTest extends TestCase {
 
 	public function test_a_cache_around_a_source_removes_all_of_it(): void {
 		$listing = SourceOwnership::listing( [
-			$this->source( 'photos', 'uploads/photos', [ 'thumbnail_cache' => $this->base . '/uploads' ] ),
-		] );
+			$this->source( 'photos', 'uploads/photos' ),
+		], null, $this->base . '/uploads' );
 
 		$this->assertSame( [ 'photos' => [ 'uploads/photos' ] ], $this->exclusions( $listing ) );
 	}

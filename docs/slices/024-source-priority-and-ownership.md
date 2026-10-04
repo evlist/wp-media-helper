@@ -178,11 +178,11 @@ by skipping owned trees.
   file nobody lists is refused (also when its owner is Excluded or Disabled).
 - A root may be the allowed base (typed `.` in the form). Two sources cannot share a
   root. A cache cannot be or contain a root; it may be inside one.
-- A read-only root needs a thumbnail cache only for an Active source.
 - The settings page shows the priority number, up/down buttons, a state menu and a
   warning for shadowed sources.
 - Decided on the open questions: an Excluded source's root must exist and be inside
   the allowed base, like any other (simplest rule); states are Active / Disabled /
   Excluded; reordering uses buttons.
-- Not done: the index directory exclusion (the index is in the database) and the global
-  thumbnail cache (slice 023): every configured cache directory is excluded for now.
+- Update (slice 023): the per-source thumbnail cache is gone. The one global cache
+  directory is excluded from every listing, and no root may be inside or equal to it.
+  The index directory exclusion is moot (the index is in the database).

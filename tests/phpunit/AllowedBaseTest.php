@@ -134,17 +134,6 @@ class AllowedBaseTest extends TestCase {
 		$this->assertSame( '/var/www/media', AllowedBase::toRelative( null, '/var/www/media' ) );
 	}
 
-	public function test_a_thumbnail_cache_outside_the_base_is_rejected(): void {
-		$settings = $this->settings( $this->base . '/uploads' );
-		$cache = $this->base . '/uploads/new-cache';
-
-		$errors = $settings->validateSources( [ [ 'name' => 'A', 'root' => $this->inside, 'thumbnail_cache' => $this->base . '/cache-outside' ] ] );
-		$this->assertArrayHasKey( 'thumbnail_cache', $errors[0] );
-		$this->assertStringContainsString( $this->base . '/uploads', $errors[0]['thumbnail_cache'] );
-
-		$this->assertSame( [], $settings->validateSources( [ [ 'name' => 'A', 'root' => $this->inside, 'thumbnail_cache' => $cache ] ] ) );
-	}
-
 	public function test_a_not_yet_created_cache_cannot_escape_the_base_through_dot_dot(): void {
 		$base = $this->base . '/uploads';
 
@@ -155,12 +144,10 @@ class AllowedBaseTest extends TestCase {
 		$this->assertFalse( AllowedBase::containsDirectory( $base, $base ) );
 	}
 
-	public function test_is_source_allowed_checks_root_and_cache(): void {
+	public function test_is_source_allowed_checks_the_root(): void {
 		$settings = $this->settings( $this->base . '/uploads' );
 
 		$this->assertTrue( $settings->isSourceAllowed( [ 'root' => $this->inside ] ) );
-		$this->assertTrue( $settings->isSourceAllowed( [ 'root' => $this->inside, 'thumbnail_cache' => $this->base . '/uploads/cache' ] ) );
-		$this->assertFalse( $settings->isSourceAllowed( [ 'root' => $this->inside, 'thumbnail_cache' => $this->base . '/cache-outside' ] ) );
 		$this->assertFalse( $settings->isSourceAllowed( [ 'root' => $this->outside ] ) );
 	}
 }

@@ -12,6 +12,7 @@ use WP_Media_Helper\Settings\ExternalSourceSettings;
 use WP_Media_Helper\Settings\GeneralSettings;
 use WP_Media_Helper\Settings\SourceOwnership;
 use WP_Media_Helper\Settings\SourceState;
+use WP_Media_Helper\Thumbnails\ThumbnailCache;
 
 class ExternalSourceSettingsPage {
 
@@ -73,7 +74,7 @@ class ExternalSourceSettingsPage {
 		$shadowed = SourceOwnership::shadowed( $sources );
 		$exposedUrls = [];
 		foreach ( $sources as $source ) {
-			foreach ( [ 'root', 'thumbnail_cache' ] as $field ) {
+			foreach ( [ 'root' ] as $field ) {
 				$url = is_array( $source ) && '' !== trim( (string) ( $source[ $field ] ?? '' ) ) ? $this->publicUrlFor( (string) $source[ $field ] ) : null;
 				if ( null !== $url ) {
 					$exposedUrls[] = $url;
@@ -113,7 +114,7 @@ class ExternalSourceSettingsPage {
 						<?php
 						printf(
 							/* translators: %s: allowed base directory path. */
-							esc_html__( 'Their root directory or thumbnail cache directory is not inside %s. Move them there, or ask the site owner to change the allowed base directory.', 'wp-media-helper' ),
+							esc_html__( 'Their root directory is not inside %s. Move them there, or ask the site owner to change the allowed base directory.', 'wp-media-helper' ),
 							'<code>' . esc_html( (string) AllowedBase::resolve() ) . '</code>'
 						);
 						?>
@@ -189,7 +190,7 @@ class ExternalSourceSettingsPage {
 				</table>
 
 				<h2><?php esc_html_e( 'External media sources', 'wp-media-helper' ); ?></h2>
-				<p class="description"><?php esc_html_e( 'Add one or more directories that should be included in the external media workflow. The order matters: a file belongs to the first source whose directory contains it, so put the most specific directories first (for example uploads/photos before uploads). The thumbnail cache directories are never listed.', 'wp-media-helper' ); ?></p>
+				<p class="description"><?php esc_html_e( 'Add one or more directories that should be included in the external media workflow. The order matters: a file belongs to the first source whose directory contains it, so put the most specific directories first (for example uploads/photos before uploads). The thumbnail cache directory is never listed.', 'wp-media-helper' ); ?></p>
 				<p class="description"><?php esc_html_e( 'Active: its files are listed and can be imported. Disabled: ignored as if it did not exist, its files are handled by the sources that follow. Excluded: not listed, and no other source lists its files either.', 'wp-media-helper' ); ?></p>
 
 				<p id="wp-media-helper-no-source" class="wp-media-helper-empty-state"<?php echo [] === $sources ? '' : ' hidden'; ?>>
@@ -279,7 +280,8 @@ class ExternalSourceSettingsPage {
 		$settings = new ExternalSourceSettings(
 			static fn(): mixed => [],
 			static function ( array $value ): void {},
-			static fn(): ?string => AllowedBase::resolve()
+			static fn(): ?string => AllowedBase::resolve(),
+			static fn(): ?string => ThumbnailCache::directory()
 		);
 
 		return $settings->validateSources( $sources, $enforceAllowedBase );
@@ -324,7 +326,7 @@ class ExternalSourceSettingsPage {
 		$allowedBase = AllowedBase::resolve();
 		$submitted = array_map(
 			static function ( $source ) use ( $allowedBase ) {
-				foreach ( [ 'root', 'thumbnail_cache' ] as $field ) {
+				foreach ( [ 'root' ] as $field ) {
 					if ( is_array( $source ) && isset( $source[ $field ] ) && is_string( $source[ $field ] ) ) {
 						$source[ $field ] = AllowedBase::toAbsolute( $allowedBase, $source[ $field ] );
 					}
@@ -354,7 +356,8 @@ class ExternalSourceSettingsPage {
 			static function ( array $value ): void {
 				update_option( ExternalSourceSettings::optionKey(), $value );
 			},
-			static fn(): ?string => AllowedBase::resolve()
+			static fn(): ?string => AllowedBase::resolve(),
+			static fn(): ?string => ThumbnailCache::directory()
 		);
 
 		try {
@@ -430,12 +433,13 @@ class ExternalSourceSettingsPage {
 		return new ExternalSourceSettings(
 			static fn(): mixed => get_option( ExternalSourceSettings::optionKey(), [] ),
 			static function ( array $value ): void {},
-			static fn(): ?string => AllowedBase::resolve()
+			static fn(): ?string => AllowedBase::resolve(),
+			static fn(): ?string => ThumbnailCache::directory()
 		);
 	}
 
 	/**
-	 * Names of enabled sources whose root or thumbnail cache is outside the allowed base directory.
+	 * Names of active sources whose root is outside the allowed base directory.
 	 * Such sources are ignored by the editor panel until their root is fixed.
 	 *
 	 * @param array<int, array<string, mixed>> $sources
@@ -617,37 +621,6 @@ class ExternalSourceSettingsPage {
 							</td>
 						</tr>
 					<?php endif; ?>
-					<tr>
-						<th scope="row"><label for="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Thumbnail cache directory', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
-						<td>
-							<?php if ( null !== $allowedBase ) : ?>
-								<code class="wp-media-helper-root-prefix"><?php echo esc_html( rtrim( $allowedBase, '/\\' ) . '/' ); ?></code>
-							<?php endif; ?>
-							<input id="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $errors['thumbnail_cache'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][thumbnail_cache]" value="<?php echo esc_attr( AllowedBase::toRelative( $allowedBase, (string) ( $source['thumbnail_cache'] ?? '' ) ) ); ?>" aria-describedby="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>-description" />
-							<p class="description" id="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>-description">
-								<?php
-								if ( null !== $allowedBase ) {
-									printf(
-										/* translators: %s: example directory path relative to the base directory, wrapped in a code element. */
-										esc_html__( 'Writable directory storing thumbnails, relative to the base directory shown on the left, for example %s. It must be separate from the root directory. Required only when the source directory is read-only.', 'wp-media-helper' ),
-										'<code>nextcloud-cache</code>'
-									);
-								} else {
-									printf(
-										/* translators: %s: example directory path, wrapped in a code element. */
-										esc_html__( 'Writable directory storing thumbnails, for example %s. It must be separate from the root directory. Required only when the source directory is read-only.', 'wp-media-helper' ),
-										'<code>/var/www/media-cache</code>'
-									);
-								}
-								?>
-							</p>
-							<?php if ( isset( $errors['thumbnail_cache'] ) ) : ?>
-								<p class="description wp-media-helper-field-error">
-									<?php echo esc_html( $errors['thumbnail_cache'] ); ?>
-								</p>
-							<?php endif; ?>
-						</td>
-					</tr>
 				</tbody>
 			</table>
 		</div>

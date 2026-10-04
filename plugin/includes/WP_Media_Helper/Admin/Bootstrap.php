@@ -6,6 +6,7 @@ namespace WP_Media_Helper\Admin;
 
 use WP_Media_Helper\Index\Cron;
 use WP_Media_Helper\Index\Schema;
+use WP_Media_Helper\Thumbnails\Thumbnails;
 
 class Bootstrap {
 
@@ -16,6 +17,7 @@ class Bootstrap {
 		new EditorPanel();
 		new EditorMediaController();
 		new AttachmentUrls();
+		new Thumbnails();
 		new PostDateMeta();
 	}
 }

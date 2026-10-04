@@ -3,7 +3,7 @@
 
 # Slice 023: Thumbnails in a separate cache
 
-Status: **proposed** (design only, not implemented). Depends on
+Status: **implemented, minimal version** (see "Implementation notes" at the end). Depends on
 [slice 022](022-wordpress-native-registration.md).
 
 ## Goal
@@ -184,3 +184,40 @@ in the [audit](../IA/security-audit.md)) is limited to the locks and limits abov
   handling of PDF previews?
 - Which formats (WebP, AVIF) and which image editor (GD or Imagick) are
   supported?
+
+## Implementation notes (first delivery, minimal)
+
+Done:
+
+- **One global cache**, `<uploads>/thumbnails`, movable only by code with the
+  `wp_media_helper_thumbnail_cache_dir` filter (no settings screen). The per-source
+  "Thumbnail cache directory" field is **removed** (no migration: the plugin generated
+  no thumbnails yet; a stored value is ignored and dropped at the next save). A read-only
+  source no longer needs a cache of its own.
+- Ownership excludes the global cache from every listing; no root may be inside or
+  equal to it (slice 024).
+- `image_downsize` serves sizes found in the cache (derived location, or an absolute
+  `path` honored only inside the cache, so Thumbnails Folder files and URLs are
+  reused) and creates a missing **named** size, only for attachments registered by this
+  plugin (marker `_wp_media_helper_source_id`). Sizes not smaller than the original are
+  skipped. Created entries hold the core keys only, no absolute path.
+- `wp_calculate_image_srcset` points cached sizes to their URL.
+- `delete_attachment` deletes the cached files, never the original.
+- Background: one WP-Cron event per registered attachment (`wp_media_helper_generate_thumbnails`),
+  staggered, with a 10 s budget and a reschedule while sizes remain. **With
+  `DISABLE_WP_CRON` nothing is scheduled** and only on-demand creation remains
+  (filter `wp_media_helper_background_thumbnails` overrides).
+- Safeguards: write below the canonical cache only, links refused (checked before
+  creating directories), temporary file then rename, 100-megapixel limit (filter),
+  orientation applied to the thumbnail only.
+
+Not done (later):
+
+- Array sizes (`[w, h]`) are left to core; only named sizes are created.
+- Purge command / Tools page, cleanup of the absolute `path` keys left by Thumbnails
+  Folder, hiding them in the REST response, and the warning about uncovered directories.
+- Previews for non-image files, WebP/AVIF choices (whatever the WordPress image editor
+  supports is used).
+- A settings screen for the cache directory.
+- Per-target locks: concurrent requests may both create a size; the result is the same
+  and the rename is atomic.

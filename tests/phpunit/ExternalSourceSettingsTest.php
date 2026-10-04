@@ -56,7 +56,7 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertSame( $this->tmpRoot, $saved[0]['root'] );
 		$this->assertSame( '{date:Y}/{date:m}/{date:d}', $saved[0]['path_pattern'] );
 		$this->assertSame( '{date:Ymd}', $saved[0]['filter_pattern'] );
-		$this->assertSame( '/tmp/wp-media-helper-cache', $saved[0]['thumbnail_cache'] );
+		$this->assertArrayNotHasKey( 'thumbnail_cache', $saved[0], 'The cache is site-wide: a stored per-source value is dropped.' );
 	}
 
 	public function test_saves_an_empty_collection_when_all_sources_are_removed(): void {
@@ -448,47 +448,6 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertSame( [], $errors );
 	}
 
-	public function test_rejects_thumbnail_cache_whose_parent_does_not_exist(): void {
-		$settings = new ExternalSourceSettings(
-			static fn(): mixed => [],
-			static function ( array $value ): void {}
-		);
-
-		$errors = $settings->validateSources( [
-			[
-				'name' => 'Cached',
-				'root' => $this->tmpRoot,
-				'thumbnail_cache' => $this->tmpRoot . '/missing-parent/cache',
-			],
-		] );
-
-		$this->assertArrayHasKey( 'thumbnail_cache', $errors[0] );
-		$this->assertStringContainsString( 'writable or creatable', $errors[0]['thumbnail_cache'] );
-	}
-
-	public function test_rejects_thumbnail_cache_that_is_a_file(): void {
-		$cache = $this->tmpRoot . '/cache-file';
-		touch( $cache );
-
-		$settings = new ExternalSourceSettings(
-			static fn(): mixed => [],
-			static function ( array $value ): void {}
-		);
-
-		$errors = $settings->validateSources( [
-			[
-				'name' => 'Cached',
-				'root' => $this->tmpRoot,
-				'thumbnail_cache' => $cache,
-			],
-		] );
-
-		unlink( $cache );
-
-		$this->assertArrayHasKey( 'thumbnail_cache', $errors[0] );
-		$this->assertStringContainsString( 'directory', $errors[0]['thumbnail_cache'] );
-	}
-
 	public function test_rejects_unwritable_existing_thumbnail_cache(): void {
 		$cache = $this->tmpRoot . '/readonly-cache';
 		mkdir( $cache );
@@ -573,28 +532,6 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertSame( [], $notices );
 	}
 
-	public function test_rejects_thumbnail_cache_inside_or_equal_to_or_containing_the_root(): void {
-		$settings = new ExternalSourceSettings(
-			static fn(): mixed => [],
-			static function ( array $value ): void {}
-		);
-
-		// A cache inside a root is fine (it is excluded from the listing); a cache that is
-		// or contains a root is not.
-		$this->assertSame( [], $settings->validateSources( [
-			[ 'name' => 'Cached', 'root' => $this->tmpRoot, 'thumbnail_cache' => $this->tmpRoot . '/cache' ],
-		] ) );
-
-		foreach ( [ $this->tmpRoot, dirname( $this->tmpRoot ) ] as $cache ) {
-			$errors = $settings->validateSources( [
-				[ 'name' => 'Cached', 'root' => $this->tmpRoot, 'thumbnail_cache' => $cache ],
-			] );
-
-			$this->assertArrayHasKey( 'thumbnail_cache', $errors[0] );
-			$this->assertStringContainsString( 'cannot be, or contain', $errors[0]['thumbnail_cache'] );
-		}
-	}
-
 	public function test_two_sources_cannot_share_a_root_but_roots_can_be_nested(): void {
 		mkdir( $this->tmpRoot . '/sub', 0755, true );
 		$settings = new ExternalSourceSettings( static fn(): mixed => [], static function ( array $value ): void {} );
@@ -610,19 +547,6 @@ class ExternalSourceSettingsTest extends TestCase {
 			[ 'name' => 'A', 'root' => $this->tmpRoot . '/sub', 'thumbnail_cache' => '/tmp/wp-media-helper-cache' ],
 			[ 'name' => 'B', 'root' => $this->tmpRoot, 'thumbnail_cache' => '/tmp/wp-media-helper-cache' ],
 		] ) );
-	}
-
-	public function test_rejects_relative_thumbnail_cache_paths(): void {
-		$settings = new ExternalSourceSettings(
-			static fn(): mixed => [],
-			static function ( array $value ): void {}
-		);
-
-		$errors = $settings->validateSources( [
-			[ 'name' => 'Cached', 'root' => $this->tmpRoot, 'thumbnail_cache' => 'cache' ],
-		] );
-
-		$this->assertStringContainsString( 'absolute', $errors[0]['thumbnail_cache'] );
 	}
 
 	private function normalize( array $source ): array {
@@ -658,16 +582,6 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertSame( 'active', \WP_Media_Helper\Settings\SourceState::of( [ 'enabled' => true ] ) );
 	}
 
-	public function test_a_read_only_source_needs_a_cache_only_when_it_lists_files(): void {
-		$settings = new ExternalSourceSettings( static fn(): mixed => [], static function ( array $value ): void {} );
-		$readOnly = static fn ( string $state ): array => [ 'name' => 'Ro', 'root' => '/', 'state' => $state ];
-
-		if ( ! is_writable( '/' ) ) {
-			$this->assertArrayHasKey( 'thumbnail_cache', $settings->validateSources( [ $readOnly( 'active' ) ] )[0] ?? [] );
-		}
-		$this->assertArrayNotHasKey( 'thumbnail_cache', $settings->validateSources( [ $readOnly( 'excluded' ) ] )[0] ?? [] );
-	}
-
 	public function test_a_name_date_pattern_must_say_where_the_year_month_and_day_are(): void {
 		$settings = new ExternalSourceSettings( static fn(): mixed => [], static function ( array $value ): void {} );
 		$check = fn( string $pattern ): array => $settings->validateSources( [ [ 'name' => 'A', 'root' => $this->tmpRoot, 'filter_pattern' => $pattern, 'thumbnail_cache' => '/tmp/wp-media-helper-cache' ] ] );
@@ -677,5 +591,24 @@ class ExternalSourceSettingsTest extends TestCase {
 		$this->assertArrayHasKey( 'filter_pattern', $check( '{date:Ym}' )[0] );
 		$this->assertArrayHasKey( 'filter_pattern', $check( '{date:y-m-d}' )[0] );
 		$this->assertArrayHasKey( 'filter_pattern', $check( 'no date here' )[0] );
+	}
+
+	public function test_no_root_may_be_inside_or_equal_to_the_site_wide_cache_but_the_cache_may_be_inside_a_root(): void {
+		mkdir( $this->tmpRoot . '/cache/deeper', 0755, true );
+		$settingsWith = static fn ( string $cache ): ExternalSourceSettings => new ExternalSourceSettings(
+			static fn(): mixed => [],
+			static function ( array $value ): void {},
+			null,
+			static fn(): ?string => $cache
+		);
+
+		// The cache is inside the root: allowed.
+		$this->assertSame( [], $settingsWith( $this->tmpRoot . '/cache' )->validateSources( [ [ 'name' => 'A', 'root' => $this->tmpRoot ] ] ) );
+
+		foreach ( [ $this->tmpRoot . '/cache', $this->tmpRoot . '/cache/deeper' ] as $root ) {
+			$errors = $settingsWith( $this->tmpRoot . '/cache' )->validateSources( [ [ 'name' => 'A', 'root' => $root ] ] );
+			$this->assertArrayHasKey( 'root', $errors[0] );
+			$this->assertStringContainsString( 'thumbnail cache', $errors[0]['root'] );
+		}
 	}
 }

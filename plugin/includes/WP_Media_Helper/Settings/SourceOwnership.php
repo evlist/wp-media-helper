@@ -12,7 +12,7 @@ use WP_Media_Helper\MediaSource\PathConfinement;
  *
  * Sources form an ordered list. A file is owned by the first active or excluded
  * source, in list order, whose root contains it, and only an active owner lists it.
- * Thumbnail cache directories are never listed by any source.
+ * The thumbnail cache directory is never listed by any source.
  *
  * The result is expressed as the directories each active source must not enter
  * (`exclusions`): the trees of earlier owners and the caches that lie inside its
@@ -28,17 +28,12 @@ final class SourceOwnership {
 	 *
 	 * @param array<int, mixed>        $sources   Every configured source, in priority order.
 	 * @param (Closure(array<string,mixed>): bool)|null $isAllowed Whether a source may be used at all (allowed base directory).
+	 * @param string|null              $cacheDir  The site-wide thumbnail cache directory, never listed by any source.
 	 * @return array<int, array<string, mixed>>
 	 */
-	public static function listing( array $sources, ?Closure $isAllowed = null ): array {
-		$caches = [];
-		foreach ( $sources as $source ) {
-			$cache = is_array( $source ) ? trim( (string) ( $source['thumbnail_cache'] ?? '' ) ) : '';
-			$real  = '' === $cache ? null : AllowedBase::resolveDirectory( $cache );
-			if ( null !== $real ) {
-				$caches[] = $real;
-			}
-		}
+	public static function listing( array $sources, ?Closure $isAllowed = null, ?string $cacheDir = null ): array {
+		$real   = null === $cacheDir ? null : AllowedBase::resolveDirectory( $cacheDir );
+		$caches = null === $real ? [] : [ $real ];
 
 		$owners = [];
 		$result = [];

@@ -4,6 +4,8 @@
 
 namespace WP_Media_Helper\Settings;
 
+use WP_Media_Helper\Thumbnails\ThumbnailCache;
+
 /**
  * The configured sources, read from the settings.
  */
@@ -13,7 +15,8 @@ class ActiveSources {
 		return new ExternalSourceSettings(
 			static fn(): mixed => get_option( ExternalSourceSettings::optionKey(), [] ),
 			static function ( array $value ): void {},
-			static fn(): ?string => AllowedBase::resolve()
+			static fn(): ?string => AllowedBase::resolve(),
+			static fn(): ?string => ThumbnailCache::directory()
 		);
 	}
 
@@ -33,7 +36,7 @@ class ActiveSources {
 			return [];
 		}
 
-		return SourceOwnership::listing( $sources, static fn ( array $source ): bool => $settings->isSourceAllowed( $source ) );
+		return SourceOwnership::listing( $sources, static fn ( array $source ): bool => $settings->isSourceAllowed( $source ), ThumbnailCache::directory() );
 	}
 
 	/**

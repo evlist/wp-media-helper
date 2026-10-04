@@ -78,6 +78,12 @@ class AttachmentRegistrar {
 		update_post_meta( $attachmentId, AttachmentRegistry::SOURCE_PATH_META, wp_slash( $relative ) );
 		wp_update_attachment_metadata( $attachmentId, $readMetadata['metadata'] );
 
+		/**
+		 * Fires once a file is registered, with the attachment ID. The files themselves
+		 * (thumbnails) are created later, in the background or when asked for.
+		 */
+		do_action( 'wp_media_helper_attachment_registered', $attachmentId );
+
 		return $attachmentId;
 	}
 

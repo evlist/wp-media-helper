@@ -61,7 +61,7 @@ sources with existing attachments are tracked in
   sites set `DISALLOW_FILE_MODS` / `DISALLOW_FILE_EDIT`. On a single site
   without those restrictions an administrator can already execute PHP, so no
   setting can stop a malicious one.
-- Every source `root` and `thumbnail_cache` must therefore be a
+- Every source `root` must therefore be a
   **sub-directory of an allowed base directory**, which is the WordPress uploads directory by default. This keeps
   the settings page from becoming a way to browse the rest of the file system
   for administrators who are not otherwise trusted with it.
@@ -74,13 +74,16 @@ sources with existing attachments are tracked in
 - Containment is checked on canonical paths (`realpath()`): a root is the base
   itself or below it (slice 024), so `..` segments and symbolic links cannot escape it.
 - The thumbnail cache is a write location, so it matters at least as much as
-  the root. It may not exist yet, but its parent must. It may lie inside a
-  source root (ownership excludes it from every listing) but it cannot be or
-  contain a root (slice 024). Code that writes thumbnails must derive file
-  names from hashes (never from client input), write only below the canonical
-  cache directory, and re-check the base at write time.
+  the root. It is one directory for the whole site (slice 023), `<uploads>/thumbnails`
+  unless the site owner moves it with a filter, and must be inside the uploads
+  directory. It may lie inside a source root (ownership excludes it from every
+  listing) but no root may be inside it (slice 024). Files are written only below
+  the canonical cache directory, with names derived from the attachment's relative
+  path and the size (never from client input), through a temporary file that is
+  renamed; links in the cache and in the original are refused, and the existence of
+  the target directory is checked before it is created.
 - The check is made when settings are validated and saved, and again whenever
-  sources are loaded for the editor. A stored source whose root or cache is
+  sources are loaded for the editor. A stored source whose root is
   outside the base (for example after an upgrade, or after the base was changed) is treated
   as disabled and reported with a warning on the settings page; the stored
   configuration is left untouched.
