@@ -5,6 +5,7 @@
 namespace WP_Media_Helper\Settings;
 
 use Closure;
+use WP_Media_Helper\MediaSource\FileTypes;
 
 /**
  * Plugin-wide settings that are not tied to a single external source.
@@ -56,6 +57,42 @@ class GeneralSettings {
 	}
 
 	/**
+	 * The file types added to those WordPress accepts: extension => MIME type. The dangerous ones
+	 * are dropped even if they were stored.
+	 *
+	 * @return array<string, string>
+	 */
+	public function getAdditionalTypes(): array {
+		return FileTypes::parseAdditionalTypes( $this->additionalTypesText() )['types'];
+	}
+
+	/**
+	 * The "extra types" setting as it was written, for the settings form.
+	 */
+	public function additionalTypesText(): string {
+		$stored = ( $this->loader )();
+		$value  = is_array( $stored ) ? ( $stored['additional_types'] ?? '' ) : '';
+
+		return is_string( $value ) ? $value : '';
+	}
+
+	/**
+	 * Extensions that are not listed, or the default list when nothing was saved.
+	 *
+	 * @return string[]
+	 */
+	public function getIgnoredExtensions(): array {
+		return FileTypes::parseExtensions( $this->ignoredExtensionsText() );
+	}
+
+	public function ignoredExtensionsText(): string {
+		$stored = ( $this->loader )();
+		$value  = is_array( $stored ) ? ( $stored['ignored_extensions'] ?? null ) : null;
+
+		return is_string( $value ) ? $value : implode( ' ', FileTypes::DEFAULT_IGNORED );
+	}
+
+	/**
 	 * Returns an error message, or null when the value is an integer within bounds.
 	 */
 	public static function validateMaxEntries( mixed $value ): ?string {
@@ -89,6 +126,19 @@ class GeneralSettings {
 			throw new \InvalidArgumentException( $error );
 		}
 
-		( $this->saver )( [ 'max_entries' => (int) ( $values['max_entries'] ?? self::DEFAULT_MAX_ENTRIES ) ] );
+		$additional = array_key_exists( 'additional_types', $values ) ? (string) $values['additional_types'] : $this->additionalTypesText();
+		$parsed     = FileTypes::parseAdditionalTypes( $additional );
+		if ( [] !== $parsed['errors'] ) {
+			throw new \InvalidArgumentException( implode( ' ', $parsed['errors'] ) );
+		}
+		$ignored = array_key_exists( 'ignored_extensions', $values ) ? (string) $values['ignored_extensions'] : $this->ignoredExtensionsText();
+
+		( $this->saver )(
+			[
+				'max_entries'        => (int) ( $values['max_entries'] ?? self::DEFAULT_MAX_ENTRIES ),
+				'additional_types'   => $additional,
+				'ignored_extensions' => implode( ' ', FileTypes::parseExtensions( $ignored ) ),
+			]
+		);
 	}
 }

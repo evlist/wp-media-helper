@@ -3,7 +3,7 @@
 
 # Slice 032: File types
 
-Status: **proposed** (design and open questions only, not scheduled). Related:
+Status: **first delivery implemented** (categories, importable check, additional types, ignored extensions); the rest below stays open. Related:
 [031](031-video-and-document-previews.md), [026](026-name-date-patterns-and-embedded-dates.md) (embedded
 dates by type), [015](015-extensible-media-filter-contract.md) and [018](018-media-type-filter.md) (filters).
 
@@ -54,3 +54,24 @@ with each type. The rules are scattered today.
 2. Adding a type to the importable list works for a harmless type, and is refused for a type that can run code.
 3. The ignored list hides its files from every list and from the counts.
 4. The panel filter and the icons follow the categories.
+
+## Implemented (first delivery)
+
+- `MediaSource\FileTypes` holds the categories (image, video, audio, document, subtitles, gps, archive, other; filter
+  `wp_media_helper_file_categories`), their labels and icons, the list of **dangerous extensions** (never added, never
+  imported, even if another plugin adds them through `upload_mimes`) and the parsing of the two settings.
+- The panel type filter and the tile icons follow the categories (localized from the server). A saved choice of the former
+  three values (image, video, other) still means "everything".
+- **Import check before the action:** each listed file carries `can_import` and `import_blocker`; a file that WordPress does
+  not accept gets a warning badge, the reason in the detail sheet, and no *Import / Attach / Featured image* action (it can
+  still be hidden). The server import refuses it with the same reason.
+- **Additional file types** (settings page, administrators only): one `extension mime/type` per line. They are added to
+  `upload_mimes` for the whole site (this replaces plugins such as *WP Extra File Types*), at priority 20, then the dangerous
+  types are removed from the list. For these types only, `wp_check_filetype_and_ext` takes the extension as written, because
+  PHP detects `text/plain` or `application/xml` for GPX and WebVTT and WordPress would refuse them.
+- **Ignored extensions** (settings page; default `tmp part db ini lock bak crdownload`): not indexed, so not listed nor
+  counted. Changing the list makes the next pass read the sources again.
+
+Still open: listing only some categories per source, `wp_check_filetype_and_ext()` content check before a preview,
+HEIC/RAW previews, a single per-type behavior table shared with 026 and 031, the extra types as a code-controlled constant for
+sites that want it.

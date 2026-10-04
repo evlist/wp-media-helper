@@ -96,6 +96,9 @@ class ExternalSourceSettingsPage {
 		$pending = $this->consumePendingSubmission();
 		$sources = null === $pending ? $this->loadSources() : $pending['sources'];
 		$maxEntries = null !== $pending && null !== $pending['max_entries'] ? $pending['max_entries'] : (string) $this->loadGeneralSettings()->getMaxEntries();
+		$generalSettings   = $this->loadGeneralSettings();
+		$ignoredExtensions = $generalSettings->ignoredExtensionsText();
+		$additionalTypes   = $generalSettings->additionalTypesText();
 		// Stored sources outside the allowed base are reported as a warning instead.
 		$allowedBase = AllowedBase::resolve();
 		$enforceBase = null !== $pending;
@@ -225,6 +228,20 @@ class ExternalSourceSettingsPage {
 									);
 									?>
 								</p>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row"><label for="wp-media-helper-ignored-extensions"><?php esc_html_e( 'Files that are not listed', 'wp-media-helper' ); ?></label></th>
+							<td>
+								<textarea id="wp-media-helper-ignored-extensions" name="general[ignored_extensions]" rows="2" cols="50" class="large-text code"><?php echo esc_textarea( $ignoredExtensions ); ?></textarea>
+								<p class="description"><?php esc_html_e( 'Extensions, separated by spaces, that the plugin never lists nor counts (temporary files, partial downloads, databases of thumbnails). Changing this list re-reads the sources.', 'wp-media-helper' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row"><label for="wp-media-helper-additional-types"><?php esc_html_e( 'Additional file types', 'wp-media-helper' ); ?></label></th>
+							<td>
+								<textarea id="wp-media-helper-additional-types" name="general[additional_types]" rows="4" cols="50" class="large-text code" placeholder="gpx application/gpx+xml&#10;vtt text/vtt"><?php echo esc_textarea( $additionalTypes ); ?></textarea>
+								<p class="description"><?php esc_html_e( 'File types that WordPress does not accept by default, one per line: an extension and a MIME type. They are accepted for every upload of the site, as well as for the files imported by this plugin. Types that can run code (php, js, html, svg, exe, and so on) are always refused.', 'wp-media-helper' ); ?></p>
 							</td>
 						</tr>
 					</tbody>
@@ -395,7 +412,13 @@ class ExternalSourceSettingsPage {
 
 		try {
 			$settings->saveAll( $submitted );
-			$this->loadGeneralSettings( true )->save( [ 'max_entries' => $submittedMaxEntries ] );
+			$general = [ 'max_entries' => $submittedMaxEntries ];
+			foreach ( [ 'additional_types', 'ignored_extensions' ] as $field ) {
+				if ( is_array( $rawGeneral ) && isset( $rawGeneral[ $field ] ) && is_string( $rawGeneral[ $field ] ) ) {
+					$general[ $field ] = $rawGeneral[ $field ];
+				}
+			}
+			$this->loadGeneralSettings( true )->save( $general );
 		} catch ( InvalidArgumentException $exception ) {
 			$this->redirectBackWithSubmission( $submitted, $exception->getMessage(), $submittedMaxEntries );
 		}

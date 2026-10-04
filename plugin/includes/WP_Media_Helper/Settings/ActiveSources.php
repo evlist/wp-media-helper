@@ -36,7 +36,17 @@ class ActiveSources {
 			return [];
 		}
 
-		return SourceOwnership::listing( $sources, static fn ( array $source ): bool => $settings->isSourceAllowed( $source ), ThumbnailCache::directory(), self::builtInExclusions() );
+		$ignored = ( new GeneralSettings(
+			static fn(): mixed => get_option( GeneralSettings::optionKey(), [] ),
+			static function ( array $value ): void {}
+		) )->getIgnoredExtensions();
+
+		$listed = SourceOwnership::listing( $sources, static fn ( array $source ): bool => $settings->isSourceAllowed( $source ), ThumbnailCache::directory(), self::builtInExclusions() );
+		foreach ( $listed as $index => $source ) {
+			$listed[ $index ]['ignored_extensions'] = $ignored;
+		}
+
+		return $listed;
 	}
 
 	/**

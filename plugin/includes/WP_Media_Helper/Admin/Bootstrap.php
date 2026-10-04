@@ -6,6 +6,7 @@ namespace WP_Media_Helper\Admin;
 
 use WP_Media_Helper\Index\Cron;
 use WP_Media_Helper\Index\Schema;
+use WP_Media_Helper\MediaSource\AdditionalTypes;
 use WP_Media_Helper\Thumbnails\Thumbnails;
 
 class Bootstrap {
@@ -13,6 +14,7 @@ class Bootstrap {
 	public static function init(): void {
 		Schema::maybeUpgrade();
 		Cron::register();
+		AdditionalTypes::register();
 		new ExternalSourceSettingsPage();
 		new EditorPanel();
 		new EditorMediaController();

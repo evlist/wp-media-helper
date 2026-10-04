@@ -44,7 +44,8 @@ class GeneralSettingsTest extends TestCase {
 		$saved = null;
 		$this->settings( [], $saved )->save( [ 'max_entries' => '40' ] );
 
-		$this->assertSame( [ 'max_entries' => 40 ], $saved );
+		$this->assertSame( 40, $saved['max_entries'] );
+		$this->assertSame( '', $saved['additional_types'] );
 	}
 
 	public function test_save_rejects_invalid_values_without_persisting(): void {

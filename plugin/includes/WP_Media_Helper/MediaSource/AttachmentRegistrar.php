@@ -31,8 +31,9 @@ class AttachmentRegistrar {
 
 		$basename = wp_basename( $canonicalPath );
 		$filetype = wp_check_filetype( $basename );
-		if ( empty( $filetype['type'] ) ) {
-			return new \WP_Error( 'file_type_not_allowed', __( 'This file type is not allowed.', 'wp-media-helper' ) );
+		$blocker  = FileTypes::importBlocker( $basename, $filetype );
+		if ( null !== $blocker ) {
+			return new \WP_Error( 'file_type_not_allowed', $blocker );
 		}
 		$mimeType = (string) $filetype['type'];
 

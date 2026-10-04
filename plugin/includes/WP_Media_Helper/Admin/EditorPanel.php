@@ -4,6 +4,8 @@
 
 namespace WP_Media_Helper\Admin;
 
+use WP_Media_Helper\MediaSource\FileTypes;
+
 class EditorPanel {
 
 	public function __construct() {
@@ -29,6 +31,7 @@ class EditorPanel {
 				'canUpload' => current_user_can( 'upload_files' ),
 				'canHide' => HiddenFiles::canHide(),
 				'canSeeHidden' => HiddenFiles::canSeeHidden(),
+				'fileTypes' => self::fileTypes(),
 				'date' => current_time( 'Y-m-d' ),
 				'panelMode' => EditorMediaController::normalizePanelMode( get_user_meta( get_current_user_id(), EditorMediaController::panelModeMetaKey, true ) ),
 			]
@@ -39,5 +42,23 @@ class EditorPanel {
 			'wp-media-helper',
 			plugin_dir_path( WP_MEDIA_HELPER_FILE ) . 'languages'
 		);
+	}
+
+	/**
+	 * @return array<int, array{value:string, label:string, icon:string}>
+	 */
+	private static function fileTypes(): array {
+		$labels = FileTypes::labels();
+		$icons  = FileTypes::icons();
+		$types  = [];
+		foreach ( FileTypes::categories() as $category ) {
+			$types[] = [
+				'value' => $category,
+				'label' => $labels[ $category ] ?? ucfirst( $category ),
+				'icon'  => $icons[ $category ] ?? 'media-default',
+			];
+		}
+
+		return $types;
 	}
 }

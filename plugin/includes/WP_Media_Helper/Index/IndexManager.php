@@ -59,7 +59,7 @@ class IndexManager {
 		$id    = (string) ( $source['id'] ?? '' );
 		$state = $this->state->get( $id );
 		// Reordering the sources or changing a state changes the exclusions, and so what the index may hold.
-		$hash  = FileDates::configHash( $source ) . SourceOwnership::fingerprint( $source );
+		$hash  = FileDates::configHash( $source ) . SourceOwnership::fingerprint( $source ) . ( [] === ( $source['ignored_extensions'] ?? [] ) ? '' : 'i' . md5( implode( ' ', (array) $source['ignored_extensions'] ) ) );
 		$root  = (string) ( $source['root'] ?? '' );
 
 		$changed = false;

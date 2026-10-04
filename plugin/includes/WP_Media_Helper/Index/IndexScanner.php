@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use WP_Media_Helper\Admin\MediaPanelState;
 use WP_Media_Helper\MediaSource\FileDates;
+use WP_Media_Helper\MediaSource\FileTypes;
 use WP_Media_Helper\MediaSource\ImageDimensions;
 use WP_Media_Helper\MediaSource\NamePattern;
 use WP_Media_Helper\MediaSource\PathConfinement;
@@ -110,6 +111,7 @@ class IndexScanner {
 			'run'       => $run,
 			'full'      => $full,
 			'exclusions' => $exclusions,
+			'ignored'    => array_values( array_filter( array_map( 'strval', (array) ( $source['ignored_extensions'] ?? [] ) ) ) ),
 			'patterns'  => FileDates::patterns( $source ),
 			'fallback'  => FileDates::usesMtimeFallback( $source ),
 			'stats'     => [ 'read' => 0, 'unchanged' => 0, 'added' => 0, 'updated' => 0, 'missing' => 0 ],
@@ -222,6 +224,9 @@ class IndexScanner {
 					$subdirectories[ $name ] = $path;
 				}
 			} elseif ( is_file( $path ) ) {
+				if ( [] !== $context['ignored'] && in_array( FileTypes::extension( (string) $name ), $context['ignored'], true ) ) {
+					continue;
+				}
 				$stat = @stat( $path ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
 				if ( false !== $stat ) {
 					$files[ $name ] = [ 'size' => (int) $stat['size'], 'mtime' => (int) $stat['mtime'], 'path' => $path ];

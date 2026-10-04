@@ -142,11 +142,11 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertFalse( $entries[0]['is_attached_to_current_post'] );
 		$this->assertSame( 'report.pdf', $entries[1]['name'] );
 		$this->assertSame( 'pdf', $entries[1]['type'] );
-		$this->assertSame( 'other', $entries[1]['media_type'] );
+		$this->assertSame( 'document', $entries[1]['media_type'] );
 		$this->assertFalse( $entries[1]['is_imported'] );
 		$this->assertSame( 'archive.tar.gz', $entries[2]['name'] );
 		$this->assertSame( 'gz', $entries[2]['type'] );
-		$this->assertSame( 'other', $entries[2]['media_type'] );
+		$this->assertSame( 'archive', $entries[2]['media_type'] );
 		$this->assertFalse( $entries[2]['is_imported'] );
 	}
 
@@ -157,7 +157,7 @@ class MediaPanelStateTest extends TestCase {
 	public function test_resolve_media_type_groups_common_image_video_and_other_extensions(): void {
 		$this->assertSame( 'image', MediaPanelState::resolveMediaType( 'photo.JPEG' ) );
 		$this->assertSame( 'video', MediaPanelState::resolveMediaType( 'clip.webm' ) );
-		$this->assertSame( 'other', MediaPanelState::resolveMediaType( 'route.gpx' ) );
+		$this->assertSame( 'gps', MediaPanelState::resolveMediaType( 'route.gpx' ) );
 		$this->assertSame( 'other', MediaPanelState::resolveMediaType( 'unknown' ) );
 	}
 
@@ -316,13 +316,13 @@ class MediaPanelStateTest extends TestCase {
 	public function test_normalize_filters_falls_back_to_legacy_parameters_when_payload_is_absent(): void {
 		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( '', '2026-01-01', 'legacy-source', [ 'legacy-source', 'other-source' ] );
 
-		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => [ 'image', 'video', 'other' ], 'filename' => '', 'show_hidden' => false ], $filters );
+		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => \WP_Media_Helper\MediaSource\FileTypes::categories(), 'filename' => '', 'show_hidden' => false ], $filters );
 	}
 
 	public function test_normalize_filters_ignores_invalid_payloads(): void {
 		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( 'not-json', '2026-01-01', 'legacy-source', [ 'legacy-source', 'other-source' ] );
 
-		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => [ 'image', 'video', 'other' ], 'filename' => '', 'show_hidden' => false ], $filters );
+		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => \WP_Media_Helper\MediaSource\FileTypes::categories(), 'filename' => '', 'show_hidden' => false ], $filters );
 	}
 
 	public function test_normalize_filters_resolves_attachment_scope_from_storage_when_absent_from_payload(): void {
@@ -407,9 +407,9 @@ class MediaPanelStateTest extends TestCase {
 	}
 
 	public function test_normalize_media_type_filter_defaults_to_all_categories(): void {
-		$this->assertSame( [ 'image', 'video', 'other' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeMediaTypeFilter( null ) );
-		$this->assertSame( [ 'image', 'video', 'other' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeMediaTypeFilter( [] ) );
-		$this->assertSame( [ 'image', 'video', 'other' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeMediaTypeFilter( [ 'unknown' ] ) );
+		$this->assertSame( \WP_Media_Helper\MediaSource\FileTypes::categories(), \WP_Media_Helper\Admin\EditorMediaController::normalizeMediaTypeFilter( null ) );
+		$this->assertSame( \WP_Media_Helper\MediaSource\FileTypes::categories(), \WP_Media_Helper\Admin\EditorMediaController::normalizeMediaTypeFilter( [] ) );
+		$this->assertSame( \WP_Media_Helper\MediaSource\FileTypes::categories(), \WP_Media_Helper\Admin\EditorMediaController::normalizeMediaTypeFilter( [ 'unknown' ] ) );
 	}
 
 	public function test_normalize_media_type_filter_keeps_only_supported_categories(): void {

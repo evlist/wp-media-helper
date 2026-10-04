@@ -35,18 +35,18 @@
 		{ value: 'advanced', label: __( 'Advanced', 'wp-media-helper' ) },
 	];
 	const DEFAULT_ATTACHMENT_SCOPE = [ 'unattached', 'current' ];
-	const DEFAULT_MEDIA_TYPE = [ 'image', 'video', 'other' ];
+	// The categories of files (images, videos, audio, documents, ...) come from the server.
+	const FILE_TYPES = Array.isArray( wpMediaHelperEditorPanel.fileTypes ) && wpMediaHelperEditorPanel.fileTypes.length
+		? wpMediaHelperEditorPanel.fileTypes
+		: [ { value: 'image', label: __( 'Images', 'wp-media-helper' ), icon: 'format-image' }, { value: 'video', label: __( 'Videos', 'wp-media-helper' ), icon: 'video-alt3' }, { value: 'other', label: __( 'Other', 'wp-media-helper' ), icon: 'media-default' } ];
+	const DEFAULT_MEDIA_TYPE = FILE_TYPES.map( function ( type ) { return type.value; } );
 	const DEFAULT_SOURCE_FILTER = [ 'all' ];
 	const ATTACHMENT_SCOPE_STATES = [
 		{ value: 'unattached', label: __( 'Unattached', 'wp-media-helper' ) },
 		{ value: 'current', label: __( 'Attached to this post', 'wp-media-helper' ) },
 		{ value: 'other', label: __( 'Attached to another post', 'wp-media-helper' ) },
 	];
-	const MEDIA_TYPE_OPTIONS = [
-		{ value: 'image', label: __( 'Images', 'wp-media-helper' ) },
-		{ value: 'video', label: __( 'Videos', 'wp-media-helper' ) },
-		{ value: 'other', label: __( 'Other', 'wp-media-helper' ) },
-	];
+	const MEDIA_TYPE_OPTIONS = FILE_TYPES.map( function ( type ) { return { value: type.value, label: type.label }; } );
 
 	const formatElapsed = function ( lastRefreshedAt ) {
 		if ( ! lastRefreshedAt ) {
@@ -151,6 +151,8 @@
 			other_post_title: item && item.other_post_title ? item.other_post_title : '',
 			other_post_edit_url: item && item.other_post_edit_url ? item.other_post_edit_url : '',
 			media_type: item && item.media_type ? item.media_type : 'other',
+			can_import: ! ( item && false === item.can_import ),
+			import_blocker: item && item.import_blocker ? item.import_blocker : '',
 			is_hidden: !! ( item && item.is_hidden ),
 			thumbnail_url: item && item.thumbnail_url ? item.thumbnail_url : '',
 			thumbnail_large_url: item && item.thumbnail_large_url ? item.thumbnail_large_url : '',
@@ -431,7 +433,8 @@
 			} );
 		}
 
-		const icon = 'video' === item.media_type ? 'video-alt3' : ( 'image' === item.media_type ? 'format-image' : 'media-default' );
+		const known = FILE_TYPES.filter( function ( type ) { return type.value === item.media_type; } )[ 0 ];
+		const icon = known && known.icon ? known.icon : 'media-default';
 
 		return wp.element.createElement( 'span', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', gap: '2px', color: '#50575e', padding: '4px', boxSizing: 'border-box', overflow: 'hidden' } },
 			wp.element.createElement( Dashicon, { icon: icon, size: 24 } ),
@@ -1060,13 +1063,15 @@
 			}
 
 			const actions = [];
+			// A file WordPress does not accept cannot be imported or attached; the sheet says why.
+			const importable = item.can_import || item.is_imported;
 			// One image is the featured image: no bulk action, and only a picture can be.
-			if ( featuredSupported && canUpload && 'image' === item.media_type ) {
+			if ( featuredSupported && canUpload && importable && 'image' === item.media_type ) {
 				actions.push( isFeatured( item )
 					? { action: 'unfeature', label: __( 'Remove featured image', 'wp-media-helper' ) }
 					: { action: 'feature', label: __( 'Set as featured image', 'wp-media-helper' ) } );
 			}
-			if ( ! item.is_attached_to_other_post ) {
+			if ( ! item.is_attached_to_other_post && importable ) {
 				if ( 'simple' === panelMode ) {
 					actions.push( item.is_attached_to_current_post
 						? { action: 'remove', label: __( 'Remove', 'wp-media-helper' ) }
@@ -1079,9 +1084,9 @@
 						? { action: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) }
 						: { action: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) } );
 				}
-				if ( canHide ) {
-					actions.push( { action: 'hide', label: __( 'Hide', 'wp-media-helper' ) } );
-				}
+			}
+			if ( ! item.is_attached_to_other_post && canHide ) {
+				actions.push( { action: 'hide', label: __( 'Hide', 'wp-media-helper' ) } );
 			}
 
 			return actions;
@@ -1180,6 +1185,9 @@
 						: null,
 					isFeatured( item )
 						? wp.element.createElement( CornerBadge, { icon: 'star-filled', label: __( 'Featured image', 'wp-media-helper' ), position: { left: '24px' }, colour: '#b8860b' } )
+						: null,
+					! item.can_import && ! item.is_imported
+						? wp.element.createElement( CornerBadge, { icon: 'warning', label: item.import_blocker || __( 'This file cannot be imported.', 'wp-media-helper' ), position: { bottom: '3px', left: '3px' }, colour: '#996800' } )
 						: null,
 					item.is_hidden
 						? wp.element.createElement( CornerBadge, { icon: 'hidden', label: __( 'Hidden', 'wp-media-helper' ), position: { right: '3px' }, colour: '#8a2424' } )
@@ -1304,6 +1312,9 @@
 						isFeatured( item ) ? wp.element.createElement( 'span', { style: { color: '#b8860b', fontWeight: 400 } }, ' · ' + __( 'Featured image', 'wp-media-helper' ) ) : null,
 						item.is_hidden ? wp.element.createElement( 'span', { style: { color: '#8a2424', fontWeight: 400 } }, ' · ' + __( 'Hidden', 'wp-media-helper' ) ) : null
 					),
+					! item.can_import && ! item.is_imported
+						? wp.element.createElement( 'p', { style: { color: '#996800', margin: '0 0 8px' } }, item.import_blocker || __( 'This file cannot be imported.', 'wp-media-helper' ) )
+						: null,
 					wp.element.createElement( 'dl', { style: { display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '2px 12px', margin: '0 0 12px', fontSize: '12px' } },
 						rowsOfInfo.map( function ( entry ) {
 							return [

@@ -98,6 +98,16 @@ class IndexScannerTest extends TestCase {
 		return array_column( $this->store->filesForDay( [ $source ], $day ), 'name' );
 	}
 
+	public function test_ignored_extensions_are_not_indexed_and_disappear_when_they_become_ignored(): void {
+		touch( $this->root . '/20261002-draft.part', strtotime( '2026-10-02 10:00:00' ) );
+		$this->pass();
+		$this->assertContains( '20261002-draft.part', $this->day( '2026-10-02' ) );
+
+		$this->pass( true, [ 'ignored_extensions' => [ 'part' ] ] );
+		$this->assertNotContains( '20261002-draft.part', $this->day( '2026-10-02' ) );
+		$this->assertSame( [ '20261002_121549.jpg' ], $this->day( '2026-10-02' ) );
+	}
+
 	public function test_a_first_scan_indexes_files_with_their_dates_and_ignores_links_and_dot_files(): void {
 		$result = $this->pass();
 

@@ -7,24 +7,14 @@ namespace WP_Media_Helper\Admin;
 use DateTimeInterface;
 use InvalidArgumentException;
 use WP_Media_Helper\Index\DayIndex;
+use WP_Media_Helper\MediaSource\FileTypes;
 
 class MediaPanelState {
 
 	private ?DayIndex $dayIndex;
-	private const IMAGE_EXTENSIONS = [ 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg' ];
-	private const VIDEO_EXTENSIONS = [ 'mp4', 'mov', 'webm', 'avi', 'm4v' ];
 
 	public static function resolveMediaType( string $filename ): string {
-		$extension = strtolower( pathinfo( basename( $filename ), PATHINFO_EXTENSION ) );
-		if ( in_array( $extension, self::IMAGE_EXTENSIONS, true ) ) {
-			return 'image';
-		}
-
-		if ( in_array( $extension, self::VIDEO_EXTENSIONS, true ) ) {
-			return 'video';
-		}
-
-		return 'other';
+		return FileTypes::category( $filename );
 	}
 
 	/**
@@ -56,6 +46,27 @@ class MediaPanelState {
 		}
 
 		return $entries;
+	}
+
+	/**
+	 * Tells, for each item, whether the file can be imported and, when it cannot, why. The check is the
+	 * one of the import, so that the panel does not offer an action that will fail.
+	 *
+	 * @param array<int, array<string, mixed>> $items
+	 * @param callable(string): array{ext:string|false, type:string|false} $checker wp_check_filetype().
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function markImportable( array $items, callable $checker ): array {
+		foreach ( $items as $index => $item ) {
+			$name    = (string) ( $item['name'] ?? '' );
+			$blocker = FileTypes::importBlocker( $name, $checker( $name ) );
+			if ( null !== $blocker ) {
+				$items[ $index ]['can_import']      = false;
+				$items[ $index ]['import_blocker'] = $blocker;
+			}
+		}
+
+		return $items;
 	}
 
 	/**

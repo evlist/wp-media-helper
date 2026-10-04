@@ -9,6 +9,7 @@ use WP_Media_Helper\Thumbnails\Thumbnails;
 use DateTimeImmutable;
 use WP_Media_Helper\MediaSource\AttachmentRegistrar;
 use WP_Media_Helper\MediaSource\AttachmentRegistry;
+use WP_Media_Helper\MediaSource\FileTypes;
 use WP_Media_Helper\MediaSource\PathConfinement;
 use WP_Media_Helper\Settings\ActiveSources;
 use WP_Media_Helper\Settings\GeneralSettings;
@@ -104,11 +105,12 @@ class EditorMediaController {
 	 * @return array<int, string>
 	 */
 	public static function normalizeMediaTypeFilter( mixed $rawTypes ): array {
-		$allowed = [ 'image', 'video', 'other' ];
+		$allowed = FileTypes::categories();
 		$values = is_array( $rawTypes ) ? array_map( 'strval', $rawTypes ) : [];
 		$normalized = array_values( array_intersect( $allowed, $values ) );
 
-		return [] === $normalized ? $allowed : $normalized;
+		// Before the file categories, a choice of "everything" was these three values: it still means everything.
+		return [] === $normalized || [ 'image', 'video', 'other' ] === $normalized ? $allowed : $normalized;
 	}
 
 	public static function normalizeFilenameFilter( mixed $rawFilename ): string {
@@ -645,7 +647,7 @@ class EditorMediaController {
 			$activeSourceIds,
 			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'attachment_scope', null ),
 			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'source', [ 'all' ] ),
-			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'media_type', [ 'image', 'video', 'other' ] ),
+			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'media_type', FileTypes::categories() ),
 			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'filename', '' )
 		);
 		$filters['date'] = MediaPanelState::normalizeDate( (string) $filters['date'], $legacyDate );
@@ -730,6 +732,7 @@ class EditorMediaController {
 		$merged['files'] = MediaPanelState::setAttachmentIds( $merged['files'], $attachmentStates['attachment_ids'] );
 		$merged['files'] = MediaPanelState::filterByAttachmentScope( $merged['files'], $filters['attachment_scope'] );
 		$merged['files'] = MediaPanelState::filterByMediaType( $merged['files'], $filters['media_type'] );
+		$merged['files'] = MediaPanelState::markImportable( $merged['files'], static fn ( string $name ): array => wp_check_filetype( $name ) );
 		$merged['files'] = MediaPanelState::filterByFilename( $merged['files'], $filters['filename'] );
 		$pageData = MediaPanelState::paginate( $merged['files'], $page, $maxEntries );
 		$merged['files'] = $this->addThumbnailUrls( $this->enrichOtherPostInfo( $pageData['items'] ) );
