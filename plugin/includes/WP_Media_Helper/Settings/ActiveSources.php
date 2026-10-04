@@ -36,7 +36,19 @@ class ActiveSources {
 			return [];
 		}
 
-		return SourceOwnership::listing( $sources, static fn ( array $source ): bool => $settings->isSourceAllowed( $source ), ThumbnailCache::directory() );
+		return SourceOwnership::listing( $sources, static fn ( array $source ): bool => $settings->isSourceAllowed( $source ), ThumbnailCache::directory(), self::builtInExclusions() );
+	}
+
+	/**
+	 * Private or technical directories of uploads that no source lists.
+	 *
+	 * @return string[]
+	 */
+	public static function builtInExclusions(): array {
+		$uploads = wp_upload_dir( null, false );
+		$base    = is_array( $uploads ) ? (string) ( $uploads['basedir'] ?? '' ) : '';
+
+		return '' === $base ? [] : BuiltInExclusions::directories( $base, BuiltInExclusions::names() );
 	}
 
 	/**

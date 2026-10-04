@@ -81,6 +81,24 @@ Each external directory can define its own path pattern and optional filter
 pattern. This makes it possible to target different user trees without scanning
 large directory hierarchies.
 
+### Quick start: the uploads directory
+
+When no source covers the WordPress uploads directory, the settings page offers
+**Use the uploads directory**: it adds one source on that directory, last in the list,
+with default settings. Files dropped there by FTP, Nextcloud, a camera uploader or
+another plugin can then be listed and imported; files already in the Media Library
+show as imported. Nothing is scanned until you use the button.
+
+The uploads directory may also hold private or technical files, so a built-in list of
+directories is **never listed** by a source that contains them: `woocommerce_uploads`,
+`wc-logs`, `wpcf7_uploads`, `cache`, `backup*`, `backups`, `ai1wm-backups`, `wpforms`,
+`elementor`, `sucuri`, plus the thumbnail cache and directories starting with a dot. The
+site owner can change the list in code with the `wp_media_helper_excluded_directories`
+filter. **It is a default, not a guarantee**: a private directory that is not on it can
+still be listed and imported by users who may upload. If you keep private files in uploads,
+do not use this button; add a dedicated directory as a source instead. A source whose
+root is one of these directories (a deliberate choice) is not affected.
+
 ## Allowed base directory
 
 Every external source root must be a

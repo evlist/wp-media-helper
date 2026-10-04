@@ -29,9 +29,11 @@ final class SourceOwnership {
 	 * @param array<int, mixed>        $sources   Every configured source, in priority order.
 	 * @param (Closure(array<string,mixed>): bool)|null $isAllowed Whether a source may be used at all (allowed base directory).
 	 * @param string|null              $cacheDir  The site-wide thumbnail cache directory, never listed by any source.
+	 * @param string[]                 $builtIn   Canonical directories never listed by a source that contains them (private or technical directories of uploads).
+	 *                                            A source whose own root is one of them, or inside one, is not affected: the choice was deliberate.
 	 * @return array<int, array<string, mixed>>
 	 */
-	public static function listing( array $sources, ?Closure $isAllowed = null, ?string $cacheDir = null ): array {
+	public static function listing( array $sources, ?Closure $isAllowed = null, ?string $cacheDir = null, array $builtIn = [] ): array {
 		$real   = null === $cacheDir ? null : AllowedBase::resolveDirectory( $cacheDir );
 		$caches = null === $real ? [] : [ $real ];
 
@@ -51,7 +53,8 @@ final class SourceOwnership {
 			}
 
 			if ( SourceState::ACTIVE === SourceState::of( $source ) && ! empty( $source['id'] ) && ! empty( $source['name'] ) ) {
-				$source['exclusions'] = self::exclusionsWithin( $root, array_merge( $owners, $caches ) );
+				$inside               = array_values( array_filter( $builtIn, static fn ( string $dir ): bool => PathConfinement::isWithin( $root, $dir ) ) );
+				$source['exclusions'] = self::exclusionsWithin( $root, array_merge( $owners, $caches, $inside ) );
 				$result[]             = $source;
 			}
 

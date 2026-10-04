@@ -10,9 +10,11 @@ use WP_Media_Helper\Index\DayIndex;
 use WP_Media_Helper\Maintenance\Reset;
 use WP_Media_Helper\Settings\AllowedBase;
 use WP_Media_Helper\Settings\ExternalSourceSettings;
+use WP_Media_Helper\Settings\BuiltInExclusions;
 use WP_Media_Helper\Settings\GeneralSettings;
 use WP_Media_Helper\Settings\SourceOwnership;
 use WP_Media_Helper\Settings\SourceState;
+use WP_Media_Helper\Settings\UploadsSource;
 use WP_Media_Helper\Thumbnails\ThumbnailCache;
 
 class ExternalSourceSettingsPage {
@@ -25,6 +27,7 @@ class ExternalSourceSettingsPage {
 		add_action( 'admin_post_wp_media_helper_save_external_sources', [ $this, 'save' ] );
 		add_action( 'admin_post_wp_media_helper_rescan', [ $this, 'rescan' ] );
 		add_action( 'admin_post_wp_media_helper_reset', [ $this, 'reset' ] );
+		add_action( 'admin_post_wp_media_helper_use_uploads', [ $this, 'useUploads' ] );
 	}
 
 	public function register(): void {
@@ -126,6 +129,25 @@ class ExternalSourceSettingsPage {
 							<li><?php echo esc_html( $disabledName ); ?></li>
 						<?php endforeach; ?>
 					</ul>
+				</div>
+			<?php endif; ?>
+
+			<?php $uploadsDirectory = $this->uploadsDirectory(); ?>
+			<?php if ( null === $pending && null !== $uploadsDirectory && ! UploadsSource::isConfigured( $sources, $uploadsDirectory ) ) : ?>
+				<div class="notice notice-info">
+					<p><strong><?php esc_html_e( 'Quick start: use the uploads directory.', 'wp-media-helper' ); ?></strong>
+						<?php esc_html_e( 'This adds one source on the WordPress uploads directory, so files added there by FTP, Nextcloud, a camera uploader or another plugin can be listed and imported. Files already in the Media Library show as imported.', 'wp-media-helper' ); ?>
+					</p>
+					<p>
+						<?php esc_html_e( 'The uploads directory may also hold private or technical files. These directories are never listed:', 'wp-media-helper' ); ?>
+						<code><?php echo esc_html( implode( ', ', BuiltInExclusions::names() ) ); ?></code>
+						<?php esc_html_e( 'The list is a default, not a guarantee: if you keep private files elsewhere in uploads, do not use this, and add a dedicated directory as a source instead.', 'wp-media-helper' ); ?>
+					</p>
+					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+						<input type="hidden" name="action" value="wp_media_helper_use_uploads" />
+						<?php wp_nonce_field( 'wp_media_helper_use_uploads' ); ?>
+						<p><button type="submit" class="button button-primary"><?php esc_html_e( 'Use the uploads directory', 'wp-media-helper' ); ?></button></p>
+					</form>
 				</div>
 			<?php endif; ?>
 
@@ -701,6 +723,53 @@ class ExternalSourceSettingsPage {
 			Reset::CACHE       => [ 'label' => __( 'The whole thumbnail cache', 'wp-media-helper' ), 'description' => __( 'every file of the cache directory, including previews of files never imported and files written by other tools such as Thumbnails Folder', 'wp-media-helper' ), 'default' => false ],
 			Reset::ATTACHMENTS => [ 'label' => __( 'Media imported by this plugin', 'wp-media-helper' ), 'description' => __( 'removes them from the Media Library (the files stay on disk) and detaches them from their posts', 'wp-media-helper' ), 'default' => false ],
 		];
+	}
+
+	/**
+	 * The WordPress uploads directory when a source may be rooted there, else null.
+	 */
+	private function uploadsDirectory(): ?string {
+		$uploads = wp_upload_dir( null, false );
+		$base    = is_array( $uploads ) ? (string) ( $uploads['basedir'] ?? '' ) : '';
+
+		return '' !== $base && is_dir( $base ) && $this->makeReadOnlySettings()->isRootAllowed( $base ) ? $base : null;
+	}
+
+	/**
+	 * Adds the uploads directory as the last source.
+	 */
+	public function useUploads(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You are not allowed to do this.', 'wp-media-helper' ), 403 );
+		}
+		check_admin_referer( 'wp_media_helper_use_uploads' );
+
+		$base    = $this->uploadsDirectory();
+		$sources = $this->loadSources();
+		if ( null === $base ) {
+			$this->redirectBackWithSubmission( $sources, __( 'The uploads directory cannot be used as a source on this site.', 'wp-media-helper' ) );
+		}
+
+		if ( ! UploadsSource::isConfigured( $sources, (string) $base ) ) {
+			$sources  = UploadsSource::append( $sources, (string) $base, __( 'Uploads', 'wp-media-helper' ) );
+			$settings = new ExternalSourceSettings(
+				static fn(): mixed => get_option( ExternalSourceSettings::optionKey(), [] ),
+				static function ( array $value ): void {
+					update_option( ExternalSourceSettings::optionKey(), $value );
+				},
+				static fn(): ?string => AllowedBase::resolve(),
+				static fn(): ?string => ThumbnailCache::directory()
+			);
+
+			try {
+				$settings->saveAll( $sources );
+			} catch ( InvalidArgumentException $exception ) {
+				$this->redirectBackWithSubmission( $sources, $exception->getMessage() );
+			}
+		}
+
+		wp_safe_redirect( add_query_arg( 'updated', 'true', $this->pageUrl() ) );
+		exit;
 	}
 
 	public function reset(): void {
