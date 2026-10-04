@@ -776,6 +776,10 @@
 					}
 					if ( Object.prototype.hasOwnProperty.call( result, 'is_hidden' ) ) {
 						nextItem.is_hidden = !! result.is_hidden;
+						// Hiding deletes the previews; showing again brings new addresses. Until then
+						// the tile keeps its shape (the dimensions stay) and shows its icon.
+						nextItem.thumbnail_url = result.thumbnail_url || '';
+						nextItem.thumbnail_large_url = result.thumbnail_large_url || '';
 					}
 					next.push( nextItem );
 				} );

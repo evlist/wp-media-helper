@@ -422,6 +422,11 @@ class EditorMediaController {
 				$result['success'] = true;
 				$result['is_hidden'] = 'hide' === $action;
 				$result['operation'] = 'hide' === $action ? 'hidden' : 'shown';
+				// Hiding deleted the previews: a file shown again gets the addresses of new ones,
+				// made when the browser asks for them, so its thumbnail comes back at once.
+				if ( 'show' === $action && 'image' === MediaPanelState::resolveMediaType( basename( $confined['path'] ) ) && current_user_can( 'upload_files' ) ) {
+					$result = array_merge( $result, PanelThumbnail::urlsFor( $confined['path'], wp_create_nonce( PanelThumbnail::NONCE ), Thumbnails::serviceForWordPress() ) );
+				}
 				$results[] = $result;
 				continue;
 			}
