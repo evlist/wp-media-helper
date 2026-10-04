@@ -108,10 +108,23 @@
 		} );
 	};
 
-	const getStoredDate = function () {
-		const meta = wp.data.select( 'core/editor' ).getEditedPostAttribute( 'meta' ) || {};
+	// The day to start from when no date was chosen for the post: the day of publication for a post
+	// that is published, scheduled or private (the posts one comes back to), today for a draft.
+	const PUBLISHED_STATUSES = [ 'publish', 'future', 'private' ];
 
-		return meta[ dateMetaKey ] || defaultDate;
+	const publicationDay = function ( status, date ) {
+		if ( ! PUBLISHED_STATUSES.includes( status ) || 'string' !== typeof date ) {
+			return '';
+		}
+
+		return /^\d{4}-\d{2}-\d{2}/.test( date ) ? date.slice( 0, 10 ) : '';
+	};
+
+	const getStoredDate = function () {
+		const editor = wp.data.select( 'core/editor' );
+		const meta = editor.getEditedPostAttribute( 'meta' ) || {};
+
+		return meta[ dateMetaKey ] || publicationDay( editor.getEditedPostAttribute( 'status' ), editor.getEditedPostAttribute( 'date' ) ) || defaultDate;
 	};
 
 	const normalizeMediaItem = function ( item ) {
@@ -468,9 +481,11 @@
 		// The editor loads the post asynchronously: on a page reload the stored meta
 		// can arrive after this component first rendered with the default date.
 		const storedDate = wp.data.useSelect( function ( select ) {
-			const meta = select( 'core/editor' ).getEditedPostAttribute( 'meta' ) || {};
+			const editor = select( 'core/editor' );
+			const meta = editor.getEditedPostAttribute( 'meta' ) || {};
 
-			return meta[ dateMetaKey ] || '';
+			// The date chosen for the post, else the day it was published (which is not saved as a choice).
+			return meta[ dateMetaKey ] || publicationDay( editor.getEditedPostAttribute( 'status' ), editor.getEditedPostAttribute( 'date' ) );
 		}, [] );
 
 		useEffect( function () {

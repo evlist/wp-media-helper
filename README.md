@@ -74,6 +74,9 @@ All settings are managed on the plugin's **Settings** page
 | **Maximum entries per page** | Number of media items shown per page in the editor panel, and the maximum number of items accepted by a single bulk action. Whole number between 1 and 500, default 100. |
 | **State** and order | The sources are an **ordered list**; each file belongs to the first source whose directory contains it, so put narrow sources (`photos`) before broad ones (`uploads`). *Active*: its files are listed and can be imported. *Disabled*: ignored as if it did not exist, its files fall to the sources that follow. *Excluded*: lists nothing, and no other source lists its files either. |
 
+The panel starts at the day a post was published (published, scheduled or private posts) when
+no date was chosen for it, and at today for a draft.
+
 See [Dates in WP Media Helper](docs/IA/date-model.md) for how the panel date, the
 patterns, the attachment date and the dates of the files relate, and why a date in a
 folder name can be misleading.

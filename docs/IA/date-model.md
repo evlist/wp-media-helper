@@ -29,14 +29,17 @@ the article**, and the **date WordPress puts in its own upload folders**.
 - It is stored in the post meta `wp_media_helper_date` of posts and pages (type
   string, exposed in the REST API, writable by users who can edit the post). It
   is saved with the post, not immediately: changing it marks the post as modified.
-- When the meta is empty, the control starts at the current day in the site time
-  zone, computed when the editor loads.
+- When the meta is empty, the control starts at **the day the post was published**
+  for a post that is published, scheduled or private (an existing article one comes
+  back to), and at the current day in the site time zone for a draft. That day is
+  only displayed: it is not saved as a choice, so it follows the publication date
+  until the editor picks a date.
 - It is a pure calendar date. It says nothing about a time or a time zone.
 - Every request carries it in the `filters` payload. The server accepts only a
   real `Y-m-d` date and otherwise falls back to the current day.
 - It has **no link with the date of the article**: an article about a trip can be
   written weeks later and still list the photos of the day of the trip.
-- Changing it returns the list to its first page.
+- Changing it starts the list again from its first lot.
 
 ## 2. From the panel date to a list of files
 
