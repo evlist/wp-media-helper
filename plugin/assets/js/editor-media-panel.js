@@ -724,12 +724,14 @@
 							onToggle: toggleMediaType
 						} ),
 						canSeeHidden
-							? wp.element.createElement( CheckboxControl, {
-								label: __( 'Show hidden files', 'wp-media-helper' ),
-								checked: !! filters.show_hidden,
-								disabled: loading,
-								onChange: toggleShowHidden
-							} )
+							? wp.element.createElement( 'div', { style: { marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #ddd' } },
+								wp.element.createElement( CheckboxControl, {
+									label: __( 'Show hidden files', 'wp-media-helper' ),
+									checked: !! filters.show_hidden,
+									disabled: loading,
+									onChange: toggleShowHidden
+								} )
+							)
 							: null
 					)
 				),
