@@ -183,14 +183,19 @@ applied to it.
   Implemented for the attachment date. The same rule will apply to the date used
   to select files, so that a file named with a date alone is placed at the middle
   of that day.
-- Proposed, not implemented: separating the **discovery** of files (a scan, made
+- Decided for the next slices ([025](../slices/025-database-file-index.md),
+  [026](../slices/026-name-date-patterns-and-embedded-dates.md),
+  [027](../slices/027-hidden-files.md)): separating the **discovery** of files (a scan, made
   incremental by remembering directories and their modification times) from the
   **selection** of a day (a query on an index). The index becomes a database table
   holding, per file, the candidate dates, an effective date and its source, and
   user metadata such as a hidden flag, which cannot live in the attachment meta of a
   file that is not imported. The path pattern becomes a hint saying which directories
   to check first. Default order of the effective date: a date forced by the user,
-  the date in the name, the embedded date, the modification time.
+  the date in the name, the embedded date, the modification time. Hidden files are
+  global to the site. Several name patterns can be set per source, with presets for
+  common devices. The target library has about 5,000 directories and more than
+  110,000 files, so the first scan must be resumable and the next ones incremental.
 - Open: when the name gives a day without a time and the embedded metadata gives a
   time on the same day, whether to refine the median time with the embedded one
   (and keep 12:00:00 when the days differ, as for a video edited later).

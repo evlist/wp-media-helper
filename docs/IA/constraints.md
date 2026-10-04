@@ -33,7 +33,9 @@
 - External media support must remain optional and support multiple configured
   roots, each with its own path pattern and optional filename filter pattern.
 - External media discovery should use a persistent local index and targeted
-  refreshes rather than scanning every configured root on each page load.
+  refreshes rather than scanning every configured root on each page load. The index
+  is planned to be a database table rather than files
+  ([slice 025](../slices/025-database-file-index.md)).
 - Directory modification times may be used as invalidation hints, but must not
   be treated as authoritative filesystem change notifications.
 - The UI must prevent selection and confirmation while relevant external media
