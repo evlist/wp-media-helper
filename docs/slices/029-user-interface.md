@@ -86,6 +86,14 @@ featured image shows a star. There is no bulk action.
   line; drag and drop reordering in addition to the arrow buttons (slice 024); the
   rarely used fields (path pattern, name pattern, modification time) in an "Advanced"
   part.
+- **Adding a source where it belongs.** The order of the sources is their priority (slice 024), and the
+  quickest start is the uploads source (slice 028) followed by narrower sources that must come
+  *before* it. A new source is now always added last and must then be moved up, one step at a
+  time. Each source card gets *Add a source before* and *Add a source after*, which insert a new
+  card at that position (the *Add source* button of the list keeps adding at the end, and the
+  one-click uploads source stays last). The priority numbers are renumbered, and the new card takes
+  focus on its *Name* field. A new source that is nested in an earlier one shows the shadowing
+  warning at once, so a wrong position is seen before saving.
 - **Messages.** Validation errors next to the field and summarised at the top; the
   warnings (shadowed sources, public exposure, sources outside the allowed base) grouped
   and dismissible.
