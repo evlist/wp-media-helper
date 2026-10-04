@@ -258,6 +258,27 @@ class MediaPanelState {
 	}
 
 	/**
+	 * Gives the items what the detail sheet shows: the size of the file, its date as the index
+	 * has it and where that date comes from (`name`, `embedded`, `mtime`).
+	 *
+	 * @param array<int, array<string, mixed>>                                     $items
+	 * @param array<string, array{size:int, date:string|null, date_source:string}> $details By path.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function markDetails( array $items, array $details ): array {
+		foreach ( $items as $index => $item ) {
+			$entry = $details[ (string) ( $item['path'] ?? '' ) ] ?? null;
+			if ( null !== $entry ) {
+				$items[ $index ]['file_size']      = $entry['size'];
+				$items[ $index ]['effective_date'] = $entry['date'];
+				$items[ $index ]['date_source']    = $entry['date_source'];
+			}
+		}
+
+		return $items;
+	}
+
+	/**
 	 * Gives the images their dimensions, as displayed, for the layout of the gallery.
 	 *
 	 * @param array<int, array<string, mixed>>     $items
@@ -375,7 +396,7 @@ class MediaPanelState {
 			'refresh_required' => $result['refresh_required'],
 			'stale' => $result['stale'],
 			'reason' => $result['reason'],
-			'files' => self::markDimensions( self::markHidden( self::enrichFiles( $result['files'], $sourceId, $dateValue ), $result['hidden'] ?? [] ), $result['dimensions'] ?? [] ),
+			'files' => self::markDetails( self::markDimensions( self::markHidden( self::enrichFiles( $result['files'], $sourceId, $dateValue ), $result['hidden'] ?? [] ), $result['dimensions'] ?? [] ), $result['details'] ?? [] ),
 			'directory' => '',
 		];
 	}

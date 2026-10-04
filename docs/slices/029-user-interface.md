@@ -59,7 +59,13 @@ thumbnails** over the full width of the panel.
    when the list changes. Tested in Chromium with a mock of `wp` and a fake server (250 files).
    For now a click opens a menu with the information and the actions (the detail sheet and the
    right-click menu are step 3).
-3. **Detail sheet and context menu**, with the keyboard.
+3. **Detail sheet and context menu** (done): a click opens a modal sheet (large preview, type,
+   dimensions, size, date and its source from the index, source, state, actions, previous/next and
+   arrow keys); a right click, the menu key or a ⋮ button (on hover/focus, always on touch screens)
+   opens a menu at the pointer or under the tile (arrow keys, Escape, outside click, scroll). The
+   menu is plain markup positioned in the window, so it does not depend on the version of the
+   WordPress popover component. The index gives the size, the date and its source (`name`,
+   `embedded`, `mtime`) for the sheet. Tested in Chromium with the mock of `wp`.
 
 ## Settings page
 

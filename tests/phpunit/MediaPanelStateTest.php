@@ -531,4 +531,12 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertSame( [ 4000, 3000 ], [ $marked[0]['width'], $marked[0]['height'] ] );
 		$this->assertArrayNotHasKey( 'width', $marked[1] );
 	}
+
+	public function test_items_get_the_details_shown_in_the_sheet(): void {
+		$items = MediaPanelState::enrichFiles( [ '/u/a.jpg', '/u/b.mp4' ], 's', '2026-10-02' );
+
+		$marked = MediaPanelState::markDetails( $items, [ '/u/a.jpg' => [ 'size' => 1234, 'date' => '2026-10-02 12:15:49', 'date_source' => 'embedded' ] ] );
+		$this->assertSame( [ 1234, '2026-10-02 12:15:49', 'embedded' ], [ $marked[0]['file_size'], $marked[0]['effective_date'], $marked[0]['date_source'] ] );
+		$this->assertArrayNotHasKey( 'file_size', $marked[1] );
+	}
 }

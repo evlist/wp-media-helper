@@ -232,8 +232,11 @@ the one used by Thumbnails Folder: its existing files are reused, with its URLs.
   width of the panel, 1, 2 or 3 per row (remembered in the browser), with an infinite scroll in lots
   of *maximum entries*. A paperclip on each thumbnail shows the attachment: green, attached to
   this post; red with a lock, attached to another post; crossed out, not attached. Small badges
-  show files in the Media Library and hidden files. A click opens the menu of the file (its
-  information and its actions). A long press (or Ctrl/Shift+click, or the *Select* button) enters
+  show files in the Media Library and hidden files. A click opens the **detail sheet** of the file
+  (large preview, type, dimensions, size, date and where it comes from, source, state and actions,
+  with previous and next buttons and the arrow keys). A right click, the ⋮ button shown on hover and
+  focus (always shown on a touch screen) or the menu key of the keyboard opens the menu of the file
+  (*Details*, its actions, *Select*), which the arrow keys and Escape drive. A long press (or Ctrl/Shift+click, or the *Select* button) enters
   selection mode, with a mark on every thumbnail and the bulk actions above. The list is not replaced
   behind your back: when files appear, a notice offers to refresh it. When it is not in the cache yet the browser asks an authenticated endpoint
   (`admin-ajax.php?action=wp_media_helper_thumbnail`) that creates and returns it; only

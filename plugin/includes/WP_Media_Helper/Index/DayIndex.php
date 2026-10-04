@@ -95,7 +95,7 @@ class DayIndex {
 
 	/**
 	 * @param array<string, mixed> $source
-	 * @return array{files:string[], hidden:string[], dimensions:array<string, array{0:int, 1:int}>, refresh_required:bool, stale:bool, reason:string|null}
+	 * @return array{files:string[], hidden:string[], dimensions:array<string, array{0:int, 1:int}>, details:array<string, array{size:int, date:string|null, date_source:string}>, refresh_required:bool, stale:bool, reason:string|null}
 	 */
 	public function forDay( array $source, DateTimeInterface $date, bool $force = false, bool $includeHidden = false ): array {
 		$id = (string) ( $source['id'] ?? '' );
@@ -113,12 +113,18 @@ class DayIndex {
 		$files      = [];
 		$hidden     = [];
 		$dimensions = [];
+		$details    = [];
 		foreach ( $this->store->filesForDay( [ $id ], $date->format( 'Y-m-d' ), $includeHidden ) as $row ) {
 			$path    = $this->keys->absolute( (string) $row['path'] );
 			$files[] = $path;
 			if ( ! empty( $row['hidden'] ) ) {
 				$hidden[] = $path;
 			}
+			$details[ $path ] = [
+				'size'        => (int) ( $row['size'] ?? 0 ),
+				'date'        => isset( $row['effective_date'] ) ? (string) $row['effective_date'] : null,
+				'date_source' => (string) ( $row['date_source'] ?? 'none' ),
+			];
 			if ( ! empty( $row['width'] ) && ! empty( $row['height'] ) ) {
 				$dimensions[ $path ] = [ (int) $row['width'], (int) $row['height'] ];
 			}
@@ -128,6 +134,7 @@ class DayIndex {
 			'files'            => $files,
 			'hidden'           => $hidden,
 			'dimensions'       => $dimensions,
+			'details'          => $details,
 			'refresh_required' => ! $indexed,
 			'stale'            => false,
 			'reason'           => $indexed ? ( $force ? self::REASON_FORCED : null ) : self::REASON_INCOMPLETE,

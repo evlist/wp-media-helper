@@ -4,7 +4,7 @@
 	const { __, sprintf, _n } = wp.i18n;
 	const { registerPlugin } = wp.plugins;
 	const { PluginSidebar } = wp.editPost;
-	const { PanelBody, PanelRow, Button, TextControl, Notice, Dropdown, MenuItem, CheckboxControl } = wp.components;
+	const { PanelBody, PanelRow, Button, TextControl, Notice, Dropdown, MenuItem, CheckboxControl, Modal } = wp.components;
 	// An icon font may be missing in some versions: the tile then shows its text only.
 	const Dashicon = wp.components.Dashicon || function () { return null; };
 	const chevronDown = wp.icons && wp.icons.chevronDown ? wp.icons.chevronDown : null;
@@ -142,6 +142,9 @@
 			thumbnail_large_url: item && item.thumbnail_large_url ? item.thumbnail_large_url : '',
 			width: item && item.width ? item.width : 0,
 			height: item && item.height ? item.height : 0,
+			file_size: item && item.file_size ? item.file_size : 0,
+			effective_date: item && item.effective_date ? item.effective_date : '',
+			date_source: item && item.date_source ? item.date_source : '',
 		};
 	};
 
@@ -239,6 +242,37 @@
 		);
 	};
 
+
+	const formatBytes = function ( bytes ) {
+		if ( ! bytes ) {
+			return '';
+		}
+
+		const units = [ 'B', 'KB', 'MB', 'GB' ];
+		let value = bytes;
+		let unit = 0;
+		while ( value >= 1024 && unit < units.length - 1 ) {
+			value /= 1024;
+			unit += 1;
+		}
+
+		return ( unit > 0 ? value.toFixed( 1 ) : String( value ) ) + ' ' + units[ unit ];
+	};
+
+	// Where the date of a file comes from, as the index recorded it.
+	const dateSourceLabel = function ( source ) {
+		return {
+			name: __( 'from the file name', 'wp-media-helper' ),
+			embedded: __( 'capture date in the file', 'wp-media-helper' ),
+			mtime: __( 'file modification time', 'wp-media-helper' ),
+		}[ source ] || '';
+	};
+
+	// The "more" button of a tile shows on hover and focus, and always on a touch screen.
+	const GALLERY_CSS = '.wpmh-tile .wpmh-more{opacity:0;transition:opacity .1s}'
+		+ '.wpmh-tile:hover .wpmh-more,.wpmh-tile:focus-within .wpmh-more,.wpmh-tile .wpmh-more:focus{opacity:1}'
+		+ '@media (hover:none){.wpmh-tile .wpmh-more{opacity:1}}'
+		+ '.wpmh-tile>button:focus-visible{outline:3px solid #2271b1;outline-offset:-3px}';
 
 	// ---- Gallery -------------------------------------------------------------------------
 
@@ -387,6 +421,8 @@
 		const [ density, setDensity ] = useState( readDensity );
 		const [ galleryWidth, setGalleryWidth ] = useState( 260 );
 		const [ hasNews, setHasNews ] = useState( false );
+		const [ menu, setMenu ] = useState( null );
+		const [ sheetKey, setSheetKey ] = useState( null );
 		const [ operationNotice, setOperationNotice ] = useState( null );
 		const [ lastRefreshedAt, setLastRefreshedAt ] = useState( null );
 		const [ , setTick ] = useState( 0 );
@@ -617,6 +653,53 @@
 
 			return function () { observer.disconnect(); };
 		}, [] );
+
+		// The style of the "more" buttons, added once.
+		useEffect( function () {
+			if ( document.getElementById( 'wpmh-gallery-css' ) ) {
+				return;
+			}
+
+			const style = document.createElement( 'style' );
+			style.id = 'wpmh-gallery-css';
+			style.textContent = GALLERY_CSS;
+			document.head.appendChild( style );
+		}, [] );
+
+		// The context menu closes with Escape, a click elsewhere, or a scroll.
+		useEffect( function () {
+			if ( ! menu ) {
+				return undefined;
+			}
+
+			const close = function () { setMenu( null ); };
+			// A scroll still on its way when the menu opens (the browser reports it a frame late) must not close it.
+			const openedAt = Date.now();
+			const closeOnScroll = function () {
+				if ( Date.now() - openedAt > 250 ) {
+					close();
+				}
+			};
+			const onKey = function ( event ) {
+				if ( 'Escape' === event.key ) {
+					close();
+				}
+			};
+			const onDown = function ( event ) {
+				if ( ! event.target.closest || ! event.target.closest( '[role=menu]' ) ) {
+					close();
+				}
+			};
+			document.addEventListener( 'keydown', onKey );
+			document.addEventListener( 'mousedown', onDown );
+			document.addEventListener( 'scroll', closeOnScroll, true );
+
+			return function () {
+				document.removeEventListener( 'keydown', onKey );
+				document.removeEventListener( 'mousedown', onDown );
+				document.removeEventListener( 'scroll', closeOnScroll, true );
+			};
+		}, [ menu ] );
 
 		const handleRefresh = function () {
 			loadPage( 1, { force: true } );
@@ -918,8 +1001,28 @@
 			}, LONG_PRESS_MS );
 		};
 
-		// A click that ends a long press, or comes with Ctrl/Shift, is about the selection, not the menu.
-		const handleTileClick = function ( event, item, toggleMenu ) {
+		const closeMenu = function () {
+			setMenu( null );
+		};
+
+		// A context menu opened with the keyboard (the menu key, Shift+F10) has no pointer position:
+		// it opens under the tile.
+		const openMenu = function ( event, item ) {
+			event.preventDefault();
+			const box = event.currentTarget.getBoundingClientRect();
+			const fromKeyboard = 0 === event.clientX && 0 === event.clientY;
+
+			setMenu( { key: itemKey( item ), x: fromKeyboard ? box.left : event.clientX, y: fromKeyboard ? box.bottom : event.clientY } );
+		};
+
+		const openMenuFromButton = function ( event, item ) {
+			event.stopPropagation();
+			const box = event.currentTarget.getBoundingClientRect();
+			setMenu( { key: itemKey( item ), x: box.left, y: box.bottom } );
+		};
+
+		// A click is about the selection in selection mode (and with Ctrl/Shift), and opens the detail sheet otherwise.
+		const handleTileClick = function ( event, item ) {
 			cancelLongPress();
 			if ( longPress.current.fired ) {
 				longPress.current.fired = false;
@@ -932,78 +1035,190 @@
 			} else if ( event.ctrlKey || event.metaKey || event.shiftKey ) {
 				startSelection( item );
 			} else {
-				toggleMenu();
+				setSheetKey( itemKey( item ) );
 			}
 		};
 
-		const renderTile = function ( item, row, onClick ) {
+		const renderTile = function ( item, row ) {
 			const key = itemKey( item );
 			const selected = selectedIds.includes( key );
 			const ratio = aspectOf( item );
 
-			return wp.element.createElement( 'button', {
+			return wp.element.createElement( 'div', {
 				key: key,
-				type: 'button',
-				onClick: onClick,
-				onPointerDown: function () { pressStart( item ); },
-				onPointerUp: cancelLongPress,
-				onPointerLeave: cancelLongPress,
-				onPointerCancel: cancelLongPress,
-				'aria-label': item.name + ' – ' + stateLabel( item ),
-				'aria-pressed': selectionMode ? selected : undefined,
-				style: {
-					position: 'relative', flex: '0 0 auto', width: Math.floor( ratio * row.height ) + 'px', height: row.height + 'px', padding: 0, margin: 0, border: 0,
-					background: '#f0f0f1', cursor: 'pointer', overflow: 'hidden', borderRadius: '2px', opacity: item.is_hidden ? 0.55 : 1,
-					outline: selected ? '3px solid #2271b1' : 'none', outlineOffset: '-3px', userSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'manipulation'
-				}
+				role: 'listitem',
+				className: 'wpmh-tile',
+				style: { position: 'relative', flex: '0 0 auto', width: Math.floor( ratio * row.height ) + 'px', height: row.height + 'px' }
 			},
-				wp.element.createElement( TileContent, { item: item, perRow: density } ),
-				wp.element.createElement( AttachmentBadge, { item: item } ),
-				item.is_imported
-					? wp.element.createElement( CornerBadge, { icon: 'admin-media', label: __( 'In the WordPress media library', 'wp-media-helper' ), position: { left: '3px' }, colour: '#2271b1' } )
-					: null,
-				item.is_hidden
-					? wp.element.createElement( CornerBadge, { icon: 'hidden', label: __( 'Hidden', 'wp-media-helper' ), position: { right: '3px' }, colour: '#8a2424' } )
-					: null,
+				wp.element.createElement( 'button', {
+					type: 'button',
+					onClick: function ( event ) { handleTileClick( event, item ); },
+					onContextMenu: function ( event ) { cancelLongPress(); openMenu( event, item ); },
+					onPointerDown: function () { pressStart( item ); },
+					onPointerUp: cancelLongPress,
+					onPointerLeave: cancelLongPress,
+					onPointerCancel: cancelLongPress,
+					'aria-label': item.name + ' – ' + stateLabel( item ),
+					'aria-pressed': selectionMode ? selected : undefined,
+					'aria-haspopup': 'menu',
+					style: {
+						position: 'absolute', inset: 0, width: '100%', height: '100%', padding: 0, margin: 0, border: 0,
+						background: '#f0f0f1', cursor: 'pointer', overflow: 'hidden', borderRadius: '2px', opacity: item.is_hidden ? 0.55 : 1,
+						outline: selected ? '3px solid #2271b1' : 'none', outlineOffset: '-3px', userSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'manipulation'
+					}
+				},
+					wp.element.createElement( TileContent, { item: item, perRow: density } ),
+					wp.element.createElement( AttachmentBadge, { item: item } ),
+					item.is_imported
+						? wp.element.createElement( CornerBadge, { icon: 'admin-media', label: __( 'In the WordPress media library', 'wp-media-helper' ), position: { left: '3px' }, colour: '#2271b1' } )
+						: null,
+					item.is_hidden
+						? wp.element.createElement( CornerBadge, { icon: 'hidden', label: __( 'Hidden', 'wp-media-helper' ), position: { right: '3px' }, colour: '#8a2424' } )
+						: null
+				),
 				selectionMode
 					? wp.element.createElement( 'span', {
 						'aria-hidden': true,
-						style: { position: 'absolute', top: '3px', right: '3px', width: '20px', height: '20px', borderRadius: '50%', border: '2px solid #fff', boxShadow: '0 0 2px rgba(0,0,0,0.6)', background: selected ? '#2271b1' : 'rgba(0,0,0,0.25)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', lineHeight: 1 }
+						style: { position: 'absolute', top: '3px', right: '3px', width: '20px', height: '20px', borderRadius: '50%', border: '2px solid #fff', boxShadow: '0 0 2px rgba(0,0,0,0.6)', background: selected ? '#2271b1' : 'rgba(0,0,0,0.25)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', lineHeight: 1, pointerEvents: 'none' }
 					}, selected ? '✓' : '' )
-					: null
+					: wp.element.createElement( 'button', {
+						type: 'button',
+						className: 'wpmh-more',
+						onClick: function ( event ) { openMenuFromButton( event, item ); },
+						'aria-label': sprintf( __( 'Actions for %s', 'wp-media-helper' ), item.name ),
+						'aria-haspopup': 'menu',
+						style: { position: 'absolute', top: '3px', right: '3px', width: '22px', height: '22px', padding: 0, border: 0, borderRadius: '50%', background: 'rgba(255,255,255,0.92)', boxShadow: '0 0 2px rgba(0,0,0,0.5)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', lineHeight: 1, color: '#1d2327' }
+					}, '⋮' )
 			);
 		};
 
-		// Without selection mode a tile opens the menu of the item: its information and its actions.
-		const renderMenu = function ( item, onClose ) {
-			const actions = actionsFor( item );
+		// The actions of an item as a menu, opened by a right click, the menu key or the "more" button.
+		const renderContextMenu = function () {
+			const item = menu ? visibleItems.find( function ( candidate ) { return itemKey( candidate ) === menu.key; } ) : null;
+			if ( ! menu || ! item ) {
+				return null;
+			}
 
-			return wp.element.createElement( 'div', { style: { minWidth: '220px', maxWidth: '280px', padding: '8px 0' } },
-				wp.element.createElement( 'div', { style: { padding: '0 12px 8px', overflowWrap: 'anywhere' } },
-					wp.element.createElement( 'strong', { style: { fontSize: '12px' }, title: item.path }, item.name ),
-					wp.element.createElement( 'div', { style: { color: '#50575e', fontSize: '11px', marginTop: '2px' } },
-						[ String( item.type || '' ).toUpperCase(), item.width > 0 ? item.width + '×' + item.height : '' ].filter( Boolean ).join( ' · ' ) ),
-					item.is_hidden ? wp.element.createElement( 'div', { style: { color: '#8a2424', fontSize: '11px' } }, __( 'Hidden', 'wp-media-helper' ) ) : null,
-					wp.element.createElement( 'div', { style: { fontSize: '11px', marginTop: '2px', color: item.is_attached_to_other_post ? '#b32d2e' : ( item.is_attached_to_current_post ? '#0a7d45' : '#50575e' ) } },
-						item.is_attached_to_other_post && item.other_post_title
-							? sprintf( __( 'Attached to another post: %s', 'wp-media-helper' ), item.other_post_title )
-							: stateLabel( item ) ),
-					item.is_attached_to_other_post && item.other_post_edit_url
-						? wp.element.createElement( 'a', { href: item.other_post_edit_url, target: '_blank', rel: 'noreferrer', style: { fontSize: '11px' } }, __( 'Open that post', 'wp-media-helper' ) )
-						: null,
-					item.is_imported ? wp.element.createElement( 'div', { style: { fontSize: '11px', color: '#2271b1' } }, __( 'In the WordPress media library', 'wp-media-helper' ) ) : null
-				),
+			const actions = actionsFor( item );
+			const left = Math.max( 4, Math.min( menu.x, window.innerWidth - 240 ) );
+			const top = Math.max( 4, Math.min( menu.y, window.innerHeight - ( 60 + 34 * ( actions.length + 2 ) ) ) );
+			const choose = function ( callback ) {
+				return function () {
+					closeMenu();
+					callback();
+				};
+			};
+
+			return wp.element.createElement( 'div', {
+				ref: function ( element ) { if ( element && ! element.contains( document.activeElement ) ) { const first = element.querySelector( 'button' ); if ( first ) { first.focus( { preventScroll: true } ); } } },
+				role: 'menu',
+				'aria-label': sprintf( __( 'Actions for %s', 'wp-media-helper' ), item.name ),
+				onKeyDown: function ( event ) {
+					const buttons = Array.from( event.currentTarget.querySelectorAll( 'button' ) );
+					const at = buttons.indexOf( document.activeElement );
+					if ( 'ArrowDown' === event.key ) {
+						event.preventDefault();
+						buttons[ ( at + 1 ) % buttons.length ].focus();
+					} else if ( 'ArrowUp' === event.key ) {
+						event.preventDefault();
+						buttons[ ( at - 1 + buttons.length ) % buttons.length ].focus();
+					}
+				},
+				style: { position: 'fixed', left: left + 'px', top: top + 'px', zIndex: 1000000, minWidth: '200px', maxWidth: '240px', background: '#fff', border: '1px solid #949494', borderRadius: '2px', boxShadow: '0 3px 10px rgba(0,0,0,0.25)', padding: '6px 0' }
+			},
+				wp.element.createElement( 'div', { style: { padding: '2px 12px 6px', fontSize: '12px', fontWeight: 600, overflowWrap: 'anywhere', borderBottom: '1px solid #ddd', marginBottom: '4px' } }, item.name ),
+				wp.element.createElement( MenuItem, { key: 'details', onClick: choose( function () { setSheetKey( itemKey( item ) ); } ) }, __( 'Details', 'wp-media-helper' ) ),
 				actions.map( function ( entry ) {
 					return wp.element.createElement( MenuItem, {
 						key: entry.action,
 						disabled: loading,
-						onClick: function () {
-							onClose();
-							handleItemAction( entry.action, item );
-						}
+						onClick: choose( function () { handleItemAction( entry.action, item ); } )
 					}, entry.label );
 				} ),
-				wp.element.createElement( MenuItem, { key: 'select', onClick: function () { onClose(); startSelection( item ); } }, __( 'Select', 'wp-media-helper' ) )
+				wp.element.createElement( MenuItem, { key: 'select', onClick: choose( function () { startSelection( item ); } ) }, __( 'Select', 'wp-media-helper' ) )
+			);
+		};
+
+		// The detail sheet: a large preview, what is known about the file, and its actions.
+		const renderSheet = function () {
+			const index = sheetKey ? visibleItems.findIndex( function ( candidate ) { return itemKey( candidate ) === sheetKey; } ) : -1;
+			if ( index < 0 ) {
+				return null;
+			}
+
+			const item = visibleItems[ index ];
+			const actions = actionsFor( item );
+			const source = availableSources.find( function ( candidate ) { return candidate.id === item.source_id; } );
+			const picture = item.thumbnail_large_url || item.thumbnail_url;
+			const rowsOfInfo = [
+				[ __( 'Type', 'wp-media-helper' ), String( item.type || '' ).toUpperCase() ],
+				[ __( 'Dimensions', 'wp-media-helper' ), item.width > 0 ? item.width + ' × ' + item.height + ' px' : '' ],
+				[ __( 'Size', 'wp-media-helper' ), formatBytes( item.file_size ) ],
+				[ __( 'Date', 'wp-media-helper' ), item.effective_date ? item.effective_date + ( dateSourceLabel( item.date_source ) ? ' (' + dateSourceLabel( item.date_source ) + ')' : '' ) : '' ],
+				[ __( 'Source', 'wp-media-helper' ), source ? source.name : '' ],
+				[ __( 'File', 'wp-media-helper' ), item.path ],
+			].filter( function ( entry ) { return entry[ 1 ]; } );
+			const go = function ( offset ) {
+				const next = visibleItems[ index + offset ];
+				if ( next ) {
+					setSheetKey( itemKey( next ) );
+				}
+			};
+
+			return wp.element.createElement( Modal, {
+				title: item.name,
+				onRequestClose: function () { setSheetKey( null ); },
+				className: 'wpmh-sheet'
+			},
+				wp.element.createElement( 'div', {
+					onKeyDown: function ( event ) {
+						if ( 'INPUT' === event.target.tagName || 'TEXTAREA' === event.target.tagName ) {
+							return;
+						}
+						if ( 'ArrowLeft' === event.key ) {
+							go( -1 );
+						} else if ( 'ArrowRight' === event.key ) {
+							go( 1 );
+						}
+					},
+					style: { maxWidth: '560px' }
+				},
+					picture
+						? wp.element.createElement( 'img', { src: picture, alt: item.name, draggable: false, style: { display: 'block', maxWidth: '100%', maxHeight: '55vh', margin: '0 auto 12px', objectFit: 'contain', background: '#f0f0f1' } } )
+						: null,
+					wp.element.createElement( 'p', { style: { fontWeight: 600, color: item.is_attached_to_other_post ? '#b32d2e' : ( item.is_attached_to_current_post ? '#0a7d45' : '#50575e' ) } },
+						item.is_attached_to_other_post && item.other_post_title ? sprintf( __( 'Attached to another post: %s', 'wp-media-helper' ), item.other_post_title ) : stateLabel( item ),
+						item.is_attached_to_other_post && item.other_post_edit_url
+							? [ ' ', wp.element.createElement( 'a', { key: 'edit', href: item.other_post_edit_url, target: '_blank', rel: 'noreferrer', style: { fontWeight: 400 } }, __( 'Open that post', 'wp-media-helper' ) ) ]
+							: null,
+						item.is_imported ? wp.element.createElement( 'span', { style: { color: '#2271b1', fontWeight: 400 } }, ' · ' + __( 'In the WordPress media library', 'wp-media-helper' ) ) : null,
+						item.is_hidden ? wp.element.createElement( 'span', { style: { color: '#8a2424', fontWeight: 400 } }, ' · ' + __( 'Hidden', 'wp-media-helper' ) ) : null
+					),
+					wp.element.createElement( 'dl', { style: { display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '2px 12px', margin: '0 0 12px', fontSize: '12px' } },
+						rowsOfInfo.map( function ( entry ) {
+							return [
+								wp.element.createElement( 'dt', { key: entry[ 0 ] + 't', style: { color: '#50575e' } }, entry[ 0 ] ),
+								wp.element.createElement( 'dd', { key: entry[ 0 ] + 'd', style: { margin: 0, overflowWrap: 'anywhere' } }, entry[ 1 ] ),
+							];
+						} )
+					),
+					wp.element.createElement( 'div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } },
+						actions.map( function ( entry ) {
+							return wp.element.createElement( Button, {
+								key: entry.action,
+								isPrimary: entry === actions[ 0 ],
+								isSecondary: entry !== actions[ 0 ],
+								disabled: loading,
+								onClick: function () { handleItemAction( entry.action, item ); },
+								text: entry.label
+							} );
+						} ),
+						wp.element.createElement( 'span', { style: { marginLeft: 'auto', display: 'flex', gap: '4px' } },
+							wp.element.createElement( Button, { isSecondary: true, disabled: index <= 0, onClick: function () { go( -1 ); }, 'aria-label': __( 'Previous file', 'wp-media-helper' ), text: '‹' } ),
+							wp.element.createElement( Button, { isSecondary: true, disabled: index >= visibleItems.length - 1, onClick: function () { go( 1 ); }, 'aria-label': __( 'Next file', 'wp-media-helper' ), text: '›' } )
+						)
+					)
+				)
 			);
 		};
 
@@ -1217,20 +1432,7 @@
 							rows.map( function ( row, rowIndex ) {
 								return wp.element.createElement( 'div', { key: rowIndex, role: 'presentation', style: { display: 'flex', gap: GAP + 'px' } },
 									row.items.map( function ( item ) {
-										if ( selectionMode ) {
-											return renderTile( item, row, function ( event ) { handleTileClick( event, item, function () {} ); } );
-										}
-
-										return wp.element.createElement( Dropdown, {
-											key: itemKey( item ),
-											popoverProps: { placement: 'bottom-start' },
-											renderToggle: function ( { onToggle } ) {
-												return renderTile( item, row, function ( event ) { handleTileClick( event, item, onToggle ); } );
-											},
-											renderContent: function ( { onClose } ) {
-												return renderMenu( item, onClose );
-											}
-										} );
+										return renderTile( item, row );
 									} )
 								);
 							} )
@@ -1241,7 +1443,9 @@
 						// Reaching this marker loads the next lot.
 						wp.element.createElement( 'div', { ref: sentinel, style: { minHeight: '1px', margin: '0.5rem 0', textAlign: 'center', color: '#757575', fontSize: '12px' } },
 							hasMore && loading ? __( 'Loading…', 'wp-media-helper' ) : ''
-						)
+						),
+						renderContextMenu(),
+						renderSheet()
 					)
 				)
 			)
