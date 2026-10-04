@@ -227,7 +227,15 @@ the one used by Thumbnails Folder: its existing files are reused, with its URLs.
 - Deleting an attachment deletes its thumbnails, never the original.
 - **Previews in the editor panel.** Each listed image, imported or not, shows a preview
   that keeps its proportions, in two sizes (long edge 320 and 640 px, never enlarged),
-  stored in the same cache. The panel also shows how many files match the filters. When it is not in the cache yet the browser asks an authenticated endpoint
+  stored in the same cache. The panel also shows how many files match the filters.
+- **The gallery.** The panel lists files as thumbnails that keep their proportions, over the whole
+  width of the panel, 1, 2 or 3 per row (remembered in the browser), with an infinite scroll in lots
+  of *maximum entries*. A paperclip on each thumbnail shows the attachment: green, attached to
+  this post; red with a lock, attached to another post; crossed out, not attached. Small badges
+  show files in the Media Library and hidden files. A click opens the menu of the file (its
+  information and its actions). A long press (or Ctrl/Shift+click, or the *Select* button) enters
+  selection mode, with a mark on every thumbnail and the bulk actions above. The list is not replaced
+  behind your back: when files appear, a notice offers to refresh it. When it is not in the cache yet the browser asks an authenticated endpoint
   (`admin-ajax.php?action=wp_media_helper_thumbnail`) that creates and returns it; only
   the rows on screen are loaded. Only users who may upload see previews, and only for
   images of an active source. An image too small to be reduced is sent as it is

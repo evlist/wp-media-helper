@@ -52,7 +52,13 @@ thumbnails** over the full width of the panel.
    index version is 2 and a full pass reads the existing rows); two non-cropped preview sizes
    (long edge 320 and 640 px) in the cache, with their URLs in the listing (`thumbnail_url`,
    `thumbnail_large_url`) and the dimensions on each item (`width`, `height`).
-2. **The gallery:** justified rows, density, badges, selection mode, infinite scroll.
+2. **The gallery** (done): rows of 1, 2 or 3 thumbnails keeping their proportions (the height of
+   a row makes the widths add up to the panel width, a short last row is not stretched), density
+   remembered in the browser, attachment paperclip and corner badges, selection mode (long press,
+   Ctrl/Shift+click, *Select* button), infinite scroll, a notice instead of a silent replacement
+   when the list changes. Tested in Chromium with a mock of `wp` and a fake server (250 files).
+   For now a click opens a menu with the information and the actions (the detail sheet and the
+   right-click menu are step 3).
 3. **Detail sheet and context menu**, with the keyboard.
 
 ## Settings page
