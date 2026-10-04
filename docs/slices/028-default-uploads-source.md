@@ -143,7 +143,7 @@ and by a documented residual risk.
   the source last, with a unique name and identifier, and the usual validation applies.
 - `BuiltInExclusions` holds the default names (`woocommerce_uploads`, `wc-logs`,
   `wpcf7_uploads`, `cache`, `backup*`, `backups`, `ai1wm-backups`, `wpforms`, `elementor`,
-  `sucuri`, `wp-media-helper-index`), the filter `wp_media_helper_excluded_directories`
+  `sucuri`, `wp-media-helper-index`, `bulk-media-register-tmp`), the filter `wp_media_helper_excluded_directories`
   (unsafe entries dropped) and the resolution to canonical directories (`*`/`?` wildcards
   within one name).
 - They are part of the `exclusions` of a source (slice 024) when they lie inside its root,

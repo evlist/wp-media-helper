@@ -93,7 +93,7 @@ show as imported. Nothing is scanned until you use the button.
 The uploads directory may also hold private or technical files, so a built-in list of
 directories is **never listed** by a source that contains them: `woocommerce_uploads`,
 `wc-logs`, `wpcf7_uploads`, `cache`, `backup*`, `backups`, `ai1wm-backups`, `wpforms`,
-`elementor`, `sucuri`, plus the thumbnail cache and directories starting with a dot. The
+`elementor`, `sucuri`, `bulk-media-register-tmp`, plus the thumbnail cache and directories starting with a dot. The
 site owner can change the list in code with the `wp_media_helper_excluded_directories`
 filter. **It is a default, not a guarantee**: a private directory that is not on it can
 still be listed and imported by users who may upload. If you keep private files in uploads,

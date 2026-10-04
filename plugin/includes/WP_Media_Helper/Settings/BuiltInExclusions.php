@@ -29,6 +29,7 @@ final class BuiltInExclusions {
 		'elementor',
 		'sucuri',
 		'wp-media-helper-index',
+		'bulk-media-register-tmp',
 	];
 
 	/**

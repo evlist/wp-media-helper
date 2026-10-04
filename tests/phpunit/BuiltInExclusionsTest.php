@@ -13,7 +13,7 @@ class BuiltInExclusionsTest extends TestCase {
 
 	protected function setUp(): void {
 		$this->base = realpath( sys_get_temp_dir() ) . '/wpmh_builtin_' . uniqid();
-		foreach ( [ 'woocommerce_uploads/x', 'backup-2026', 'backups', 'cache', '2026/10', 'photos', 'elementorish' ] as $directory ) {
+		foreach ( [ 'woocommerce_uploads/x', 'backup-2026', 'backups', 'cache', 'bulk-media-register-tmp', '2026/10', 'photos', 'elementorish' ] as $directory ) {
 			mkdir( $this->base . '/' . $directory, 0755, true );
 		}
 		file_put_contents( $this->base . '/woocommerce_uploads/x/invoice.pdf', 'x' );
@@ -41,7 +41,7 @@ class BuiltInExclusionsTest extends TestCase {
 	public function test_the_defaults_cover_private_and_technical_directories_and_match_wildcards(): void {
 		$found = BuiltInExclusions::directories( $this->base, BuiltInExclusions::names() );
 
-		$this->assertSame( [ 'backup-2026', 'backups', 'cache', 'woocommerce_uploads' ], $this->relative( $found ) );
+		$this->assertSame( [ 'backup-2026', 'backups', 'bulk-media-register-tmp', 'cache', 'woocommerce_uploads' ], $this->relative( $found ) );
 		$this->assertNotContains( 'elementorish', $this->relative( $found ), 'A wildcard-free name matches only itself.' );
 	}
 
