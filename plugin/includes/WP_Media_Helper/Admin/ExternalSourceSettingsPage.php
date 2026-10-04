@@ -745,7 +745,8 @@ class ExternalSourceSettingsPage {
 		return [
 			Reset::SETTINGS    => [ 'label' => __( 'Settings and sources', 'wp-media-helper' ), 'description' => __( 'the list of sources and the general settings', 'wp-media-helper' ), 'default' => true ],
 			Reset::INDEX       => [ 'label' => __( 'File index', 'wp-media-helper' ), 'description' => __( 'the index tables, the scan state and the scheduled scans (rebuilt when a source is added)', 'wp-media-helper' ), 'default' => true ],
-			Reset::USER_DATA   => [ 'label' => __( 'Dates and preferences', 'wp-media-helper' ), 'description' => __( 'the date of each post, and the filters and panel mode of each user', 'wp-media-helper' ), 'default' => true ],
+			Reset::POST_DATES  => [ 'label' => __( 'Dates saved with posts', 'wp-media-helper' ), 'description' => __( 'the panel date of every post. Editors chose these dates: they cannot be rebuilt and every post goes back to today', 'wp-media-helper' ), 'default' => false ],
+			Reset::USER_DATA   => [ 'label' => __( 'User preferences', 'wp-media-helper' ), 'description' => __( 'the filters and the panel mode of each user', 'wp-media-helper' ), 'default' => true ],
 			Reset::THUMBNAILS  => [ 'label' => __( 'Thumbnails of imported media', 'wp-media-helper' ), 'description' => __( 'the cached sizes of the attachments imported by this plugin', 'wp-media-helper' ), 'default' => true ],
 			Reset::CACHE       => [ 'label' => __( 'The whole thumbnail cache', 'wp-media-helper' ), 'description' => __( 'every file of the cache directory, including previews of files never imported and files written by other tools such as Thumbnails Folder', 'wp-media-helper' ), 'default' => false ],
 			Reset::ATTACHMENTS => [ 'label' => __( 'Media imported by this plugin', 'wp-media-helper' ), 'description' => __( 'removes them from the Media Library (the files stay on disk) and detaches them from their posts', 'wp-media-helper' ), 'default' => false ],

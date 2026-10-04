@@ -259,7 +259,8 @@ The bottom of the settings page has a **Reset** section to start again from noth
 |------|-----------------|
 | Settings and sources | The list of sources and the general settings |
 | File index | The index tables (including the hidden flags of files), the scan state and the scheduled scans (rebuilt when a source is added) |
-| Dates and preferences | The date of each post, and the filters and panel mode of each user |
+| Dates saved with posts | The panel date of every post (off by default: editors chose these dates and they cannot be rebuilt) |
+| User preferences | The filters and the panel mode of each user |
 | Thumbnails of imported media | The cached sizes of the attachments imported by this plugin |
 | The whole thumbnail cache | Every file of the cache directory, including previews of files never imported and files written by other tools (off by default) |
 | Media imported by this plugin | Removes them from the Media Library, the files stay on disk (off by default) |

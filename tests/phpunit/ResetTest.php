@@ -58,6 +58,6 @@ class ResetTest extends TestCase {
 	}
 
 	public function test_only_known_items_are_listed(): void {
-		$this->assertSame( [ 'settings', 'index', 'user_data', 'thumbnails', 'cache', 'attachments' ], Reset::items() );
+		$this->assertSame( [ 'settings', 'index', 'post_dates', 'user_data', 'thumbnails', 'cache', 'attachments' ], Reset::items() );
 	}
 }

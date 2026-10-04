@@ -26,6 +26,7 @@ final class Reset {
 
 	public const SETTINGS    = 'settings';
 	public const INDEX       = 'index';
+	public const POST_DATES  = 'post_dates';
 	public const USER_DATA   = 'user_data';
 	public const THUMBNAILS  = 'thumbnails';
 	public const CACHE       = 'cache';
@@ -35,7 +36,7 @@ final class Reset {
 	 * @return string[]
 	 */
 	public static function items(): array {
-		return [ self::SETTINGS, self::INDEX, self::USER_DATA, self::THUMBNAILS, self::CACHE, self::ATTACHMENTS ];
+		return [ self::SETTINGS, self::INDEX, self::POST_DATES, self::USER_DATA, self::THUMBNAILS, self::CACHE, self::ATTACHMENTS ];
 	}
 
 	/**
@@ -48,7 +49,7 @@ final class Reset {
 		$items  = array_values( array_intersect( self::items(), $items ) );
 		$report = [];
 
-		foreach ( [ self::ATTACHMENTS, self::THUMBNAILS, self::CACHE, self::USER_DATA, self::INDEX, self::SETTINGS ] as $item ) {
+		foreach ( [ self::ATTACHMENTS, self::THUMBNAILS, self::CACHE, self::POST_DATES, self::USER_DATA, self::INDEX, self::SETTINGS ] as $item ) {
 			if ( ! in_array( $item, $items, true ) ) {
 				continue;
 			}
@@ -57,6 +58,7 @@ final class Reset {
 				self::ATTACHMENTS => self::resetAttachments(),
 				self::THUMBNAILS  => self::resetThumbnails(),
 				self::CACHE       => self::resetCache(),
+				self::POST_DATES  => self::resetPostDates(),
 				self::USER_DATA   => self::resetUserData(),
 				self::INDEX       => self::resetIndex(),
 				default           => self::resetSettings(),
@@ -92,15 +94,22 @@ final class Reset {
 	}
 
 	/**
-	 * The date of each post and the filters and panel mode of each user.
+	 * The panel date saved with each post. This is content the editors chose, not a
+	 * preference: it cannot be rebuilt.
+	 */
+	private static function resetPostDates(): int {
+		global $wpdb;
+
+		return (int) $wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->postmeta} WHERE meta_key = %s", PostDateMeta::META_KEY ) ); // phpcs:ignore WordPress.DB
+	}
+
+	/**
+	 * The filters and the panel mode of each user.
 	 */
 	private static function resetUserData(): int {
 		global $wpdb;
 
-		$deleted  = (int) $wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->postmeta} WHERE meta_key = %s", PostDateMeta::META_KEY ) ); // phpcs:ignore WordPress.DB
-		$deleted += (int) $wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->usermeta} WHERE meta_key LIKE %s", $wpdb->esc_like( '_wp_media_helper_' ) . '%' ) ); // phpcs:ignore WordPress.DB
-
-		return $deleted;
+		return (int) $wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->usermeta} WHERE meta_key LIKE %s", $wpdb->esc_like( '_wp_media_helper_' ) . '%' ) ); // phpcs:ignore WordPress.DB
 	}
 
 	/**
