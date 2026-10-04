@@ -169,6 +169,15 @@ The role determines:
 Shared sanitizers and UI control types are encouraged, but attachment and
 visibility filters must remain separate state entries with separate keys.
 
+## Implementation status
+
+The model above describes an intent that the code does not follow in one respect: the post date is **not**
+enforced as an eligibility rule. It is saved with the post and used as the starting point of the list, and any
+editor who can import can attach any file the panel lists. Slices
+[034](../slices/034-date-range-per-post.md) (a period), [035](../slices/035-search-across-dates.md) (search across
+dates) and [037](../slices/037-eligibility-reconciliation.md) (whether the date is a rule, and the reconciliation
+workflow if it is) settle this; until then, read the date as a navigation default.
+
 ## Current classification
 
 | Existing or planned filter | Current role |
