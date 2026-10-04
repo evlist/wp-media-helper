@@ -71,9 +71,9 @@ class AttachmentDateTest extends TestCase {
 			'20261002121549.jpg'             => '2026-10-02 12:15:49',
 			'2026-10-02 12.15.49 trace.gpx'  => '2026-10-02 12:15:49',
 			'2026-10-02T12-15-49.jpg'        => '2026-10-02 12:15:49',
-			'sous-titres-2026-10-02.vtt'     => '2026-10-02 00:00:00',
-			'20261002.srt'                   => '2026-10-02 00:00:00',
-			'20261002_12.jpg'                => '2026-10-02 00:00:00',
+			'sous-titres-2026-10-02.vtt'     => '2026-10-02 12:00:00',
+			'20261002.srt'                   => '2026-10-02 12:00:00',
+			'20261002_12.jpg'                => '2026-10-02 12:00:00',
 		];
 		foreach ( $cases as $name => $expected ) {
 			$date = AttachmentDate::fromFilename( $name, $this->paris, $this->now );
@@ -96,5 +96,15 @@ class AttachmentDateTest extends TestCase {
 		$this->assertSame( 'photos/a.jpg', $image['file'] );
 		$this->assertSame( [ 'length' => 3, 'filesize' => 10 ], AttachmentMetadata::forMedia( [ 'length' => 3 ], 10 ) );
 		$this->assertSame( [ 'filesize' => 7 ], AttachmentMetadata::forFile( 7 ) );
+	}
+
+	public function test_a_date_without_time_stays_on_the_same_day_in_gmt_for_any_site_time_zone(): void {
+		foreach ( [ 'Pacific/Auckland', 'Europe/Paris', 'UTC', 'America/Los_Angeles', 'Asia/Kolkata' ] as $name ) {
+			$timezone = new DateTimeZone( $name );
+			$date = AttachmentDate::resolve( null, null, 'sous-titres-2026-10-02.vtt', null, $timezone, $this->now );
+
+			$this->assertSame( '2026-10-02 12:00:00', $date['local'], $name );
+			$this->assertSame( '2026-10-02', substr( $date['gmt'], 0, 10 ), $name );
+		}
 	}
 }

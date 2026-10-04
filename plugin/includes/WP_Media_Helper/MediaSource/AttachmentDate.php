@@ -25,6 +25,11 @@ class AttachmentDate {
 	private const FORMAT = 'Y-m-d H:i:s';
 
 	/**
+	 * Time given to a date found without a time: the middle of the day.
+	 */
+	private const MEDIAN_TIME = '12:00:00';
+
+	/**
 	 * Earliest timestamp accepted as a real date (1990-01-01).
 	 */
 	private const MIN_TIMESTAMP = 631152000;
@@ -65,7 +70,10 @@ class AttachmentDate {
 
 	/**
 	 * Finds a date such as `20261002_121549`, `2026-10-02` or `2026-10-02 12.15.49`
-	 * in a file name. A date without time is taken at midnight, site time.
+	 * in a file name. The time is read when the name has one. A date alone is
+	 * taken at the median time of the day, 12:00:00 site time, so that a change of
+	 * time zone or daylight saving time cannot move it to the previous or the next
+	 * day, and so that it sorts in the middle of the day.
 	 */
 	public static function fromFilename( string $basename, DateTimeZone $timezone, int $now ): ?DateTimeImmutable {
 		$pattern = '/(?<!\d)((?:19|20)\d{2})[-_.]?(0[1-9]|1[0-2])[-_.]?(0[1-9]|[12]\d|3[01])'
@@ -79,7 +87,7 @@ class AttachmentDate {
 			return null;
 		}
 
-		$time = isset( $m[4] ) ? sprintf( '%s:%s:%s', $m[4], $m[5], $m[6] ) : '00:00:00';
+		$time = isset( $m[4] ) ? sprintf( '%s:%s:%s', $m[4], $m[5], $m[6] ) : self::MEDIAN_TIME;
 		$date = DateTimeImmutable::createFromFormat( self::FORMAT, sprintf( '%s-%s-%s %s', $m[1], $m[2], $m[3], $time ), $timezone );
 
 		return false === $date ? null : $date;

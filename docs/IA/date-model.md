@@ -82,7 +82,10 @@ this **provisional** order:
    date, else from the EXIF `DateTimeDigitized` field (not `DateTimeOriginal`);
 2. the creation date of a video or audio file, when the container has one;
 3. a date written in the file name, such as `20261002_121549`, `2026-10-02` or
-   `2026-10-02 12.15.49` (a date alone means midnight);
+   `2026-10-02 12.15.49`. The time is read when the name has one; a date alone
+   is given the **median time of the day, 12:00:00 site time**, so that a time
+   zone or daylight saving change cannot move it to the neighbouring day, and so
+   that it sorts in the middle of the day;
 4. the modification time of the file;
 5. the current time.
 
@@ -171,6 +174,24 @@ an interval. The response already has a `date_range` field, unused.
 **D. A per-source "date semantics".** Each source declares whether its dates mean
 *folder*, *file name* or *file date*, which also decides how the panel date is
 applied to it.
+
+### Details agreed so far
+
+- **Name patterns read the time when present, and use 12:00:00 otherwise.**
+  Implemented for the attachment date. The same rule will apply to the date used
+  to select files, so that a file named with a date alone is placed at the middle
+  of that day.
+- Proposed, not implemented: separating the **discovery** of files (a scan, made
+  incremental by remembering directories and their modification times) from the
+  **selection** of a day (a query on an index). The index becomes a database table
+  holding, per file, the candidate dates, an effective date and its source, and
+  user metadata such as a hidden flag, which cannot live in the attachment meta of a
+  file that is not imported. The path pattern becomes a hint saying which directories
+  to check first. Default order of the effective date: a date forced by the user,
+  the date in the name, the embedded date, the modification time.
+- Open: when the name gives a day without a time and the embedded metadata gives a
+  time on the same day, whether to refine the median time with the embedded one
+  (and keep 12:00:00 when the days differ, as for a video edited later).
 
 ### Questions
 
