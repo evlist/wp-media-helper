@@ -233,3 +233,11 @@ is not the public handler the design rules out: a URL alone, without a session a
 nonce, creates nothing. The browser loads the rows on screen only (`loading="lazy"`).
 An image that cannot be reduced is sent as it is up to 1 MB; otherwise the preview is
 hidden and the row shows the name only.
+
+## Follow-up: sizes the editor asks for
+
+- A file made by another tool whose metadata lists a size that is not beside the original is now served from the cache
+  (made on demand), instead of the address of a file that does not exist.
+- The REST answer for one image registered by this plugin used to list no sizes until the background job had run, so the
+  featured image panel loaded the full original. The sizes are now made when that one attachment is read and added to
+  `media_details.sizes`.
