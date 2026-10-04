@@ -83,7 +83,10 @@ folder name can be misleading.
 
 The settings page shows each source as a card (position, name, state, the buttons to move it, add a
 source before or after it, or remove it; drag it by its handle). Its settings open under it, with
-the rarely used ones in *Advanced settings*. An *Index* table below shows the state of each source
+the rarely used ones in *Advanced settings*. The root directory is chosen with **Browse…**, which lists
+the directories below the uploads directory one level at a time (click one to go into it, *Select* to
+choose it, or *Use* for the directory shown); typing the path still works. Private or technical
+directories that no source above them lists are shown, marked. An *Index* table below shows the state of each source
 with a *Re-scan now* button, and *Reset* is a closed block at the bottom.
 
 Each external directory can define its own path pattern and optional filter

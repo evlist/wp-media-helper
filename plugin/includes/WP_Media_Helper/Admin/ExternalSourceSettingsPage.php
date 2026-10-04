@@ -12,7 +12,9 @@ use WP_Media_Helper\Index\DayIndex;
 use WP_Media_Helper\Maintenance\Reset;
 use WP_Media_Helper\Settings\AllowedBase;
 use WP_Media_Helper\Settings\ExternalSourceSettings;
+use WP_Media_Helper\Settings\ActiveSources;
 use WP_Media_Helper\Settings\BuiltInExclusions;
+use WP_Media_Helper\Settings\DirectoryBrowser;
 use WP_Media_Helper\Settings\GeneralSettings;
 use WP_Media_Helper\Settings\NamePatternPresets;
 use WP_Media_Helper\Settings\SourceOwnership;
@@ -32,6 +34,7 @@ class ExternalSourceSettingsPage {
 		add_action( 'admin_post_wp_media_helper_reset', [ $this, 'reset' ] );
 		add_action( 'admin_post_wp_media_helper_use_uploads', [ $this, 'useUploads' ] );
 		add_action( 'wp_ajax_wp_media_helper_test_name_pattern', [ $this, 'testNamePattern' ] );
+		add_action( 'wp_ajax_wp_media_helper_browse_directories', [ $this, 'browseDirectories' ] );
 	}
 
 	public function register(): void {
@@ -72,6 +75,9 @@ class ExternalSourceSettingsPage {
 			[
 				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 				'nonce'   => wp_create_nonce( 'wp_media_helper_test_name_pattern' ),
+				'browseNonce' => wp_create_nonce( 'wp_media_helper_browse_directories' ),
+				// The directory picker is offered when the roots are chosen below a base directory.
+				'baseName' => null === AllowedBase::resolve() ? '' : basename( rtrim( (string) AllowedBase::resolve(), '/\\' ) ),
 			]
 		);
 
@@ -627,6 +633,10 @@ class ExternalSourceSettingsPage {
 								<code class="wp-media-helper-root-prefix"><?php echo esc_html( rtrim( $allowedBase, '/\\' ) . '/' ); ?></code>
 							<?php endif; ?>
 							<input id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $errors['root'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][root]" value="<?php echo esc_attr( AllowedBase::toRelative( $allowedBase, (string) ( $source['root'] ?? '' ) ) ); ?>" aria-describedby="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>-description" />
+							<?php if ( null !== $allowedBase ) : ?>
+								<button type="button" class="button wp-media-helper-browse" aria-expanded="false"><?php esc_html_e( 'Browse…', 'wp-media-helper' ); ?></button>
+								<div class="wp-media-helper-browser" hidden></div>
+							<?php endif; ?>
 							<p class="description" id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>-description">
 								<?php
 								if ( null !== $allowedBase ) {
@@ -836,6 +846,36 @@ class ExternalSourceSettingsPage {
 	 * Says which date a file name gives with the patterns being edited, so a pattern can
 	 * be checked before it is saved. Nothing is stored.
 	 */
+	/**
+	 * Lists the directories below the allowed base, one level at a time, for the picker of the
+	 * root of a source. Nothing outside the base is listed.
+	 */
+	public function browseDirectories(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
+		}
+		check_ajax_referer( 'wp_media_helper_browse_directories', 'nonce' );
+
+		$base = AllowedBase::resolve();
+		if ( null === $base ) {
+			wp_send_json_error( [ 'message' => __( 'The directories are not limited to a base directory on this site: type the path.', 'wp-media-helper' ) ], 400 );
+		}
+
+		// What no source lists (private or technical directories, the thumbnail cache) is shown, marked.
+		$reserved = ActiveSources::builtInExclusions();
+		$cache    = ThumbnailCache::directory();
+		if ( null !== $cache ) {
+			$reserved[] = $cache;
+		}
+
+		$listing = DirectoryBrowser::browse( $base, sanitize_text_field( wp_unslash( $_POST['path'] ?? '' ) ), $reserved );
+		if ( null === $listing ) {
+			wp_send_json_error( [ 'message' => __( 'This directory does not exist below the base directory.', 'wp-media-helper' ) ], 404 );
+		}
+
+		wp_send_json_success( $listing );
+	}
+
 	public function testNamePattern(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );

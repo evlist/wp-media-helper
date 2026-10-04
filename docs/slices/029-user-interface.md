@@ -97,6 +97,14 @@ featured image shows a star. There is no bulk action.
 - **Messages.** Validation errors next to the field and summarised at the top; the
   warnings (shadowed sources, public exposure, sources outside the allowed base) grouped
   and dismissible.
+- **Choosing the root from a list.** The roots are always below the base directory, so the root
+  field has a **Browse…** button (when a base directory is set) that lists the sub-directories one
+  level at a time with an AJAX endpoint (`manage_options`, nonce): the path asked for is resolved with
+  `realpath()` and must be the base or inside it, links and dot-directories are not listed, at most
+  500 entries are returned, and the directories that no source lists (built-in exclusions, the
+  thumbnail cache) are shown, marked. A breadcrumb goes back up, *Select* chooses a directory and *Use*
+  chooses the one shown; the base itself is `.`. Typing a path still works, and a typed path that does
+  not exist opens the picker at the base.
 - **First use.** An empty state that explains the two ways to start: add a source, or
   use the uploads directory (slice 028).
 - **Reset.** The Reset section stays at the bottom, visually separated.

@@ -260,3 +260,44 @@
 	color: #8a4600;
 	font-size: 12px;
 }
+
+/* ---- Directory picker ---- */
+
+.wp-media-helper-browser {
+	margin-top: 0.5rem;
+	padding: 0.5rem 0.75rem;
+	max-width: 36rem;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	background: #f6f7f7;
+}
+
+.wp-media-helper-browser-way {
+	margin: 0 0 0.5rem;
+	font-weight: 600;
+}
+
+.wp-media-helper-browser-list {
+	margin: 0 0 0.5rem;
+	max-height: 14rem;
+	overflow: auto;
+}
+
+.wp-media-helper-browser-list li {
+	display: flex;
+	align-items: baseline;
+	gap: 0.5rem;
+	margin: 0;
+	padding: 0.2rem 0;
+	border-bottom: 1px solid #ececec;
+}
+
+.wp-media-helper-browser-enter {
+	flex: 1 1 auto;
+	text-align: left;
+	text-decoration: none;
+}
+
+.wp-media-helper-browser-select {
+	flex: 0 0 auto;
+}
