@@ -47,12 +47,6 @@ class ExternalSourceSettingsPage {
 			true
 		);
 
-		wp_localize_script(
-			$handle,
-			'wpMediaHelperSettings',
-			[ 'allowedBase' => AllowedBase::resolve() ?? '' ]
-		);
-
 		wp_set_script_translations(
 			$handle,
 			'wp-media-helper',
@@ -178,171 +172,13 @@ class ExternalSourceSettingsPage {
 
 				<div id="wp-media-helper-sources" class="wp-media-helper-source-list">
 					<?php foreach ( $sources as $index => $source ) : ?>
-						<div class="wp-media-helper-source">
-							<input type="hidden" name="sources[<?php echo esc_attr( $index ); ?>][id]" value="<?php echo esc_attr( (string) ( $source['id'] ?? '' ) ); ?>" />
-
-							<div class="wp-media-helper-source-header">
-								<strong><?php echo esc_html( (string) ( $source['name'] ?? '' ) ?: __( 'New source', 'wp-media-helper' ) ); ?></strong>
-								<label class="wp-media-helper-toggle">
-									<input type="hidden" name="sources[<?php echo esc_attr( $index ); ?>][enabled]" value="0" />
-									<input type="checkbox" name="sources[<?php echo esc_attr( $index ); ?>][enabled]" value="1" <?php checked( ! empty( $source['enabled'] ) ); ?> />
-									<?php esc_html_e( 'Enabled', 'wp-media-helper' ); ?>
-								</label>
-								<button type="button" class="button-link-delete wp-media-helper-remove-source"><?php esc_html_e( 'Remove', 'wp-media-helper' ); ?></button>
-							</div>
-
-							<table class="form-table" role="presentation">
-								<tbody>
-									<tr>
-										<th scope="row"><label for="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Name', 'wp-media-helper' ); ?></label></th>
-										<td>
-											<input id="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['name'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][name]" value="<?php echo esc_attr( (string) ( $source['name'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>-description" />
-											<p class="description" id="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>-description">
-												<?php
-												printf(
-													/* translators: %s: example source name, wrapped in a code element. */
-													esc_html__( 'Label used to identify this source in the admin, for example %s.', 'wp-media-helper' ),
-													'<code>' . esc_html__( 'Nextcloud Main', 'wp-media-helper' ) . '</code>'
-												);
-												?>
-											</p>
-											<?php if ( isset( $validationErrors[ $index ]['name'] ) ) : ?>
-												<p class="description wp-media-helper-field-error">
-													<?php echo esc_html( $validationErrors[ $index ]['name'] ); ?>
-												</p>
-											<?php endif; ?>
-										</td>
-									</tr>
-									<tr>
-										<th scope="row"><label for="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Root directory', 'wp-media-helper' ); ?></label></th>
-										<td>
-											<?php if ( null !== $allowedBase ) : ?>
-												<code class="wp-media-helper-root-prefix"><?php echo esc_html( rtrim( $allowedBase, '/\\' ) . '/' ); ?></code>
-											<?php endif; ?>
-											<input id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['root'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][root]" value="<?php echo esc_attr( AllowedBase::toRelative( $allowedBase, (string) ( $source['root'] ?? '' ) ) ); ?>" aria-describedby="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>-description" />
-											<p class="description" id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>-description">
-												<?php
-												if ( null !== $allowedBase ) {
-													printf(
-														/* translators: %s: example directory path relative to the base directory, wrapped in a code element. */
-														esc_html__( 'Directory of the external media, relative to the base directory shown on the left, for example %s.', 'wp-media-helper' ),
-														'<code>nextcloud/photos</code>'
-													);
-												} else {
-													printf(
-														/* translators: %s: example directory path, wrapped in a code element. */
-														esc_html__( 'Absolute path to the external media root, for example %s.', 'wp-media-helper' ),
-														'<code>/var/www/media</code>'
-													);
-												}
-												?>
-											</p>
-											<?php if ( isset( $validationErrors[ $index ]['root'] ) ) : ?>
-												<p class="description wp-media-helper-field-error">
-													<?php echo esc_html( $validationErrors[ $index ]['root'] ); ?>
-												</p>
-											<?php endif; ?>
-										</td>
-									</tr>
-									<tr>
-										<th scope="row"><label for="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Path pattern', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
-										<td>
-											<input id="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['path_pattern'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][path_pattern]" value="<?php echo esc_attr( (string) ( $source['path_pattern'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>-description" />
-											<p class="description" id="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>-description">
-												<?php
-												printf(
-													/* translators: %s: example path pattern, wrapped in a code element. */
-													esc_html__( 'Subdirectory where the files of the requested date are likely to be, for example %s. It is only a hint, used to find new files quickly: a file is placed on a day by its date, wherever it is. Leave empty to rely on the periodic scan of the whole source.', 'wp-media-helper' ),
-													'<code>{date:Y}/{date:m}/{date:d}</code>'
-												);
-												?>
-											</p>
-											<?php if ( isset( $validationErrors[ $index ]['path_pattern'] ) ) : ?>
-												<p class="description wp-media-helper-field-error">
-													<?php echo esc_html( $validationErrors[ $index ]['path_pattern'] ); ?>
-												</p>
-											<?php endif; ?>
-										</td>
-									</tr>
-									<tr>
-										<th scope="row"><label for="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Name date pattern', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
-										<td>
-											<input id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['filter_pattern'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][filter_pattern]" value="<?php echo esc_attr( (string) ( $source['filter_pattern'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>-description" />
-											<p class="description" id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>-description">
-												<?php
-												printf(
-													/* translators: %s: example name date pattern, wrapped in a code element. */
-													esc_html__( 'How the date is written in file names, for example %s. Common forms such as 20261002_121549 or 2026-10-02 are recognised without a pattern. A name with a date alone is placed at 12:00.', 'wp-media-helper' ),
-													'<code>{date:Ymd}</code>'
-												);
-												?>
-											</p>
-											<?php if ( isset( $validationErrors[ $index ]['filter_pattern'] ) ) : ?>
-												<p class="description wp-media-helper-field-error">
-													<?php echo esc_html( $validationErrors[ $index ]['filter_pattern'] ); ?>
-												</p>
-											<?php endif; ?>
-										</td>
-									</tr>
-									<tr>
-										<th scope="row"><?php esc_html_e( 'Files without a date in their name', 'wp-media-helper' ); ?></th>
-										<td>
-											<label>
-												<input type="hidden" name="sources[<?php echo esc_attr( $index ); ?>][mtime_fallback]" value="0" />
-												<input type="checkbox" name="sources[<?php echo esc_attr( $index ); ?>][mtime_fallback]" value="1" <?php checked( ! array_key_exists( 'mtime_fallback', $source ) || filter_var( $source['mtime_fallback'], FILTER_VALIDATE_BOOLEAN ) ); ?> />
-												<?php esc_html_e( 'Use the modification time of the file', 'wp-media-helper' ); ?>
-											</label>
-											<p class="description"><?php esc_html_e( 'When unchecked, a file whose name has no date is not placed on any day.', 'wp-media-helper' ); ?></p>
-										</td>
-									</tr>
-									<?php if ( null === $pending && ! empty( $source['id'] ) ) : ?>
-										<?php $indexStatus = $this->indexStatus( $source ); ?>
-										<tr>
-											<th scope="row"><?php esc_html_e( 'Index', 'wp-media-helper' ); ?></th>
-											<td>
-												<p><?php echo esc_html( $indexStatus ); ?></p>
-												<p>
-													<a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=wp_media_helper_rescan&source=' . rawurlencode( (string) $source['id'] ) ), 'wp_media_helper_rescan_' . (string) $source['id'] ) ); ?>"><?php esc_html_e( 'Re-scan now', 'wp-media-helper' ); ?></a>
-												</p>
-											</td>
-										</tr>
-									<?php endif; ?>
-									<tr>
-										<th scope="row"><label for="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Thumbnail cache directory', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
-										<td>
-											<?php if ( null !== $allowedBase ) : ?>
-												<code class="wp-media-helper-root-prefix"><?php echo esc_html( rtrim( $allowedBase, '/\\' ) . '/' ); ?></code>
-											<?php endif; ?>
-											<input id="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $validationErrors[ $index ]['thumbnail_cache'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][thumbnail_cache]" value="<?php echo esc_attr( AllowedBase::toRelative( $allowedBase, (string) ( $source['thumbnail_cache'] ?? '' ) ) ); ?>" aria-describedby="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>-description" />
-											<p class="description" id="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>-description">
-												<?php
-												if ( null !== $allowedBase ) {
-													printf(
-														/* translators: %s: example directory path relative to the base directory, wrapped in a code element. */
-														esc_html__( 'Writable directory storing thumbnails, relative to the base directory shown on the left, for example %s. It must be separate from the root directory. Required only when the source directory is read-only.', 'wp-media-helper' ),
-														'<code>nextcloud-cache</code>'
-													);
-												} else {
-													printf(
-														/* translators: %s: example directory path, wrapped in a code element. */
-														esc_html__( 'Writable directory storing thumbnails, for example %s. It must be separate from the root directory. Required only when the source directory is read-only.', 'wp-media-helper' ),
-														'<code>/var/www/media-cache</code>'
-													);
-												}
-												?>
-											</p>
-											<?php if ( isset( $validationErrors[ $index ]['thumbnail_cache'] ) ) : ?>
-												<p class="description wp-media-helper-field-error">
-													<?php echo esc_html( $validationErrors[ $index ]['thumbnail_cache'] ); ?>
-												</p>
-											<?php endif; ?>
-										</td>
-									</tr>
-								</tbody>
-							</table>
-						</div>
+						<?php $this->renderSource( $index, $source, $validationErrors[ $index ] ?? [], $allowedBase, null === $pending ); ?>
 					<?php endforeach; ?>
 				</div>
+
+				<template id="wp-media-helper-source-template">
+					<?php $this->renderSource( '__INDEX__', [ 'enabled' => true ], [], $allowedBase, false ); ?>
+				</template>
 
 				<p class="submit">
 					<button type="button" id="wp-media-helper-add-source" class="button"><?php esc_html_e( 'Add source', 'wp-media-helper' ); ?></button>
@@ -611,6 +447,181 @@ class ExternalSourceSettingsPage {
 	 *
 	 * @param array<string, mixed> $source
 	 */
+	/**
+	 * Renders one source card. Used for the stored sources and, with __INDEX__ as
+	 * index, for the template cloned by the "Add source" button, so both always match.
+	 *
+	 * @param array<string,mixed>  $source
+	 * @param array<string,string> $errors
+	 */
+	private function renderSource( int|string $index, array $source, array $errors, ?string $allowedBase, bool $showIndex ): void {
+		?>
+		<div class="wp-media-helper-source">
+			<input type="hidden" name="sources[<?php echo esc_attr( $index ); ?>][id]" value="<?php echo esc_attr( (string) ( $source['id'] ?? '' ) ); ?>" />
+
+			<div class="wp-media-helper-source-header">
+				<strong><?php echo esc_html( (string) ( $source['name'] ?? '' ) ?: __( 'New source', 'wp-media-helper' ) ); ?></strong>
+				<label class="wp-media-helper-toggle">
+					<input type="hidden" name="sources[<?php echo esc_attr( $index ); ?>][enabled]" value="0" />
+					<input type="checkbox" name="sources[<?php echo esc_attr( $index ); ?>][enabled]" value="1" <?php checked( ! empty( $source['enabled'] ) ); ?> />
+					<?php esc_html_e( 'Enabled', 'wp-media-helper' ); ?>
+				</label>
+				<button type="button" class="button-link-delete wp-media-helper-remove-source"><?php esc_html_e( 'Remove', 'wp-media-helper' ); ?></button>
+			</div>
+
+			<table class="form-table" role="presentation">
+				<tbody>
+					<tr>
+						<th scope="row"><label for="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Name', 'wp-media-helper' ); ?></label></th>
+						<td>
+							<input id="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $errors['name'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][name]" value="<?php echo esc_attr( (string) ( $source['name'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>-description" />
+							<p class="description" id="wp-media-helper-source-name-<?php echo esc_attr( $index ); ?>-description">
+								<?php
+								printf(
+									/* translators: %s: example source name, wrapped in a code element. */
+									esc_html__( 'Label used to identify this source in the admin, for example %s.', 'wp-media-helper' ),
+									'<code>' . esc_html__( 'Nextcloud Main', 'wp-media-helper' ) . '</code>'
+								);
+								?>
+							</p>
+							<?php if ( isset( $errors['name'] ) ) : ?>
+								<p class="description wp-media-helper-field-error">
+									<?php echo esc_html( $errors['name'] ); ?>
+								</p>
+							<?php endif; ?>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Root directory', 'wp-media-helper' ); ?></label></th>
+						<td>
+							<?php if ( null !== $allowedBase ) : ?>
+								<code class="wp-media-helper-root-prefix"><?php echo esc_html( rtrim( $allowedBase, '/\\' ) . '/' ); ?></code>
+							<?php endif; ?>
+							<input id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $errors['root'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][root]" value="<?php echo esc_attr( AllowedBase::toRelative( $allowedBase, (string) ( $source['root'] ?? '' ) ) ); ?>" aria-describedby="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>-description" />
+							<p class="description" id="wp-media-helper-source-root-<?php echo esc_attr( $index ); ?>-description">
+								<?php
+								if ( null !== $allowedBase ) {
+									printf(
+										/* translators: %s: example directory path relative to the base directory, wrapped in a code element. */
+										esc_html__( 'Directory of the external media, relative to the base directory shown on the left, for example %s.', 'wp-media-helper' ),
+										'<code>nextcloud/photos</code>'
+									);
+								} else {
+									printf(
+										/* translators: %s: example directory path, wrapped in a code element. */
+										esc_html__( 'Absolute path to the external media root, for example %s.', 'wp-media-helper' ),
+										'<code>/var/www/media</code>'
+									);
+								}
+								?>
+							</p>
+							<?php if ( isset( $errors['root'] ) ) : ?>
+								<p class="description wp-media-helper-field-error">
+									<?php echo esc_html( $errors['root'] ); ?>
+								</p>
+							<?php endif; ?>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Path pattern', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
+						<td>
+							<input id="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $errors['path_pattern'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][path_pattern]" value="<?php echo esc_attr( (string) ( $source['path_pattern'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>-description" />
+							<p class="description" id="wp-media-helper-source-path-<?php echo esc_attr( $index ); ?>-description">
+								<?php
+								printf(
+									/* translators: %s: example path pattern, wrapped in a code element. */
+									esc_html__( 'Subdirectory where the files of the requested date are likely to be, for example %s. It is only a hint, used to find new files quickly: a file is placed on a day by its date, wherever it is. Leave empty to rely on the periodic scan of the whole source.', 'wp-media-helper' ),
+									'<code>{date:Y}/{date:m}/{date:d}</code>'
+								);
+								?>
+							</p>
+							<?php if ( isset( $errors['path_pattern'] ) ) : ?>
+								<p class="description wp-media-helper-field-error">
+									<?php echo esc_html( $errors['path_pattern'] ); ?>
+								</p>
+							<?php endif; ?>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Name date pattern', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
+						<td>
+							<input id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $errors['filter_pattern'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][filter_pattern]" value="<?php echo esc_attr( (string) ( $source['filter_pattern'] ?? '' ) ); ?>" aria-describedby="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>-description" />
+							<p class="description" id="wp-media-helper-source-filter-<?php echo esc_attr( $index ); ?>-description">
+								<?php
+								printf(
+									/* translators: %s: example name date pattern, wrapped in a code element. */
+									esc_html__( 'How the date is written in file names, for example %s. Common forms such as 20261002_121549 or 2026-10-02 are recognised without a pattern. A name with a date alone is placed at 12:00.', 'wp-media-helper' ),
+									'<code>{date:Ymd}</code>'
+								);
+								?>
+							</p>
+							<?php if ( isset( $errors['filter_pattern'] ) ) : ?>
+								<p class="description wp-media-helper-field-error">
+									<?php echo esc_html( $errors['filter_pattern'] ); ?>
+								</p>
+							<?php endif; ?>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Files without a date in their name', 'wp-media-helper' ); ?></th>
+						<td>
+							<label>
+								<input type="hidden" name="sources[<?php echo esc_attr( $index ); ?>][mtime_fallback]" value="0" />
+								<input type="checkbox" name="sources[<?php echo esc_attr( $index ); ?>][mtime_fallback]" value="1" <?php checked( ! array_key_exists( 'mtime_fallback', $source ) || filter_var( $source['mtime_fallback'], FILTER_VALIDATE_BOOLEAN ) ); ?> />
+								<?php esc_html_e( 'Use the modification time of the file', 'wp-media-helper' ); ?>
+							</label>
+							<p class="description"><?php esc_html_e( 'When unchecked, a file whose name has no date is not placed on any day.', 'wp-media-helper' ); ?></p>
+						</td>
+					</tr>
+					<?php if ( $showIndex && ! empty( $source['id'] ) ) : ?>
+						<?php $indexStatus = $this->indexStatus( $source ); ?>
+						<tr>
+							<th scope="row"><?php esc_html_e( 'Index', 'wp-media-helper' ); ?></th>
+							<td>
+								<p><?php echo esc_html( $indexStatus ); ?></p>
+								<p>
+									<a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=wp_media_helper_rescan&source=' . rawurlencode( (string) $source['id'] ) ), 'wp_media_helper_rescan_' . (string) $source['id'] ) ); ?>"><?php esc_html_e( 'Re-scan now', 'wp-media-helper' ); ?></a>
+								</p>
+							</td>
+						</tr>
+					<?php endif; ?>
+					<tr>
+						<th scope="row"><label for="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>"><?php esc_html_e( 'Thumbnail cache directory', 'wp-media-helper' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'wp-media-helper' ); ?></span></label></th>
+						<td>
+							<?php if ( null !== $allowedBase ) : ?>
+								<code class="wp-media-helper-root-prefix"><?php echo esc_html( rtrim( $allowedBase, '/\\' ) . '/' ); ?></code>
+							<?php endif; ?>
+							<input id="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>" type="text" class="regular-text<?php echo isset( $errors['thumbnail_cache'] ) ? ' is-invalid' : ''; ?>" name="sources[<?php echo esc_attr( $index ); ?>][thumbnail_cache]" value="<?php echo esc_attr( AllowedBase::toRelative( $allowedBase, (string) ( $source['thumbnail_cache'] ?? '' ) ) ); ?>" aria-describedby="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>-description" />
+							<p class="description" id="wp-media-helper-source-cache-<?php echo esc_attr( $index ); ?>-description">
+								<?php
+								if ( null !== $allowedBase ) {
+									printf(
+										/* translators: %s: example directory path relative to the base directory, wrapped in a code element. */
+										esc_html__( 'Writable directory storing thumbnails, relative to the base directory shown on the left, for example %s. It must be separate from the root directory. Required only when the source directory is read-only.', 'wp-media-helper' ),
+										'<code>nextcloud-cache</code>'
+									);
+								} else {
+									printf(
+										/* translators: %s: example directory path, wrapped in a code element. */
+										esc_html__( 'Writable directory storing thumbnails, for example %s. It must be separate from the root directory. Required only when the source directory is read-only.', 'wp-media-helper' ),
+										'<code>/var/www/media-cache</code>'
+									);
+								}
+								?>
+							</p>
+							<?php if ( isset( $errors['thumbnail_cache'] ) ) : ?>
+								<p class="description wp-media-helper-field-error">
+									<?php echo esc_html( $errors['thumbnail_cache'] ); ?>
+								</p>
+							<?php endif; ?>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+		<?php
+	}
+
 	private function indexStatus( array $source ): string {
 		$status = DayIndex::forWordPress()->manager()->status( $source );
 
