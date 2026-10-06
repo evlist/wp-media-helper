@@ -163,4 +163,15 @@ class ThumbnailServiceTest extends TestCase {
 		$this->assertSame( 0, $this->service()->purgeFor( 'photos/a.jpg' ) );
 		$this->assertTrue( is_file( $this->base . '/outside/a-150x150.jpg' ) );
 	}
+
+	public function test_a_relative_address_is_resolved_to_the_cache_or_the_uploads(): void {
+		$service = $this->service();
+		$service->ensure( 'photos/2026/a.jpg', 480, 270, true, 'image/jpeg' );
+
+		$this->assertSame( 'https://e.test/uploads/thumbnails/photos/2026/a-480x270.jpg', $service->urlForRelative( 'photos/2026/a-480x270.jpg' ) );
+		$this->assertSame( 'https://e.test/uploads/photos/2026/a.jpg', $service->urlForRelative( 'photos/2026/a.jpg' ) );
+		$this->assertNull( $service->urlForRelative( 'photos/2026/missing-1x1.jpg' ) );
+		$this->assertNull( $service->urlForRelative( '../etc/passwd' ) );
+		$this->assertNull( $service->urlForRelative( 'photos/../../x' ) );
+	}
 }

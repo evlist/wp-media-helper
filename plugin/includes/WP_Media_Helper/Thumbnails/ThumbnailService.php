@@ -82,6 +82,23 @@ final class ThumbnailService {
 		return null !== $path && is_file( $path ) ? $path : null;
 	}
 
+	/**
+	 * The address of a file given as a path relative to uploads (`photos/2026/a-480x270.jpg`), as
+	 * some code writes it instead of a full URL: the cache first, then the uploads directory.
+	 * Null when no such file exists or the path is not a plain relative one.
+	 */
+	public function urlForRelative( string $relative ): ?string {
+		$relative = rawurldecode( $relative );
+		foreach ( [ $this->cacheDir . '/' . $relative, $this->baseDir . '/' . $relative ] as $path ) {
+			$inside = $path === $this->cacheDir . '/' . $relative ? $this->cacheDir : $this->baseDir;
+			if ( ThumbnailLayout::isSafeInside( $inside, $path ) && is_file( $path ) && ! is_link( $path ) ) {
+				return $this->url( $path );
+			}
+		}
+
+		return null;
+	}
+
 	public function url( string $path ): ?string {
 		return ThumbnailLayout::url( $this->baseDir, $this->baseUrl, $path );
 	}

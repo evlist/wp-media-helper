@@ -241,3 +241,13 @@ hidden and the row shows the name only.
 - The REST answer for one image registered by this plugin used to list no sizes until the background job had run, so the
   featured image panel loaded the full original. The sizes are now made when that one attachment is read and added to
   `media_details.sizes`.
+
+## Follow-up: relative addresses with Thumbnails Folder active
+
+On the target site, a `[gallery]` showed three crop-size (480x270) thumbnails whose `src` was the path relative to uploads
+(`photos/2026/…-480x270.jpg`), which a browser resolves against the address of the page. Thumbnails Folder was still active
+and also answers `image_downsize`. The source of the relative address was not found (it is not produced by this plugin), so
+the fix is defensive: this plugin's filter now runs at priority 5 (before other thumbnail plugins) and a second one at 99
+turns any non-absolute address returned by `image_downsize` into the address of the file, looked up in the cache then in
+uploads (`ThumbnailService::urlForRelative`, which refuses `..` segments and links). Running both plugins at once is not a
+supported setup; Thumbnails Folder should be deactivated once the sizes of existing images are in the shared cache.

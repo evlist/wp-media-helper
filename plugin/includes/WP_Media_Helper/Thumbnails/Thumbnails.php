@@ -69,7 +69,10 @@ final class Thumbnails {
 	private bool $serviceBuilt         = false;
 
 	public function __construct() {
-		add_filter( 'image_downsize', [ $this, 'downsize' ], 10, 3 );
+		// Before other thumbnail plugins, so that the sizes of what this plugin registered are ours.
+		add_filter( 'image_downsize', [ $this, 'downsize' ], 5, 3 );
+		// After all of them: an address that is not absolute cannot work in a page.
+		add_filter( 'image_downsize', [ $this, 'absolutize' ], 99, 3 );
 		add_filter( 'wp_calculate_image_srcset', [ $this, 'srcset' ], 10, 5 );
 		add_action( 'delete_attachment', [ $this, 'purge' ] );
 		add_action( 'wp_media_helper_attachment_registered', [ $this, 'schedule' ] );
@@ -122,6 +125,28 @@ final class Thumbnails {
 		$url   = null === $path ? null : $service->url( $path );
 
 		return null === $url ? $out : [ $url, (int) $entry['width'], (int) $entry['height'], true ];
+	}
+
+	/**
+	 * Turns an address given as a path relative to uploads, which a browser resolves against the
+	 * address of the page, into the address of the file.
+	 *
+	 * @param mixed $out
+	 * @return mixed
+	 */
+	public function absolutize( $out, $attachmentId = 0, $size = '' ) {
+		if ( ! is_array( $out ) || ! isset( $out[0] ) || ! is_string( $out[0] ) || '' === $out[0]
+			|| 1 === preg_match( '#^([a-z][a-z0-9+.-]*:|/)#i', $out[0] ) ) {
+			return $out;
+		}
+
+		$service = $this->service();
+		$url     = null === $service ? null : $service->urlForRelative( $out[0] );
+		if ( null !== $url ) {
+			$out[0] = $url;
+		}
+
+		return $out;
 	}
 
 	/**
