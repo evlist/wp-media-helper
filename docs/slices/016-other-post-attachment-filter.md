@@ -37,7 +37,7 @@ As an editor, I want media attached to another post hidden during normal work so
 
 Rather than a single enumerated scope, the filter models the three underlying attachment states as independent toggles. This avoids inventing named combinations for every useful subset and keeps the control legible.
 
-The filter key is `attachment_scope`. It uses a multi-select-of-states type with `user_post_then_user` scope.
+The filter key is `attachment_scope`. It uses a multi-select-of-states type with `user_post` (it was `user_post_then_user` until slice 040) scope.
 
 The available states are:
 

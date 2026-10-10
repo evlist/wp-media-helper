@@ -18,7 +18,7 @@ instead of the single fixed order of today.
   files of one day, merged across sources.
 - The pagination (infinite scroll) cuts the sorted list into pages, so the order is decided before the cut.
 - The filters (attachment state, source, type, file name, show hidden) are stored per user, per post then per user
-  (`user_post_then_user`); the sort is a visibility choice of the same kind.
+  (`user_post` (it was `user_post_then_user` until slice 040)); the sort is a visibility choice of the same kind.
 
 ## Questions to settle
 

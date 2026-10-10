@@ -31,7 +31,7 @@ As a developer, I want source selection to be declared as a standard filter rath
 
 The filter key is `source`.
 
-It uses an option-set type with `user_post_then_user` scope.
+It uses an option-set type with `user_post` (it was `user_post_then_user` until slice 040) scope.
 
 Supported values:
 

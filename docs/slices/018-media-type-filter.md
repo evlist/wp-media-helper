@@ -24,7 +24,7 @@ As a developer, I want media-category filtering to use the same registry and per
 
 - define a `media_type` filter in the common registry,
 - support `image`, `video`, and `other` for the initial version,
-- keep the filter under the standard `user_post_then_user` persistence model,
+- keep the filter under the standard `user_post` (it was `user_post_then_user` until slice 040) persistence model,
 - hide or reveal rows based on the resolved file type,
 - keep the UI compact and consistent with the rest of the filter area.
 
@@ -32,7 +32,7 @@ As a developer, I want media-category filtering to use the same registry and per
 
 The filter key is `media_type`.
 
-It uses an option-set type with `user_post_then_user` scope.
+It uses an option-set type with `user_post` (it was `user_post_then_user` until slice 040) scope.
 
 Supported values:
 

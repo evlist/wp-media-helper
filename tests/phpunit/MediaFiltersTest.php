@@ -22,51 +22,53 @@ class MediaFiltersTest extends TestCase {
 		$store = [];
 		$filters = $this->makeFilters( $store );
 
-		$this->assertSame( 'default', $filters->resolveUserPostThenUser( 42, 'attachment_scope', 'default' ) );
+		$this->assertSame( 'default', $filters->resolveUserPost( 42, 'attachment_scope', 'default' ) );
 	}
 
-	public function test_resolve_prefers_current_post_value_over_global_value(): void {
+	public function test_resolve_returns_the_value_of_the_user_for_this_post(): void {
 		$store = [
 			MediaFilters::postMapMetaKey( 'attachment_scope' ) => [
 				'42' => [ 'value' => 'post-value', 'time' => 100 ],
 			],
-			MediaFilters::globalMetaKey( 'attachment_scope' ) => [ 'value' => 'global-value' ],
 		];
 		$filters = $this->makeFilters( $store );
 
-		$this->assertSame( 'post-value', $filters->resolveUserPostThenUser( 42, 'attachment_scope', 'default' ) );
+		$this->assertSame( 'post-value', $filters->resolveUserPost( 42, 'attachment_scope', 'default' ) );
 	}
 
-	public function test_resolve_falls_back_to_latest_global_value_for_a_different_post(): void {
-		$store = [
-			MediaFilters::postMapMetaKey( 'attachment_scope' ) => [
-				'42' => [ 'value' => 'post-value', 'time' => 100 ],
-			],
-			MediaFilters::globalMetaKey( 'attachment_scope' ) => [ 'value' => 'global-value' ],
-		];
+	public function test_a_choice_made_on_one_post_is_not_carried_to_another_post(): void {
+		$store = [];
+		$filters = $this->makeFilters( $store );
+		$filters->persistUserPost( 42, 'attachment_scope', 'post-value' );
+
+		$this->assertSame( 'default', $filters->resolveUserPost( 7, 'attachment_scope', 'default' ), 'A new post starts from the defaults.' );
+		$this->assertSame( 'default', $filters->resolveUserPost( 0, 'attachment_scope', 'default' ) );
+	}
+
+	public function test_a_former_latest_value_of_the_user_is_ignored(): void {
+		$store = [ MediaFilters::globalMetaKey( 'attachment_scope' ) => [ 'value' => 'old-global' ] ];
 		$filters = $this->makeFilters( $store );
 
-		$this->assertSame( 'global-value', $filters->resolveUserPostThenUser( 7, 'attachment_scope', 'default' ) );
+		$this->assertSame( 'default', $filters->resolveUserPost( 7, 'attachment_scope', 'default' ) );
 	}
 
-	public function test_persist_stores_both_post_specific_and_latest_global_values(): void {
+	public function test_persist_stores_the_value_for_the_post_only(): void {
 		$store = [];
 		$filters = $this->makeFilters( $store );
 
-		$filters->persistUserPostThenUser( 42, 'attachment_scope', 'new-value' );
+		$filters->persistUserPost( 42, 'attachment_scope', 'new-value' );
 
-		$this->assertSame( 'new-value', $store[ MediaFilters::globalMetaKey( 'attachment_scope' ) ]['value'] );
 		$this->assertSame( 'new-value', $store[ MediaFilters::postMapMetaKey( 'attachment_scope' ) ]['42']['value'] );
+		$this->assertArrayNotHasKey( MediaFilters::globalMetaKey( 'attachment_scope' ), $store );
 	}
 
-	public function test_persist_does_not_write_a_post_entry_without_a_post_id(): void {
+	public function test_persist_writes_nothing_without_a_post_id(): void {
 		$store = [];
 		$filters = $this->makeFilters( $store );
 
-		$filters->persistUserPostThenUser( 0, 'attachment_scope', 'new-value' );
+		$filters->persistUserPost( 0, 'attachment_scope', 'new-value' );
 
-		$this->assertSame( 'new-value', $store[ MediaFilters::globalMetaKey( 'attachment_scope' ) ]['value'] );
-		$this->assertArrayNotHasKey( MediaFilters::postMapMetaKey( 'attachment_scope' ), $store );
+		$this->assertSame( [], $store );
 	}
 
 	public function test_one_users_choice_does_not_alter_another_users_storage(): void {
@@ -75,9 +77,9 @@ class MediaFiltersTest extends TestCase {
 		$filtersA = $this->makeFilters( $storeA );
 		$filtersB = $this->makeFilters( $storeB );
 
-		$filtersA->persistUserPostThenUser( 42, 'attachment_scope', 'a-value' );
+		$filtersA->persistUserPost( 42, 'attachment_scope', 'a-value' );
 
-		$this->assertSame( 'default', $filtersB->resolveUserPostThenUser( 42, 'attachment_scope', 'default' ) );
+		$this->assertSame( 'default', $filtersB->resolveUserPost( 42, 'attachment_scope', 'default' ) );
 	}
 
 	public function test_prune_map_keeps_only_the_most_recently_used_entries(): void {

@@ -102,7 +102,7 @@ The panel does not expose a `Use my default` or reset-override command. A new ex
 
 ### 3. Scope decision for source
 
-`source` should use `user_post_then_user` when it only controls which source is visible in the panel.
+`source` should use `user_post` (it was `user_post_then_user` until slice 040) when it only controls which source is visible in the panel.
 
 If a later workflow establishes that source is editorial data intrinsic to the post, it should instead declare `post` scope. That decision must be made in the source-filter slice rather than hidden inside the generic filter framework.
 

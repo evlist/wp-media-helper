@@ -30,7 +30,7 @@ As a developer, I want filename search to plug into the filter registry like the
 
 The filter key is `filename`.
 
-It uses a text type with `user_post_then_user` scope.
+It uses a text type with `user_post` (it was `user_post_then_user` until slice 040) scope.
 
 Supported values:
 

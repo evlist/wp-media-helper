@@ -306,7 +306,7 @@ class EditorMediaController {
 			$activeSourceIds = array_column( $this->getActiveSources(), 'id' );
 			$value = self::normalizeSourceFilter( $decodedValue, $activeSourceIds );
 		}
-		$this->makeMediaFilters()->persistUserPostThenUser( $postId, $key, $value );
+		$this->makeMediaFilters()->persistUserPost( $postId, $key, $value );
 		wp_send_json_success( [ 'key' => $key, 'value' => $value ] );
 	}
 
@@ -661,10 +661,10 @@ class EditorMediaController {
 			$legacyDate,
 			$legacySource,
 			$activeSourceIds,
-			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'attachment_scope', null ),
-			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'source', [ 'all' ] ),
-			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'media_type', FileTypes::categories() ),
-			fn () => $this->makeMediaFilters()->resolveUserPostThenUser( $postId, 'filename', '' )
+			fn () => $this->makeMediaFilters()->resolveUserPost( $postId, 'attachment_scope', null ),
+			fn () => $this->makeMediaFilters()->resolveUserPost( $postId, 'source', [ 'all' ] ),
+			fn () => $this->makeMediaFilters()->resolveUserPost( $postId, 'media_type', FileTypes::categories() ),
+			fn () => $this->makeMediaFilters()->resolveUserPost( $postId, 'filename', '' )
 		);
 		$filters['date'] = MediaPanelState::normalizeDate( (string) $filters['date'], $legacyDate );
 		$dateValue = $filters['date'];

@@ -53,7 +53,7 @@ Examples may include:
 Properties:
 
 - personal to the current user;
-- resolved with the `user_post_then_user` preference scope where appropriate;
+- personal to the current user **and to the post being edited** (scope `user_post`): a choice made while editing one post is not carried to another post, which starts from the defaults;
 - applied only after attachment eligibility has been evaluated;
 - never grant eligibility to a file excluded by an attachment filter;
 - must not independently authorize or reject an attachment operation.

@@ -5,7 +5,7 @@
 namespace WP_Media_Helper\Admin;
 
 /**
- * Resolves and persists "user, then user-post override" scoped filter values,
+ * Resolves and persists the filter values of a user for a post (scope `user_post`),
  * as defined by the extensible media filter contract (slice 015).
  *
  * Storage access is injected as closures so the resolution and pruning logic
@@ -13,7 +13,7 @@ namespace WP_Media_Helper\Admin;
  */
 class MediaFilters {
 
-	public const MAX_USER_POST_ENTRIES = 50;
+	public const MAX_USER_POST_ENTRIES = 200;
 
 	/** @var callable(string):mixed */
 	private $getUserMeta;
@@ -27,30 +27,22 @@ class MediaFilters {
 	}
 
 	/**
-	 * Resolution order: current user's value for this post, then the current
-	 * user's latest global value, then the filter default.
+	 * The current user's value for this post, or the filter default: the choices of a user on
+	 * one post are not carried to another post (a new post starts from the defaults).
 	 */
-	public function resolveUserPostThenUser( int $postId, string $filterKey, mixed $default ): mixed {
+	public function resolveUserPost( int $postId, string $filterKey, mixed $default ): mixed {
 		$map = $this->getPostMap( $filterKey );
-		if ( 0 !== $postId && array_key_exists( (string) $postId, $map ) && is_array( $map[ (string) $postId ] ) ) {
+		if ( 0 !== $postId && array_key_exists( (string) $postId, $map ) && is_array( $map[ (string) $postId ] ) && array_key_exists( 'value', $map[ (string) $postId ] ) ) {
 			return $map[ (string) $postId ]['value'];
-		}
-
-		$global = ( $this->getUserMeta )( self::globalMetaKey( $filterKey ) );
-		if ( is_array( $global ) && array_key_exists( 'value', $global ) ) {
-			return $global['value'];
 		}
 
 		return $default;
 	}
 
 	/**
-	 * Stores the value as both the current user's value for this post and
-	 * the current user's latest global value.
+	 * Stores the value for the current user and this post, and for them only.
 	 */
-	public function persistUserPostThenUser( int $postId, string $filterKey, mixed $value ): void {
-		( $this->updateUserMeta )( self::globalMetaKey( $filterKey ), [ 'value' => $value ] );
-
+	public function persistUserPost( int $postId, string $filterKey, mixed $value ): void {
 		if ( 0 === $postId ) {
 			return;
 		}
@@ -91,6 +83,9 @@ class MediaFilters {
 		return '_wp_media_helper_filter_' . $filterKey . '_by_post';
 	}
 
+	/**
+	 * Meta key of the former "latest value of the user" fallback, no longer read nor written.
+	 */
 	public static function globalMetaKey( string $filterKey ): string {
 		return '_wp_media_helper_filter_' . $filterKey . '_latest';
 	}
