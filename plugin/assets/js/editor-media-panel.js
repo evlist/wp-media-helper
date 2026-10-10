@@ -1307,7 +1307,9 @@
 								? sprintf( _n( '%d of these files is in the media library: it loses its title, caption and description, leaves every post it is attached to and is no longer a featured image. Restoring the file brings none of this back.', '%d of these files are in the media library: they lose their titles, captions and descriptions, leave every post they are attached to and are no longer featured images. Restoring the files brings none of this back.', imported, 'wp-media-helper' ), imported )
 								: __( 'They lose their titles, captions and descriptions, leave every post they are attached to and are no longer featured images. Restoring the files brings none of this back.', 'wp-media-helper' ) )
 					)
-					: null,
+					: wp.element.createElement( 'p', { style: { color: '#1d2327' } },
+						_n( 'It is not in the WordPress media library: nothing else is lost.', 'None of them is in the WordPress media library: nothing else is lost.', items.length, 'wp-media-helper' )
+					),
 				elsewhere.length > 0
 					? wp.element.createElement( 'p', { style: danger },
 						__( 'Attached to other posts: ', 'wp-media-helper' ) + elsewhere.map( function ( item ) { return item.other_post_title || ( '#' + item.other_post_id ); } ).join( ', ' )
