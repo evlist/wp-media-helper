@@ -1301,9 +1301,12 @@
 				wp.element.createElement( 'p', null, __( 'The file stays on the disk, untouched, and can be restored to the gallery from the trash.', 'wp-media-helper' ) ),
 				imported > 0
 					? wp.element.createElement( 'p', { style: danger, role: 'alert' },
-						sprintf( _n( 'Its entry in the WordPress media library will be deleted, with its title, caption and description. This cannot be undone.', 'The entries of %d of these files in the WordPress media library will be deleted, with their titles, captions and descriptions. This cannot be undone.', imported, 'wp-media-helper' ), imported ),
-						' ',
-						__( 'The file disappears from every post it is attached to, and is not attached again when it is restored.', 'wp-media-helper' )
+						_n(
+							'It loses its title, caption and description, leaves every post it is attached to, is no longer a featured image, and will not be attached again if restored. This cannot be undone.',
+							'They lose their titles, captions and descriptions, leave every post they are attached to, are no longer featured images, and will not be attached again if restored. This cannot be undone.',
+							imported,
+							'wp-media-helper'
+						)
 					)
 					: null,
 				elsewhere.length > 0
