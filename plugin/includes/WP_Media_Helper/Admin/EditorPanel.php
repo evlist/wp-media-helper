@@ -4,6 +4,7 @@
 
 namespace WP_Media_Helper\Admin;
 
+use WP_Media_Helper\Attachment\Methods;
 use WP_Media_Helper\MediaSource\FileTypes;
 
 class EditorPanel {
@@ -21,21 +22,30 @@ class EditorPanel {
 			true
 		);
 
-		wp_localize_script(
-			'wp-media-helper-editor-panel',
-			'wpMediaHelperEditorPanel',
-			[
-				'nonce' => wp_create_nonce( 'wp_media_helper_media_panel' ),
-				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-				'sourceId' => '',
-				'canUpload' => current_user_can( 'upload_files' ),
-				'canTrash' => TrashedFiles::canTrash(),
-				'canSeeTrash' => TrashedFiles::canSeeTrash(),
-				'fileTypes' => self::fileTypes(),
-				'date' => current_time( 'Y-m-d' ),
-				'panelMode' => EditorMediaController::normalizePanelMode( get_user_meta( get_current_user_id(), EditorMediaController::panelModeMetaKey, true ) ),
-			]
-		);
+		$post   = get_post();
+		$postId = $post instanceof \WP_Post ? (int) $post->ID : 0;
+		$config = [
+			'nonce' => wp_create_nonce( 'wp_media_helper_media_panel' ),
+			'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+			'sourceId' => '',
+			'canUpload' => current_user_can( 'upload_files' ),
+			'canTrash' => TrashedFiles::canTrash(),
+			'canSeeTrash' => TrashedFiles::canSeeTrash(),
+			'fileTypes' => self::fileTypes(),
+			'date' => current_time( 'Y-m-d' ),
+			'panelMode' => EditorMediaController::normalizePanelMode( get_user_meta( get_current_user_id(), EditorMediaController::panelModeMetaKey, true ) ),
+			'attachmentMethod' => EditorMediaController::methodForPanel( Methods::active( $postId ) ),
+		];
+
+		/**
+		 * Filters the data given to the script of the panel (slice 042).
+		 *
+		 * @param array<string, mixed> $config The data.
+		 * @param int                  $postId The post being edited, 0 when there is none yet.
+		 */
+		$filtered = apply_filters( 'wp_media_helper_panel_config', $config, $postId );
+
+		wp_localize_script( 'wp-media-helper-editor-panel', 'wpMediaHelperEditorPanel', is_array( $filtered ) ? $filtered : $config );
 
 		wp_set_script_translations(
 			'wp-media-helper-editor-panel',

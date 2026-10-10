@@ -183,6 +183,25 @@ class MediaPanelState {
 	}
 
 	/**
+	 * Gives the files attached to the current post the data of their link (the declared fields of the
+	 * attachment method: modes, position...), to show and to edit.
+	 *
+	 * @param array<int, array<string, mixed>>     $items
+	 * @param array<string, array<string, mixed>> $dataByPath Keyed by the path of the listed item.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function setAttachmentData( array $items, array $dataByPath ): array {
+		foreach ( $items as $index => $item ) {
+			$data = $dataByPath[ (string) ( $item['path'] ?? '' ) ] ?? null;
+			if ( is_array( $item ) && null !== $data && [] !== $data ) {
+				$items[ $index ]['attachment_data'] = $data;
+			}
+		}
+
+		return $items;
+	}
+
+	/**
 	 * @param array<int, array<string, mixed>> $items
 	 * @param array<string, array{post_id:int}> $otherPostByPath keyed by the path of the listed item
 	 * @return array<int, array<string, mixed>>
@@ -197,6 +216,9 @@ class MediaPanelState {
 			$info = $otherPostByPath[ $path ] ?? null;
 			$items[ $index ]['is_attached_to_other_post'] = is_array( $info );
 			$items[ $index ]['other_post_id'] = is_array( $info ) ? (int) ( $info['post_id'] ?? 0 ) : 0;
+			if ( is_array( $info ) && isset( $info['post_ids'] ) && is_array( $info['post_ids'] ) ) {
+				$items[ $index ]['other_post_ids'] = array_values( array_map( 'intval', $info['post_ids'] ) );
+			}
 		}
 
 		return $items;

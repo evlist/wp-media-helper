@@ -3,7 +3,7 @@
 
 # Slice 042: Attachment methods (contract for other plugins)
 
-Status: **accepted by Eric on 2026-10-10; step 1 of the plan is coded** (interface, native method, registry, setting; see the end) (the decisions and the four amendments of the Otherguise session are in; the names below are fixed). Written for the session that develops
+Status: **accepted by Eric on 2026-10-10; steps 1 to 4 are coded** (see the end) (the decisions and the four amendments of the Otherguise session are in; the names below are fixed). Written for the session that develops
 [`evlist/wp-otherguise`](https://github.com/evlist/wp-otherguise), whose design note
 [`docs/design/media-helper.md`](https://github.com/evlist/wp-otherguise/blob/main/docs/design/media-helper.md) raised the integration.
 Everything below is **Decided** (Eric accepted it) unless it says it is a fact about the code of `main`.
@@ -184,3 +184,31 @@ Tested with stubs of WordPress (`tests/phpunit/AttachmentMethodsTest.php`); neve
   unattached row, and the media grid / attachment details dialog (they keep showing `post_parent`).
 - Tested with stubs (`tests/phpunit/AttachmentMethodsTest.php`: the function with the native method and with a method that
   returns duplicates, and the HTML of the column); the hooks of the list table were never run on a real site.
+
+## Steps 3 and 4: done (events, filters of the panel, multi-post behavior, declared fields)
+
+**Events** (after the method succeeded): `wp_media_helper_attached( $attachmentId, $postId, $methodId, $data )`,
+`wp_media_helper_detached( $attachmentId, $postId, $methodId )` and `wp_media_helper_attachment_updated( $attachmentId, $postId, $methodId, $data )`.
+
+**Filters of the panel**: `wp_media_helper_panel_config( $config, $postId )` (the data given to the script, which now carries
+`attachmentMethod` = `{ id, label, multiple_posts, fields }` for the post being edited) and `wp_media_helper_panel_item( $item,
+$context )` for each item of the page (`$context` = `post_id`, `method`). The answer of the list also carries
+`attachment_method`, so the panel follows the method of the post.
+
+**Declared fields** (`Attachment\Fields`): a method lists `fields` in `capabilities()`; Media Helper keeps the valid ones (key
+`[a-z0-9_-]`, type `multiselect`, `select`, `boolean`, `integer`, `text`, options for the selects, a default of the right
+kind) and coerces what the browser sends to the declared types before the method sees it (the method still validates and
+stores). `attach` gives the data of the browser, or the defaults of the fields when none was sent. `describe()` returns the
+data of the link of each attachment (`data`), shown in the detail sheet.
+
+**New action `update`** (AJAX `bulk_media`, one item, with `data`): changes the data of the link of the files attached here
+through `Method::update()`; the answer carries `attachment_data`.
+
+**Panel with a multi-post method** (`multiple_posts`): *attached to other posts* no longer blocks (no red lock, no protected
+message; amber paperclip when the file is only attached elsewhere), the sheet shows **Also in** with the other posts the user
+may edit (up to 8), **Edit link…** (menu and sheet) opens a dialog with one control per field and saves with `update`, and the
+detail sheet shows the values of the fields. *Attach* uses the defaults of the fields; they are changed with *Edit link…*.
+Choosing the modes in the same step as attaching, and fields in bulk, are not done.
+
+Tested with stubs and in Chromium with a mock of the server (dialog, save, sheet, menus); never tried on a real site or
+with a real second method.

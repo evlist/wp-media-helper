@@ -545,4 +545,60 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertSame( [ 12, 15 ], $marked[0]['attachment_ids'] );
 		$this->assertArrayNotHasKey( 'attachment_ids', $marked[1] );
 	}
+
+	public function test_the_data_of_the_link_and_every_other_post_are_given_to_the_items(): void {
+		$items = [ [ 'path' => '/u/a.jpg' ], [ 'path' => '/u/b.jpg' ], [ 'path' => '/u/c.jpg' ] ];
+
+		$withData = MediaPanelState::setAttachmentData( $items, [ '/u/a.jpg' => [ 'modes' => [ 'web' ] ], '/u/b.jpg' => [] ] );
+		$this->assertSame( [ 'modes' => [ 'web' ] ], $withData[0]['attachment_data'] );
+		$this->assertArrayNotHasKey( 'attachment_data', $withData[1], 'An empty set of data is not sent.' );
+		$this->assertArrayNotHasKey( 'attachment_data', $withData[2] );
+
+		$others = MediaPanelState::setOtherPostState( $items, [ '/u/a.jpg' => [ 'post_id' => 9, 'post_ids' => [ 4, '9' ] ], '/u/b.jpg' => [ 'post_id' => 5 ] ] );
+		$this->assertSame( [ 4, 9 ], $others[0]['other_post_ids'] );
+		$this->assertTrue( $others[0]['is_attached_to_other_post'] );
+		$this->assertSame( 9, $others[0]['other_post_id'] );
+		$this->assertArrayNotHasKey( 'other_post_ids', $others[1] );
+		$this->assertFalse( $others[2]['is_attached_to_other_post'] );
+	}
+
+	public function test_the_method_is_described_for_the_panel_with_clean_fields(): void {
+		$method = new class() implements \WP_Media_Helper\Attachment\Method {
+			public function id(): string {
+				return 'x';
+			}
+			public function label(): string {
+				return 'X';
+			}
+			public function capabilities(): array {
+				return [ 'multiple_posts' => true, 'fields' => [ [ 'key' => 'position', 'label' => 'Position', 'type' => 'integer' ], [ 'key' => 'Bad key', 'type' => 'text' ] ] ];
+			}
+			public function describe( array $attachmentIds, int $postId ): array {
+				return [];
+			}
+			public function attach( int $attachmentId, int $postId, array $data ) {
+				return true;
+			}
+			public function detach( int $attachmentId, int $postId ) {
+				return true;
+			}
+			public function update( int $attachmentId, int $postId, array $data ) {
+				return true;
+			}
+			public function attached( int $postId, array $args ): array {
+				return [];
+			}
+			public function posts_of( array $attachmentIds ): array {
+				return [];
+			}
+			public function may_remove( int $attachmentId, string $context = 'remove' ) {
+				return true;
+			}
+		};
+
+		$described = \WP_Media_Helper\Admin\EditorMediaController::methodForPanel( $method );
+		$this->assertSame( 'x', $described['id'] );
+		$this->assertTrue( $described['multiple_posts'] );
+		$this->assertSame( [ 'position' ], array_column( $described['fields'], 'key' ) );
+	}
 }

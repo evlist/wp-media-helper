@@ -7,6 +7,7 @@ namespace WP_Media_Helper\Admin;
 use WP_Media_Helper\Thumbnails\PanelThumbnail;
 use WP_Media_Helper\Thumbnails\Thumbnails;
 use DateTimeImmutable;
+use WP_Media_Helper\Attachment\Fields;
 use WP_Media_Helper\Attachment\Method;
 use WP_Media_Helper\Attachment\Methods;
 use WP_Media_Helper\MediaSource\AttachmentRegistrar;
@@ -81,6 +82,10 @@ class EditorMediaController {
 			$sourceId = trim( (string) ( $item['source_id'] ?? '' ) );
 			if ( '' !== $sourceId ) {
 				$normalized[ $key ]['source_id'] = $sourceId;
+			}
+			// The data of the link (slice 042): coerced to the declared fields by the controller before the method sees it.
+			if ( isset( $item['data'] ) && is_array( $item['data'] ) ) {
+				$normalized[ $key ]['data'] = $item['data'];
 			}
 		}
 
@@ -365,7 +370,7 @@ class EditorMediaController {
 		$encodedItems = wp_unslash( $_POST['items'] ?? '' );
 		$items = is_string( $encodedItems ) ? json_decode( $encodedItems, true ) : [];
 
-		if ( ! in_array( $action, [ 'import', 'remove', 'attach', 'detach', 'trash', 'restore' ], true ) ) {
+		if ( ! in_array( $action, [ 'import', 'remove', 'attach', 'detach', 'update', 'trash', 'restore' ], true ) ) {
 			wp_send_json_error( [ 'message' => 'The requested bulk action is not supported.' ], 400 );
 		}
 
@@ -377,7 +382,7 @@ class EditorMediaController {
 			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
 		}
 
-		if ( in_array( $action, [ 'attach', 'detach', 'remove' ], true ) && ( 0 === $postId || ! get_post( $postId ) || ! current_user_can( 'edit_post', $postId ) ) ) {
+		if ( in_array( $action, [ 'attach', 'detach', 'remove', 'update' ], true ) && ( 0 === $postId || ! get_post( $postId ) || ! current_user_can( 'edit_post', $postId ) ) ) {
 			wp_send_json_error( [ 'message' => 'The current post must be saved before media can be changed.' ], 400 );
 		}
 
@@ -420,6 +425,7 @@ class EditorMediaController {
 		$registrar = new AttachmentRegistrar( $registry );
 		// How media items are attached to posts: the method in use for this post (slice 042).
 		$method = Methods::active( $postId );
+		$fields = Fields::normalize( $method->capabilities()['fields'] ?? [] );
 		$activeSources = in_array( $action, [ 'import', 'attach', 'trash', 'restore' ], true ) ? $this->getActiveSources() : [];
 		foreach ( $items as $item ) {
 			$itemSourceId = (string) ( $item['source_id'] ?? $sourceId );
@@ -432,7 +438,7 @@ class EditorMediaController {
 				'operation' => 'no_change',
 			];
 
-			if ( in_array( $action, [ 'attach', 'detach', 'remove' ], true ) ) {
+			if ( in_array( $action, [ 'attach', 'detach', 'remove', 'update' ], true ) ) {
 				$blocked = $this->protectedMessage( $method, $registry->findByPath( $item['path'] ), $postId );
 				if ( null !== $blocked ) {
 					$result['message'] = $blocked;
@@ -528,13 +534,17 @@ class EditorMediaController {
 				$result['operation'] = 'imported';
 
 				if ( 'attach' === $action ) {
-					$attached = $method->attach( (int) $attachmentId, $postId, [] );
+					// What the browser did not send takes the default of each field.
+					$data     = Fields::sanitize( $fields, $item['data'] ?? null, true );
+					$attached = $method->attach( (int) $attachmentId, $postId, $data );
 					if ( is_wp_error( $attached ) ) {
 						$result['success'] = false;
 						$result['message'] = $attached->get_error_message();
 						$results[] = $result;
 						continue;
 					}
+					do_action( 'wp_media_helper_attached', (int) $attachmentId, $postId, $method->id(), $data );
+					$result['attachment_data'] = $data;
 
 					$result['is_attached_to_current_post'] = true;
 					$result['operation'] = 'attached';
@@ -545,6 +555,11 @@ class EditorMediaController {
 			}
 
 			$rows = $registry->findByPath( $item['path'] );
+			if ( 'update' === $action ) {
+				$results[] = $this->updateLink( $method, $fields, $rows, $postId, $item, $result );
+				continue;
+			}
+
 			$detached = $this->detachRows( $method, $rows, $postId );
 			if ( is_wp_error( $detached ) ) {
 				$result['message'] = $detached->get_error_message();
@@ -642,9 +657,56 @@ class EditorMediaController {
 			}
 
 			$detached[] = $attachmentId;
+			do_action( 'wp_media_helper_detached', $attachmentId, $postId, $method->id() );
 		}
 
 		return $detached;
+	}
+
+	/**
+	 * Changes the data of the link between a file and the current post (the action `update`).
+	 *
+	 * @param array<int, array<string, mixed>>                                 $fields
+	 * @param array<int, array{id:int, parent:int, owned:bool}>                $rows
+	 * @param array{id:string, path:string, data?:array<string, mixed>}        $item
+	 * @param array<string, mixed>                                             $result
+	 * @return array<string, mixed>
+	 */
+	private function updateLink( Method $method, array $fields, array $rows, int $postId, array $item, array $result ): array {
+		$ids       = array_map( static fn ( array $row ): int => (int) $row['id'], $rows );
+		$described = $method->describe( $ids, $postId );
+		$data      = Fields::sanitize( $fields, $item['data'] ?? null );
+		$updated   = [];
+		foreach ( $ids as $attachmentId ) {
+			if ( empty( $described[ $attachmentId ]['attached_here'] ) ) {
+				continue;
+			}
+
+			$done = $method->update( $attachmentId, $postId, $data );
+			if ( is_wp_error( $done ) ) {
+				$result['message'] = $done->get_error_message();
+
+				return $result;
+			}
+
+			$updated[] = $attachmentId;
+			do_action( 'wp_media_helper_attachment_updated', $attachmentId, $postId, $method->id(), $data );
+		}
+
+		if ( [] === $updated ) {
+			$result['message'] = __( 'This media is not attached to the current post.', 'wp-media-helper' );
+
+			return $result;
+		}
+
+		$after                        = $method->describe( $updated, $postId );
+		$result['success']            = true;
+		$result['is_imported']        = true;
+		$result['is_attached_to_current_post'] = true;
+		$result['attachment_data']    = $after[ $updated[0] ]['data'] ?? $data;
+		$result['operation']          = 'updated';
+
+		return $result;
 	}
 
 	/**
@@ -693,6 +755,7 @@ class EditorMediaController {
 		$maxEntries = $this->getMaxEntries();
 		$forceRefresh = ! empty( $_POST['force_refresh'] );
 		$selectedSources = self::resolveSourcesForFilter( $activeSources, $filters['source'] );
+		$method = Methods::active( $postId );
 		$sourceOptions = array_map( static fn ( array $source ): array => [
 			'id' => (string) $source['id'],
 			'name' => (string) $source['name'],
@@ -719,6 +782,7 @@ class EditorMediaController {
 				],
 				'available_sources' => $sourceOptions,
 				'filters' => $filters,
+				'attachment_method' => self::methodForPanel( $method ),
 			] );
 		}
 
@@ -771,19 +835,55 @@ class EditorMediaController {
 		$merged['files'] = MediaPanelState::setAttachmentState( $merged['files'], $attachmentStates['attached_paths'] );
 		$merged['files'] = MediaPanelState::setOtherPostState( $merged['files'], $attachmentStates['other_post_by_path'] );
 		$merged['files'] = MediaPanelState::setAttachmentIds( $merged['files'], $attachmentStates['attachment_ids'] );
+		$merged['files'] = MediaPanelState::setAttachmentData( $merged['files'], $attachmentStates['data_by_path'] );
 		$merged['files'] = MediaPanelState::filterByAttachmentScope( $merged['files'], $filters['attachment_scope'] );
 		$merged['files'] = MediaPanelState::filterByMediaType( $merged['files'], $filters['media_type'] );
 		$merged['files'] = MediaPanelState::markImportable( $merged['files'], static fn ( string $name ): array => wp_check_filetype( $name ) );
 		$merged['files'] = MediaPanelState::filterByFilename( $merged['files'], $filters['filename'] );
 		$pageData = MediaPanelState::paginate( $merged['files'], $page, $maxEntries );
-		$merged['files'] = $this->addThumbnailUrls( $this->enrichOtherPostInfo( $pageData['items'] ) );
+		$merged['files'] = $this->filterItems( $this->addThumbnailUrls( $this->enrichOtherPostInfo( $pageData['items'] ) ), $postId, $method );
 		unset( $pageData['items'] );
 		$merged['pagination'] = $pageData;
 		// Absolute server directories are not exposed to the browser.
 		unset( $merged['directory'] );
 		$merged['status'] = $merged['refresh_required'] ? 'stale' : 'fresh';
 		$merged['filters'] = $filters;
+		$merged['attachment_method'] = self::methodForPanel( $method );
 		wp_send_json_success( $merged );
+	}
+
+	/**
+	 * What the panel needs to know of the method in use.
+	 *
+	 * @return array{id:string, label:string, multiple_posts:bool, fields:array<int, array<string, mixed>>}
+	 */
+	public static function methodForPanel( Method $method ): array {
+		$capabilities = $method->capabilities();
+
+		return [
+			'id'             => $method->id(),
+			'label'          => $method->label(),
+			'multiple_posts' => ! empty( $capabilities['multiple_posts'] ),
+			'fields'         => Fields::normalize( $capabilities['fields'] ?? [] ),
+		];
+	}
+
+	/**
+	 * Lets a plugin adjust each item of the page (filter `wp_media_helper_panel_item`).
+	 *
+	 * @param array<int, array<string, mixed>> $files
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function filterItems( array $files, int $postId, Method $method ): array {
+		$context = [ 'post_id' => $postId, 'method' => $method->id() ];
+		foreach ( $files as $index => $file ) {
+			$filtered = apply_filters( 'wp_media_helper_panel_item', $file, $context );
+			if ( is_array( $filtered ) ) {
+				$files[ $index ] = $filtered;
+			}
+		}
+
+		return $files;
 	}
 
 	/**
@@ -825,6 +925,19 @@ class EditorMediaController {
 				continue;
 			}
 
+			// A method that lets a media item belong to several posts lists them all (those the user may edit).
+			if ( ! empty( $file['other_post_ids'] ) && is_array( $file['other_post_ids'] ) ) {
+				$others = [];
+				foreach ( array_slice( $file['other_post_ids'], 0, 8 ) as $otherId ) {
+					$other = get_post( (int) $otherId );
+					if ( $other instanceof \WP_Post && current_user_can( 'edit_post', (int) $otherId ) ) {
+						$others[] = [ 'id' => (int) $otherId, 'title' => get_the_title( $other ), 'edit_url' => (string) get_edit_post_link( (int) $otherId, 'raw' ) ];
+					}
+				}
+				$files[ $index ]['other_posts'] = $others;
+				$files[ $index ]['other_posts_count'] = count( $file['other_post_ids'] );
+			}
+
 			$otherPostId = (int) ( $file['other_post_id'] ?? 0 );
 			if ( 0 === $otherPostId ) {
 				continue;
@@ -859,6 +972,7 @@ class EditorMediaController {
 		$attached = [];
 		$otherPostByPath = [];
 		$attachmentIds = [];
+		$dataByPath = [];
 
 		$statesByPath = ( new AttachmentRegistry() )->statesFor( $candidatePaths );
 		$ids          = [];
@@ -867,7 +981,10 @@ class EditorMediaController {
 				$ids[] = (int) $row['id'];
 			}
 		}
-		$described = Methods::active( $postId )->describe( $ids, $postId );
+		$method    = Methods::active( $postId );
+		$multiple  = ! empty( $method->capabilities()['multiple_posts'] );
+		$described = $method->describe( $ids, $postId );
+		$elsewhere = [];
 
 		foreach ( $statesByPath as $path => $rows ) {
 			$path = (string) $path;
@@ -878,15 +995,23 @@ class EditorMediaController {
 				if ( null === $state ) {
 					continue;
 				}
-				if ( $state['attached_here'] ) {
+				if ( $state['attached_here'] && ! in_array( $path, $attached, true ) ) {
 					$attached[] = $path;
-					unset( $otherPostByPath[ $path ] );
-					break;
+					$dataByPath[ $path ] = is_array( $state['data'] ?? null ) ? $state['data'] : [];
 				}
-				if ( [] !== $state['elsewhere'] ) {
-					$otherPostByPath[ $path ] = [ 'post_id' => (int) $state['elsewhere'][0] ];
+				foreach ( $state['elsewhere'] as $otherId ) {
+					$elsewhere[ $path ][] = (int) $otherId;
 				}
 			}
+		}
+
+		foreach ( $elsewhere as $path => $otherIds ) {
+			// With one post per media item, being attached here means not being attached to another post.
+			if ( ! $multiple && in_array( (string) $path, $attached, true ) ) {
+				continue;
+			}
+			$otherIds = array_values( array_unique( $otherIds ) );
+			$otherPostByPath[ (string) $path ] = [ 'post_id' => (int) end( $otherIds ), 'post_ids' => $otherIds ];
 		}
 
 		return [
@@ -894,6 +1019,7 @@ class EditorMediaController {
 			'attached_paths' => $attached,
 			'other_post_by_path' => $otherPostByPath,
 			'attachment_ids' => $attachmentIds,
+			'data_by_path' => $dataByPath,
 		];
 	}
 }

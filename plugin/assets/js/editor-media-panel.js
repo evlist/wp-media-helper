@@ -17,6 +17,15 @@
 	const canTrash = !! wpMediaHelperEditorPanel.canTrash;
 	const canUpload = !! wpMediaHelperEditorPanel.canUpload;
 	const canSeeTrash = !! wpMediaHelperEditorPanel.canSeeTrash;
+	// How media items are attached to posts (slice 042): the method in use, as the server describes it.
+	const normalizeMethod = function ( method ) {
+		return {
+			id: method && method.id ? String( method.id ) : 'native',
+			multiple_posts: !! ( method && method.multiple_posts ),
+			fields: method && Array.isArray( method.fields ) ? method.fields : [],
+		};
+	};
+	let attachmentMethod = normalizeMethod( wpMediaHelperEditorPanel.attachmentMethod );
 	const defaultPanelMode = 'advanced' === wpMediaHelperEditorPanel.panelMode ? 'advanced' : 'simple';
 	const dateMetaKey = 'wp_media_helper_date';
 
@@ -149,6 +158,9 @@
 			is_attached_to_other_post: !! ( item && item.is_attached_to_other_post ),
 			other_post_id: item && item.other_post_id ? item.other_post_id : 0,
 			other_post_title: item && item.other_post_title ? item.other_post_title : '',
+			other_posts: item && Array.isArray( item.other_posts ) ? item.other_posts : [],
+			other_posts_count: item && item.other_posts_count ? item.other_posts_count : 0,
+			attachment_data: item && item.attachment_data && 'object' === typeof item.attachment_data ? item.attachment_data : null,
 			other_post_edit_url: item && item.other_post_edit_url ? item.other_post_edit_url : '',
 			media_type: item && item.media_type ? item.media_type : 'other',
 			can_import: ! ( item && false === item.can_import ),
@@ -173,7 +185,12 @@
 		formData.append( 'bulk_action', action );
 		formData.append( 'post_id', String( postId || 0 ) );
 		formData.append( 'items', JSON.stringify( items.map( function ( item ) {
-			return { id: item.id, path: item.path, source_id: item.source_id };
+			const entry = { id: item.id, path: item.path, source_id: item.source_id };
+			if ( item.data ) {
+				entry.data = item.data;
+			}
+
+			return entry;
 		} ) ) );
 
 		return window.fetch( endpoint, {
@@ -396,7 +413,24 @@
 		return rows;
 	};
 
+	// With one post per media item, being attached to another post blocks the item (red lock); when
+	// a media item may belong to several posts it is only information.
+	const blockedElsewhere = function ( item ) {
+		return item.is_attached_to_other_post && ! attachmentMethod.multiple_posts;
+	};
+
 	const stateLabel = function ( item ) {
+		if ( attachmentMethod.multiple_posts ) {
+			if ( item.is_attached_to_current_post ) {
+				return item.is_attached_to_other_post ? __( 'Attached to this post and to others', 'wp-media-helper' ) : __( 'Attached to this post', 'wp-media-helper' );
+			}
+			if ( item.is_attached_to_other_post ) {
+				return __( 'Attached to other posts', 'wp-media-helper' );
+			}
+
+			return __( 'Not attached', 'wp-media-helper' );
+		}
+
 		if ( item.is_attached_to_other_post ) {
 			return __( 'Attached to another post', 'wp-media-helper' );
 		}
@@ -407,9 +441,10 @@
 	// A paperclip says how the file relates to the post: green, attached here; red with a lock,
 	// attached to another post; crossed out, not attached. The shape differs as well as the colour.
 	const AttachmentBadge = function ( { item } ) {
-		const other = item.is_attached_to_other_post;
+		const other = blockedElsewhere( item );
 		const here = item.is_attached_to_current_post;
-		const colour = other ? '#b32d2e' : ( here ? '#0a7d45' : '#646970' );
+		const elsewhereOnly = attachmentMethod.multiple_posts && item.is_attached_to_other_post && ! here;
+		const colour = other ? '#b32d2e' : ( here ? '#0a7d45' : ( elsewhereOnly ? '#996800' : '#646970' ) );
 		const label = stateLabel( item );
 
 		return wp.element.createElement( 'span', {
@@ -426,7 +461,7 @@
 						wp.element.createElement( 'path', { d: 'M16 15v-1.5a2 2 0 0 1 4 0V15', fill: 'none' } )
 					)
 					: null,
-				! other && ! here
+				! other && ! here && ! elsewhereOnly
 					? wp.element.createElement( 'path', { d: 'M3 3l18 18', stroke: colour } )
 					: null
 			)
@@ -469,6 +504,81 @@
 		);
 	};
 
+	// The data of a link, as the method declares it: how to show a value and a control to change it.
+	const formatFieldValue = function ( field, value ) {
+		const labelOf = function ( optionValue ) {
+			const option = ( field.options || [] ).filter( function ( candidate ) { return candidate.value === optionValue; } )[ 0 ];
+
+			return option ? option.label : optionValue;
+		};
+		if ( 'multiselect' === field.type ) {
+			return Array.isArray( value ) && value.length > 0 ? value.map( labelOf ).join( ', ' ) : __( 'none', 'wp-media-helper' );
+		}
+		if ( 'select' === field.type ) {
+			return value ? labelOf( value ) : '';
+		}
+		if ( 'boolean' === field.type ) {
+			return value ? __( 'Yes', 'wp-media-helper' ) : __( 'No', 'wp-media-helper' );
+		}
+
+		return null === value || undefined === value ? '' : String( value );
+	};
+
+	const FieldControl = function ( { field, value, onChange, disabled } ) {
+		if ( 'multiselect' === field.type ) {
+			const current = Array.isArray( value ) ? value : [];
+
+			return wp.element.createElement( 'fieldset', { style: { border: 0, margin: '0 0 8px', padding: 0 } },
+				wp.element.createElement( 'legend', { style: { fontWeight: 600, fontSize: '12px', padding: 0 } }, field.label ),
+				field.options.map( function ( option ) {
+					return wp.element.createElement( CheckboxControl, {
+						key: option.value,
+						label: option.label,
+						checked: current.includes( option.value ),
+						disabled: disabled,
+						onChange: function ( checked ) {
+							onChange( field.options.map( function ( candidate ) { return candidate.value; } ).filter( function ( candidate ) {
+								return candidate === option.value ? checked : current.includes( candidate );
+							} ) );
+						}
+					} );
+				} )
+			);
+		}
+		if ( 'boolean' === field.type ) {
+			return wp.element.createElement( CheckboxControl, { label: field.label, checked: !! value, disabled: disabled, onChange: onChange } );
+		}
+		if ( 'select' === field.type ) {
+			return wp.element.createElement( 'label', { style: { display: 'block', margin: '0 0 8px', fontSize: '12px', fontWeight: 600 } },
+				field.label,
+				wp.element.createElement( 'select', {
+					value: value || '',
+					disabled: disabled,
+					onChange: function ( event ) { onChange( event.target.value ); },
+					style: { display: 'block', width: '100%', marginTop: '2px' }
+				},
+					wp.element.createElement( 'option', { value: '' }, '—' ),
+					field.options.map( function ( option ) { return wp.element.createElement( 'option', { key: option.value, value: option.value }, option.label ); } )
+				)
+			);
+		}
+
+		return wp.element.createElement( TextControl, {
+			label: field.label,
+			type: 'integer' === field.type ? 'number' : 'text',
+			value: null === value || undefined === value ? '' : String( value ),
+			disabled: disabled,
+			onChange: function ( typed ) {
+				if ( 'integer' === field.type ) {
+					const number = parseInt( typed, 10 );
+					onChange( '' === typed || isNaN( number ) ? null : number );
+				} else {
+					onChange( typed );
+				}
+			}
+		} );
+	};
+
 	const MediaPanel = function () {
 		const [ filters, setFiltersState ] = useState( function () { return { date: getStoredDate() }; } );
 		const [ availableSources, setAvailableSources ] = useState( [] );
@@ -486,6 +596,9 @@
 		const [ hasNews, setHasNews ] = useState( false );
 		// The filters with nothing checked, as the server reports them: the list is empty because of them.
 		const [ emptyFilters, setEmptyFilters ] = useState( [] );
+		// The link being edited: { item, values }.
+		const [ linkEdit, setLinkEdit ] = useState( null );
+		const [ , setMethodState ] = useState( attachmentMethod );
 		// The featured image of the post being edited (undefined when its type has none).
 		const featuredMedia = wp.data.useSelect( function ( select ) {
 			return select( 'core/editor' ).getEditedPostAttribute( 'featured_media' );
@@ -557,6 +670,10 @@
 			setReason( payload.data.reason || null );
 			setAvailableSources( payload.data.available_sources || [] );
 			setEmptyFilters( Array.isArray( payload.data.empty_filters ) ? payload.data.empty_filters : [] );
+			if ( payload.data.attachment_method ) {
+				attachmentMethod = normalizeMethod( payload.data.attachment_method );
+				setMethodState( attachmentMethod );
+			}
 			if ( payload.data.pagination ) {
 				setPagination( payload.data.pagination );
 			}
@@ -908,6 +1025,11 @@
 					if ( result.attachment_id ) {
 						nextItem.attachment_ids = [ result.attachment_id ];
 					}
+					if ( result.attachment_data && 'object' === typeof result.attachment_data ) {
+						nextItem.attachment_data = result.attachment_data;
+					} else if ( Object.prototype.hasOwnProperty.call( result, 'is_attached_to_current_post' ) && ! result.is_attached_to_current_post ) {
+						nextItem.attachment_data = null;
+					}
 					if ( Object.prototype.hasOwnProperty.call( result, 'is_trashed' ) ) {
 						nextItem.is_trashed = !! result.is_trashed;
 						if ( result.is_trashed ) {
@@ -1007,12 +1129,21 @@
 				handleFeature( item );
 				return;
 			}
+			if ( 'edit' === action ) {
+				const values = {};
+				attachmentMethod.fields.forEach( function ( field ) {
+					const stored = item.attachment_data && Object.prototype.hasOwnProperty.call( item.attachment_data, field.key ) ? item.attachment_data[ field.key ] : field.default;
+					values[ field.key ] = stored;
+				} );
+				setLinkEdit( { item: item, values: values } );
+				return;
+			}
 			if ( 'unfeature' === action ) {
 				setFeatured( 0 );
 				return;
 			}
 			const postId = getCurrentPostId();
-			if ( [ 'attach', 'detach', 'remove' ].includes( action ) && 0 === postId ) {
+			if ( [ 'attach', 'detach', 'remove', 'update' ].includes( action ) && 0 === postId ) {
 				setOperationNotice( __( 'Save the post before changing media attachments.', 'wp-media-helper' ) );
 				return;
 			}
@@ -1088,7 +1219,7 @@
 					? { action: 'unfeature', label: __( 'Remove featured image', 'wp-media-helper' ) }
 					: { action: 'feature', label: __( 'Set as featured image', 'wp-media-helper' ) } );
 			}
-			if ( ! item.is_attached_to_other_post && importable ) {
+			if ( ( ! blockedElsewhere( item ) ) && importable ) {
 				if ( 'simple' === panelMode ) {
 					actions.push( item.is_attached_to_current_post
 						? { action: 'remove', label: __( 'Remove', 'wp-media-helper' ) }
@@ -1101,6 +1232,10 @@
 						? { action: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) }
 						: { action: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) } );
 				}
+			}
+			// The data of the link (modes, position...) that the method declares.
+			if ( attachmentMethod.fields.length > 0 && item.is_attached_to_current_post && importable ) {
+				actions.push( { action: 'edit', label: __( 'Edit link…', 'wp-media-helper' ) } );
 			}
 			if ( canTrash ) {
 				actions.push( { action: 'trash', label: __( 'Move to trash', 'wp-media-helper' ), destructive: true } );
@@ -1312,7 +1447,9 @@
 					),
 				elsewhere.length > 0
 					? wp.element.createElement( 'p', { style: danger },
-						__( 'Attached to other posts: ', 'wp-media-helper' ) + elsewhere.map( function ( item ) { return item.other_post_title || ( '#' + item.other_post_id ); } ).join( ', ' )
+						__( 'Attached to other posts: ', 'wp-media-helper' ) + elsewhere.map( function ( item ) {
+							return item.other_posts.length > 0 ? item.other_posts.map( function ( post ) { return post.title || ( '#' + post.id ); } ).join( ', ' ) : ( item.other_post_title || ( '#' + item.other_post_id ) );
+						} ).join( ', ' )
 					)
 					: null,
 				featured > 0
@@ -1322,6 +1459,53 @@
 				wp.element.createElement( 'div', { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end' } },
 					wp.element.createElement( Button, { isSecondary: true, onClick: close, text: __( 'Cancel', 'wp-media-helper' ) } ),
 					wp.element.createElement( Button, { isDestructive: true, isPrimary: true, onClick: run, text: __( 'Move to trash', 'wp-media-helper' ) } )
+				)
+			);
+		};
+
+		const renderLinkDialog = function () {
+			if ( ! linkEdit ) {
+				return null;
+			}
+
+			const close = function () { setLinkEdit( null ); };
+			const save = function () {
+				const item = Object.assign( {}, linkEdit.item, { data: linkEdit.values } );
+				setLinkEdit( null );
+				setLoading( true );
+				setOperationNotice( null );
+				bulkMediaItems( 'update', [ item ], getCurrentPostId() )
+					.then( function ( payload ) {
+						const result = payload && payload.success && payload.data.results ? payload.data.results[ 0 ] : null;
+						if ( result && result.success ) {
+							applyBulkResults( payload );
+						} else {
+							setOperationNotice( result && result.message ? result.message : __( 'The link could not be changed.', 'wp-media-helper' ) );
+						}
+					} )
+					.finally( function () { setLoading( false ); } );
+			};
+
+			return wp.element.createElement( Modal, {
+				title: sprintf( __( 'Link of %s with this post', 'wp-media-helper' ), linkEdit.item.name ),
+				onRequestClose: close,
+				className: 'wpmh-link-dialog'
+			},
+				attachmentMethod.fields.map( function ( field ) {
+					return wp.element.createElement( FieldControl, {
+						key: field.key,
+						field: field,
+						value: linkEdit.values[ field.key ],
+						onChange: function ( next ) {
+							setLinkEdit( function ( current ) {
+								return Object.assign( {}, current, { values: Object.assign( {}, current.values, { [ field.key ]: next } ) } );
+							} );
+						}
+					} );
+				} ),
+				wp.element.createElement( 'div', { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end' } },
+					wp.element.createElement( Button, { isSecondary: true, onClick: close, text: __( 'Cancel', 'wp-media-helper' ) } ),
+					wp.element.createElement( Button, { isPrimary: true, onClick: save, text: __( 'Save', 'wp-media-helper' ) } )
 				)
 			);
 		};
@@ -1343,7 +1527,13 @@
 				[ __( 'Date', 'wp-media-helper' ), item.effective_date ? item.effective_date + ( dateSourceLabel( item.date_source ) ? ' (' + dateSourceLabel( item.date_source ) + ')' : '' ) : '' ],
 				[ __( 'Source', 'wp-media-helper' ), source ? source.name : '' ],
 				[ __( 'File', 'wp-media-helper' ), item.path ],
-			].filter( function ( entry ) { return entry[ 1 ]; } );
+			].concat( attachmentMethod.fields.length > 0 && item.attachment_data
+				? attachmentMethod.fields.map( function ( field ) {
+					return [ field.label, formatFieldValue( field, item.attachment_data[ field.key ] ) ];
+				} )
+				: [] ).concat( attachmentMethod.multiple_posts && item.other_posts_count > 0
+				? [ [ __( 'Also in', 'wp-media-helper' ), item.other_posts.map( function ( post ) { return post.title || ( '#' + post.id ); } ).join( ', ' ) + ( item.other_posts_count > item.other_posts.length ? ' …' : '' ) ] ]
+				: [] ).filter( function ( entry ) { return entry[ 1 ]; } );
 			const go = function ( offset ) {
 				const next = visibleItems[ index + offset ];
 				if ( next ) {
@@ -1372,9 +1562,9 @@
 					picture
 						? wp.element.createElement( 'img', { src: picture, alt: item.name, draggable: false, style: { display: 'block', maxWidth: '100%', maxHeight: '55vh', margin: '0 auto 12px', objectFit: 'contain', background: '#f0f0f1' } } )
 						: null,
-					wp.element.createElement( 'p', { style: { fontWeight: 600, color: item.is_attached_to_other_post ? '#b32d2e' : ( item.is_attached_to_current_post ? '#0a7d45' : '#50575e' ) } },
-						item.is_attached_to_other_post && item.other_post_title ? sprintf( __( 'Attached to another post: %s', 'wp-media-helper' ), item.other_post_title ) : stateLabel( item ),
-						item.is_attached_to_other_post && item.other_post_edit_url
+					wp.element.createElement( 'p', { style: { fontWeight: 600, color: blockedElsewhere( item ) ? '#b32d2e' : ( item.is_attached_to_current_post ? '#0a7d45' : '#50575e' ) } },
+						blockedElsewhere( item ) && item.other_post_title ? sprintf( __( 'Attached to another post: %s', 'wp-media-helper' ), item.other_post_title ) : stateLabel( item ),
+						blockedElsewhere( item ) && item.other_post_edit_url
 							? [ ' ', wp.element.createElement( 'a', { key: 'edit', href: item.other_post_edit_url, target: '_blank', rel: 'noreferrer', style: { fontWeight: 400 } }, __( 'Open that post', 'wp-media-helper' ) ) ]
 							: null,
 						item.is_imported ? wp.element.createElement( 'span', { style: { color: '#2271b1', fontWeight: 400 } }, ' · ' + __( 'In the WordPress media library', 'wp-media-helper' ) ) : null,
@@ -1659,7 +1849,8 @@
 						),
 						renderContextMenu(),
 						renderSheet(),
-						renderTrashDialog()
+						renderTrashDialog(),
+						renderLinkDialog()
 					)
 				)
 			)
