@@ -15,6 +15,7 @@ use WP_Media_Helper\Settings\ExternalSourceSettings;
 use WP_Media_Helper\Settings\ActiveSources;
 use WP_Media_Helper\Settings\BuiltInExclusions;
 use WP_Media_Helper\Settings\DirectoryBrowser;
+use WP_Media_Helper\Attachment\Methods;
 use WP_Media_Helper\Settings\GeneralSettings;
 use WP_Media_Helper\Settings\NamePatternPresets;
 use WP_Media_Helper\Settings\SourceOwnership;
@@ -230,6 +231,20 @@ class ExternalSourceSettingsPage {
 								</p>
 							</td>
 						</tr>
+						<?php $attachmentMethods = Methods::all(); ?>
+						<?php if ( count( $attachmentMethods ) > 1 ) : ?>
+						<tr>
+							<th scope="row"><label for="wp-media-helper-attachment-method"><?php esc_html_e( 'How media are attached to posts', 'wp-media-helper' ); ?></label></th>
+							<td>
+								<select id="wp-media-helper-attachment-method" name="general[attachment_method]">
+									<?php foreach ( $attachmentMethods as $methodId => $attachmentMethod ) : ?>
+										<option value="<?php echo esc_attr( (string) $methodId ); ?>" <?php selected( (string) get_option( Methods::OPTION, 'native' ), (string) $methodId ); ?>><?php echo esc_html( $attachmentMethod->label() ); ?></option>
+									<?php endforeach; ?>
+								</select>
+								<p class="description"><?php esc_html_e( 'Added by another plugin. WordPress attaches a media item to one post; a method can attach it to several posts, with more information.', 'wp-media-helper' ); ?></p>
+							</td>
+						</tr>
+						<?php endif; ?>
 						<tr>
 							<th scope="row"><label for="wp-media-helper-ignored-extensions"><?php esc_html_e( 'Files that are not listed', 'wp-media-helper' ); ?></label></th>
 							<td>
@@ -419,6 +434,9 @@ class ExternalSourceSettingsPage {
 				}
 			}
 			$this->loadGeneralSettings( true )->save( $general );
+			if ( is_array( $rawGeneral ) && isset( $rawGeneral['attachment_method'] ) && is_string( $rawGeneral['attachment_method'] ) && isset( Methods::all()[ $rawGeneral['attachment_method'] ] ) ) {
+				update_option( Methods::OPTION, $rawGeneral['attachment_method'] );
+			}
 		} catch ( InvalidArgumentException $exception ) {
 			$this->redirectBackWithSubmission( $submitted, $exception->getMessage(), $submittedMaxEntries );
 		}

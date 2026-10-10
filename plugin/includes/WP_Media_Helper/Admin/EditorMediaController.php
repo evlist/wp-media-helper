@@ -7,6 +7,8 @@ namespace WP_Media_Helper\Admin;
 use WP_Media_Helper\Thumbnails\PanelThumbnail;
 use WP_Media_Helper\Thumbnails\Thumbnails;
 use DateTimeImmutable;
+use WP_Media_Helper\Attachment\Method;
+use WP_Media_Helper\Attachment\Methods;
 use WP_Media_Helper\MediaSource\AttachmentRegistrar;
 use WP_Media_Helper\MediaSource\AttachmentRegistry;
 use WP_Media_Helper\MediaSource\FileTypes;
@@ -416,6 +418,8 @@ class EditorMediaController {
 		$results = [];
 		$registry = new AttachmentRegistry();
 		$registrar = new AttachmentRegistrar( $registry );
+		// How media items are attached to posts: the method in use for this post (slice 042).
+		$method = Methods::active( $postId );
 		$activeSources = in_array( $action, [ 'import', 'attach', 'trash', 'restore' ], true ) ? $this->getActiveSources() : [];
 		foreach ( $items as $item ) {
 			$itemSourceId = (string) ( $item['source_id'] ?? $sourceId );
@@ -429,9 +433,9 @@ class EditorMediaController {
 			];
 
 			if ( in_array( $action, [ 'attach', 'detach', 'remove' ], true ) ) {
-				$otherPostId = self::findOtherPostAttachment( $registry->findByPath( $item['path'] ), $postId );
-				if ( 0 !== $otherPostId ) {
-					$result['message'] = __( 'This media is attached to another post.', 'wp-media-helper' );
+				$blocked = $this->protectedMessage( $method, $registry->findByPath( $item['path'] ), $postId );
+				if ( null !== $blocked ) {
+					$result['message'] = $blocked;
 					$result['operation'] = 'protected_other_post';
 					$results[] = $result;
 					continue;
@@ -459,7 +463,7 @@ class EditorMediaController {
 							continue 2;
 						}
 					}
-					$result['removed_ids'] = $this->removeRows( $rows, true );
+					$result['removed_ids'] = $this->removeRows( $method, $rows, 'trash' );
 					$result['is_imported'] = false;
 				}
 
@@ -524,20 +528,10 @@ class EditorMediaController {
 				$result['operation'] = 'imported';
 
 				if ( 'attach' === $action ) {
-					if ( ! current_user_can( 'edit_post', (int) $attachmentId ) ) {
+					$attached = $method->attach( (int) $attachmentId, $postId, [] );
+					if ( is_wp_error( $attached ) ) {
 						$result['success'] = false;
-						$result['message'] = __( 'You are not allowed to attach this media.', 'wp-media-helper' );
-						$results[] = $result;
-						continue;
-					}
-
-					$updated = wp_update_post( [
-						'ID' => (int) $attachmentId,
-						'post_parent' => $postId,
-					], true );
-					if ( is_wp_error( $updated ) || empty( $updated ) ) {
-						$result['success'] = false;
-						$result['message'] = is_wp_error( $updated ) ? $updated->get_error_message() : __( 'Unable to attach the media to the current post.', 'wp-media-helper' );
+						$result['message'] = $attached->get_error_message();
 						$results[] = $result;
 						continue;
 					}
@@ -551,7 +545,7 @@ class EditorMediaController {
 			}
 
 			$rows = $registry->findByPath( $item['path'] );
-			$detached = $this->detachRows( $rows, $postId );
+			$detached = $this->detachRows( $method, $rows, $postId );
 			if ( is_wp_error( $detached ) ) {
 				$result['message'] = $detached->get_error_message();
 				$results[] = $result;
@@ -569,7 +563,7 @@ class EditorMediaController {
 
 			// Removing an attachment never deletes a file, so it applies to the
 			// attachments of the file whichever tool created them.
-			$removed = $this->removeRows( $rows );
+			$removed = $this->removeRows( $method, $rows );
 			$result['success'] = true;
 			$result['is_imported'] = [] !== $registry->findByPath( $item['path'] );
 			$result['detached_ids'] = $detached;
@@ -590,11 +584,13 @@ class EditorMediaController {
 	 * delete, and a `wp_delete_file` filter refuses every deletion for the
 	 * duration of the call, in case another plugin restores that value.
 	 *
+	 * Each removal is allowed by the method in use (`Method::may_remove()`); a refusal skips that attachment.
+	 *
 	 * @param array<int, array{id:int, parent:int, owned:bool}> $rows
-	 * @param bool $includeAttached Also remove the attachments that are attached to a post (the trash).
+	 * @param string $context `remove` (*Remove from library*) or `trash` (the file goes to the trash).
 	 * @return int[]
 	 */
-	private function removeRows( array $rows, bool $includeAttached = false ): array {
+	private function removeRows( Method $method, array $rows, string $context = 'remove' ): array {
 		$removed = [];
 		$refuse = static fn (): string => '';
 		add_filter( 'wp_delete_file', $refuse, PHP_INT_MAX );
@@ -602,7 +598,7 @@ class EditorMediaController {
 		try {
 			foreach ( $rows as $row ) {
 				$attachmentId = (int) $row['id'];
-				if ( ! $includeAttached && 0 !== (int) get_post_field( 'post_parent', $attachmentId ) ) {
+				if ( is_wp_error( $method->may_remove( $attachmentId, $context ) ) ) {
 					continue;
 				}
 				if ( ! current_user_can( 'delete_post', $attachmentId ) ) {
@@ -621,29 +617,28 @@ class EditorMediaController {
 	}
 
 	/**
-	 * Removes the association between attachments and the current post.
+	 * Removes the link between the attachments and the current post, through the method in use.
 	 *
 	 * @param array<int, array{id:int, parent:int, owned:bool}> $rows
-	 * @return int[]|\WP_Error
+	 * @return int[]|\WP_Error The IDs that were detached.
 	 */
-	private function detachRows( array $rows, int $postId ) {
-		$detached = [];
+	private function detachRows( Method $method, array $rows, int $postId ) {
+		$described = $method->describe( array_map( static fn ( array $row ): int => (int) $row['id'], $rows ), $postId );
+		$detached  = [];
 		foreach ( $rows as $row ) {
 			$attachmentId = (int) $row['id'];
-			if ( $postId !== (int) get_post_field( 'post_parent', $attachmentId ) ) {
+			if ( empty( $described[ $attachmentId ]['attached_here'] ) ) {
 				continue;
 			}
 
-			if ( ! current_user_can( 'edit_post', $attachmentId ) ) {
-				continue;
-			}
+			$done = $method->detach( $attachmentId, $postId );
+			if ( is_wp_error( $done ) ) {
+				// The user may not change this attachment: it is skipped, as it always was.
+				if ( 'not_allowed' === $done->get_error_code() ) {
+					continue;
+				}
 
-			$updated = wp_update_post( [
-				'ID' => $attachmentId,
-				'post_parent' => 0,
-			], true );
-			if ( is_wp_error( $updated ) || empty( $updated ) ) {
-				return is_wp_error( $updated ) ? $updated : new \WP_Error( 'detach_attachment_failed', __( 'Unable to detach the media from the current post.', 'wp-media-helper' ) );
+				return $done;
 			}
 
 			$detached[] = $attachmentId;
@@ -653,20 +648,19 @@ class EditorMediaController {
 	}
 
 	/**
-	 * Returns the ID of the post an attachment of the file is protected by, or 0
-	 * when none is attached to a post other than $postId.
+	 * The message of what blocks an action on a file (one of its attachments is protected for this post), or null.
 	 *
 	 * @param array<int, array{id:int, parent:int, owned:bool}> $rows
 	 */
-	public static function findOtherPostAttachment( array $rows, int $postId ): int {
-		foreach ( $rows as $row ) {
-			$parent = (int) $row['parent'];
-			if ( 0 !== $parent && $parent !== $postId ) {
-				return $parent;
+	private function protectedMessage( Method $method, array $rows, int $postId ): ?string {
+		$described = $method->describe( array_map( static fn ( array $row ): int => (int) $row['id'], $rows ), $postId );
+		foreach ( $described as $state ) {
+			if ( null !== ( $state['protected'] ?? null ) ) {
+				return (string) $state['protected'];
 			}
 		}
 
-		return 0;
+		return null;
 	}
 
 	public function handle(): void {
@@ -866,19 +860,31 @@ class EditorMediaController {
 		$otherPostByPath = [];
 		$attachmentIds = [];
 
-		foreach ( ( new AttachmentRegistry() )->statesFor( $candidatePaths ) as $path => $rows ) {
+		$statesByPath = ( new AttachmentRegistry() )->statesFor( $candidatePaths );
+		$ids          = [];
+		foreach ( $statesByPath as $rows ) {
+			foreach ( $rows as $row ) {
+				$ids[] = (int) $row['id'];
+			}
+		}
+		$described = Methods::active( $postId )->describe( $ids, $postId );
+
+		foreach ( $statesByPath as $path => $rows ) {
 			$path = (string) $path;
 			$imported[] = $path;
 			$attachmentIds[ $path ] = array_values( array_map( static fn ( array $row ): int => (int) $row['id'], $rows ) );
 			foreach ( $rows as $row ) {
-				$parent = (int) $row['parent'];
-				if ( 0 !== $postId && $postId === $parent ) {
+				$state = $described[ (int) $row['id'] ] ?? null;
+				if ( null === $state ) {
+					continue;
+				}
+				if ( $state['attached_here'] ) {
 					$attached[] = $path;
 					unset( $otherPostByPath[ $path ] );
 					break;
 				}
-				if ( 0 !== $parent ) {
-					$otherPostByPath[ $path ] = [ 'post_id' => $parent ];
+				if ( [] !== $state['elsewhere'] ) {
+					$otherPostByPath[ $path ] = [ 'post_id' => (int) $state['elsewhere'][0] ];
 				}
 			}
 		}

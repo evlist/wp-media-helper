@@ -3,7 +3,7 @@
 
 # Slice 042: Attachment methods (contract for other plugins)
 
-Status: **accepted by Eric on 2026-10-10, not coded** (the decisions and the four amendments of the Otherguise session are in; the names below are fixed). Written for the session that develops
+Status: **accepted by Eric on 2026-10-10; step 1 of the plan is coded** (interface, native method, registry, setting; see the end) (the decisions and the four amendments of the Otherguise session are in; the names below are fixed). Written for the session that develops
 [`evlist/wp-otherguise`](https://github.com/evlist/wp-otherguise), whose design note
 [`docs/design/media-helper.md`](https://github.com/evlist/wp-otherguise/blob/main/docs/design/media-helper.md) raised the integration.
 Everything below is **Decided** (Eric accepted it) unless it says it is a fact about the code of `main`.
@@ -62,7 +62,7 @@ same name, which receives the post type or the post ID as a second argument so a
 | `update( int $attachmentId, int $postId, array $data ): true\|WP_Error` | Changes the data of an existing link (modes, position) without detaching. |
 | `attached( int $postId, array $args ): int[]` | **The reading side**: the attachments of a post, in order. `$args`: `mime_type` (a type or a family such as `image`, as `get_attached_media()` takes it) and `context` (a free string; Otherguise puts the slug of a mode). The result is the list of attachment IDs, in the order the method decides (the native method returns what `get_attached_media()` returns). |
 | `posts_of( int[] $attachmentIds ): array<int, int[]>` | The posts each attachment is attached to, for a whole page with one query (used for the column *Attached to* of the media library, see 6). |
-| `may_remove( int $attachmentId ): true\|WP_Error` | Guard for *Remove from library* and for the trash. The native method refuses when the item is attached to another post. A multi-post method may accept (the links disappear with the item: Triples already follows `deleted_post`). |
+| `may_remove( int $attachmentId, string $context = 'remove' ): true\|WP_Error` | Guard for *Remove from library* (`context` = `remove`) and for the trash (`context` = `trash`: the user was asked first and the entries go from every post). The native method refuses `remove` when the item is attached to a post, and accepts `trash`. A multi-post method may accept (the links disappear with the item: Triples already follows `deleted_post`). |
 
 Media Helper still does everything else: registering the file as a native attachment, previews, thumbnails, the trash, the
 featured image, filters.
@@ -157,3 +157,14 @@ Interface `WP_Media_Helper\Attachment\Method`; built-in method `native`; registr
    before 2 and 3, since the blocks of the site need the first one first.
 
 Never tried on a real WordPress site; the sequence of calls was checked only by reading the code of both projects.
+
+## Step 1: done
+
+`WP_Media_Helper\Attachment\Method`, `NativeMethod` and `Methods` (the registry and the active method, with the setting
+`wp_media_helper_attachment_method`, shown in the settings only when another plugin added a method), the constant
+`WP_MEDIA_HELPER_CONTRACT`, and the controller of the panel calling the method for `attach`, `detach`, `remove`, the protection
+against another post, the state of the files and the trash (`removeRows` with `may_remove()`). **One addition to the
+contract above**: `may_remove()` takes the optional argument `$context` (`remove` or `trash`), because the native method must
+keep refusing the first and accepting the second (decision of the trash, slice 039). Behavior for the user is unchanged.
+Not in step 1 (later steps): the reading function, the column *Attached to*, the events, the filters of the panel, the fields.
+Tested with stubs of WordPress (`tests/phpunit/AttachmentMethodsTest.php`); never tried on a real site.

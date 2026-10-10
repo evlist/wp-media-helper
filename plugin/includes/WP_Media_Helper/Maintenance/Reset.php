@@ -73,7 +73,7 @@ final class Reset {
 	 */
 	private static function resetSettings(): int {
 		$removed = 0;
-		foreach ( [ ExternalSourceSettings::optionKey(), GeneralSettings::optionKey() ] as $option ) {
+		foreach ( [ ExternalSourceSettings::optionKey(), GeneralSettings::optionKey(), \WP_Media_Helper\Attachment\Methods::OPTION ] as $option ) {
 			$removed += delete_option( $option ) ? 1 : 0;
 		}
 

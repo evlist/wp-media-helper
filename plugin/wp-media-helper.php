@@ -23,6 +23,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'WP_MEDIA_HELPER_FILE', __FILE__ );
 define( 'WP_MEDIA_HELPER_VERSION', '0.1.0' );
+// Version of the contract for the plugins that add attachment methods (slice 042).
+define( 'WP_MEDIA_HELPER_CONTRACT', 1 );
 
 spl_autoload_register( function ( string $class ): void {
 	$prefix = 'WP_Media_Helper\\';

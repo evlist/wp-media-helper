@@ -513,17 +513,6 @@ class MediaPanelStateTest extends TestCase {
 		}
 	}
 
-	public function test_find_other_post_attachment_ignores_the_current_post_and_unattached_files(): void {
-		$rows = [
-			[ 'id' => 1, 'parent' => 0, 'owned' => false ],
-			[ 'id' => 2, 'parent' => 7, 'owned' => true ],
-		];
-
-		$this->assertSame( 0, \WP_Media_Helper\Admin\EditorMediaController::findOtherPostAttachment( $rows, 7 ) );
-		$this->assertSame( 7, \WP_Media_Helper\Admin\EditorMediaController::findOtherPostAttachment( $rows, 8 ) );
-		$this->assertSame( 0, \WP_Media_Helper\Admin\EditorMediaController::findOtherPostAttachment( [], 8 ) );
-	}
-
 	public function test_hidden_files_are_marked_when_the_panel_asks_for_them(): void {
 		$items = MediaPanelState::enrichFiles( [ '/u/a.jpg', '/u/b.jpg' ], 's', '2026-10-02' );
 
