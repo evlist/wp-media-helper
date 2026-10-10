@@ -1302,8 +1302,8 @@
 				imported > 0
 					? wp.element.createElement( 'p', { style: danger, role: 'alert' },
 						_n(
-							'It loses its title, caption and description, leaves every post it is attached to, is no longer a featured image, and will not be attached again if restored. This cannot be undone.',
-							'They lose their titles, captions and descriptions, leave every post they are attached to, are no longer featured images, and will not be attached again if restored. This cannot be undone.',
+							'It loses its title, caption and description, leaves every post it is attached to and is no longer a featured image. Restoring the file brings none of this back.',
+							'They lose their titles, captions and descriptions, leave every post they are attached to and are no longer featured images. Restoring the files brings none of this back.',
 							imported,
 							'wp-media-helper'
 						)

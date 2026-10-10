@@ -271,7 +271,7 @@ the one used by Thumbnails Folder: its existing files are reused, with its URLs.
 example a photo that is not meant to be published. **The file itself is never touched**: it stays on the disk, and may
 be in a read-only source. What goes is everything WordPress knows about it: its entries in the media library are
 deleted (title, caption, description), so it disappears from every post it was attached to, and if it was the featured
-image of the post being edited, the featured image is removed. This cannot be undone, so the panel asks for a
+image of the post being edited, the featured image is removed. The file can be restored to the gallery, but not what was lost, so the panel asks for a
 confirmation that says what will be lost, including the other posts concerned. An image inserted in a post as a block
 keeps showing, because the file is still there. A trashed file is not offered for import or attach, has no preview,
 and its thumbnails are deleted from the cache.
