@@ -70,6 +70,23 @@ namespace {
 		}
 	}
 
+	if ( ! function_exists( 'absint' ) ) {
+		function absint( $value ): int {
+			return abs( (int) $value );
+		}
+	}
+	if ( ! function_exists( 'esc_html' ) ) {
+		function esc_html( string $text ): string {
+			return htmlspecialchars( $text, ENT_QUOTES );
+		}
+	}
+	if ( ! function_exists( 'esc_url' ) ) {
+		function esc_url( string $url ): string {
+			return htmlspecialchars( $url, ENT_QUOTES );
+		}
+	}
+	require_once __DIR__ . '/../../plugin/includes/functions.php';
+
 	class AttachmentMethodsTest extends TestCase {
 
 		protected function setUp(): void {
@@ -229,6 +246,65 @@ namespace {
 			};
 			Methods::active( 5 );
 			$this->assertSame( [ 'missing', 5, '' ], $seen );
+		}
+
+		public function test_the_reading_function_gives_the_ids_of_the_active_method(): void {
+			$this->assertSame( [ 31, 30 ], wp_media_helper_get_attached_media( 7, [ 'mime_type' => 'image' ] ) );
+			$this->assertSame( [ 31, 30 ], wp_media_helper_get_attached_media( '7' ) );
+			$this->assertSame( [ 31, 30 ], wp_media_helper_get_attached_media( 7, 'not an array' ) );
+		}
+
+		public function test_the_reading_function_follows_the_method_chosen(): void {
+			$mine = new class() implements Method {
+				public function id(): string {
+					return 'mine';
+				}
+				public function label(): string {
+					return 'Mine';
+				}
+				public function capabilities(): array {
+					return [ 'multiple_posts' => true, 'fields' => [] ];
+				}
+				public function describe( array $attachmentIds, int $postId ): array {
+					return [];
+				}
+				public function attach( int $attachmentId, int $postId, array $data ) {
+					return true;
+				}
+				public function detach( int $attachmentId, int $postId ) {
+					return true;
+				}
+				public function update( int $attachmentId, int $postId, array $data ) {
+					return true;
+				}
+				public function attached( int $postId, array $args ): array {
+					return [ 5, '6', 5, 0, -1 + 1 ];
+				}
+				public function posts_of( array $attachmentIds ): array {
+					return [];
+				}
+				public function may_remove( int $attachmentId, string $context = 'remove' ) {
+					return true;
+				}
+			};
+			$GLOBALS['wpmh_test_filters']['wp_media_helper_attachment_methods'][] = static function ( array $methods ) use ( $mine ): array {
+				$methods['mine'] = $mine;
+
+				return $methods;
+			};
+			$GLOBALS['wpmh_test_options'][ Methods::OPTION ] = 'mine';
+
+			$this->assertSame( [ 5, 6 ], wp_media_helper_get_attached_media( 7, [ 'context' => 'print' ] ), 'The IDs are integers, without duplicates or zeros.' );
+		}
+
+		public function test_the_column_lists_the_posts_with_links_only_where_the_user_may_edit(): void {
+			$html = \WP_Media_Helper\Admin\MediaLibraryColumn::format( [
+				[ 'title' => 'Trip <1>', 'url' => 'https://e.test/wp-admin/post.php?post=1&action=edit' ],
+				[ 'title' => 'Other', 'url' => '' ],
+				[ 'title' => '', 'url' => '' ],
+			] );
+
+			$this->assertSame( '<a href="https://e.test/wp-admin/post.php?post=1&amp;action=edit">Trip &lt;1&gt;</a><br /><span>Other</span><br /><span>(no title)</span>', $html );
 		}
 	}
 }

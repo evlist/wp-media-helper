@@ -42,6 +42,8 @@ spl_autoload_register( function ( string $class ): void {
 	}
 } );
 
+require_once plugin_dir_path( __FILE__ ) . 'includes/functions.php';
+
 register_deactivation_hook( __FILE__, [ WP_Media_Helper\Index\Cron::class, 'clear' ] );
 
 add_action( 'plugins_loaded', function (): void {

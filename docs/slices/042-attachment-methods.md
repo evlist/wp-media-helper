@@ -168,3 +168,19 @@ contract above**: `may_remove()` takes the optional argument `$context` (`remove
 keep refusing the first and accepting the second (decision of the trash, slice 039). Behavior for the user is unchanged.
 Not in step 1 (later steps): the reading function, the column *Attached to*, the events, the filters of the panel, the fields.
 Tested with stubs of WordPress (`tests/phpunit/AttachmentMethodsTest.php`); never tried on a real site.
+
+## Step 2: done (the reading side and the column)
+
+- **`wp_media_helper_get_attached_media( $post_id, $args )`** (file `plugin/includes/functions.php`, loaded with the plugin): returns
+  the **IDs** (integers, no duplicates, in the order of the method) of the media items attached to a post, through the method
+  in use for that post. `$args`: `mime_type`, `context`. With the `native` method it is `get_attached_media()` reduced to the
+  IDs; callers that need the posts call `get_post()`. A block or theme tests `function_exists()` and otherwise falls back to
+  `get_attached_media()`.
+- **Column *Uploaded to*** of the media library list (`Admin\MediaLibraryColumn`): only when the active method has
+  `multiple_posts`, the core column `parent` is replaced by a column of ours, in the same place, sortable the same way
+  (`orderby=parent`), listing all the posts (`posts_of()`, one query for the page, then one cache priming for the titles), each
+  linked to its edit screen when the user may edit it; a title the user may not read is not shown; `(Unattached)` when there
+  is none. With the native method the core column stays as it is. Not done: the "Attach" link that core offers on an
+  unattached row, and the media grid / attachment details dialog (they keep showing `post_parent`).
+- Tested with stubs (`tests/phpunit/AttachmentMethodsTest.php`: the function with the native method and with a method that
+  returns duplicates, and the HTML of the column); the hooks of the list table were never run on a real site.

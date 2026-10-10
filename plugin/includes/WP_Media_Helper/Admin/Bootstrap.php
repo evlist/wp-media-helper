@@ -21,5 +21,6 @@ class Bootstrap {
 		new AttachmentUrls();
 		new Thumbnails();
 		new PostDateMeta();
+		new MediaLibraryColumn();
 	}
 }
