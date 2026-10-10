@@ -14,9 +14,9 @@
 	const endpoint = wpMediaHelperEditorPanel.ajaxUrl;
 	const nonce = wpMediaHelperEditorPanel.nonce;
 	const defaultDate = wpMediaHelperEditorPanel.date;
-	const canHide = !! wpMediaHelperEditorPanel.canHide;
+	const canTrash = !! wpMediaHelperEditorPanel.canTrash;
 	const canUpload = !! wpMediaHelperEditorPanel.canUpload;
-	const canSeeHidden = !! wpMediaHelperEditorPanel.canSeeHidden;
+	const canSeeTrash = !! wpMediaHelperEditorPanel.canSeeTrash;
 	const defaultPanelMode = 'advanced' === wpMediaHelperEditorPanel.panelMode ? 'advanced' : 'simple';
 	const dateMetaKey = 'wp_media_helper_date';
 
@@ -27,8 +27,8 @@
 		{ value: 'remove', label: __( 'Remove', 'wp-media-helper' ) },
 		{ value: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) },
 		{ value: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) },
-		{ value: 'hide', label: __( 'Hide', 'wp-media-helper' ) },
-		{ value: 'show', label: __( 'Show again', 'wp-media-helper' ) },
+		{ value: 'trash', label: __( 'Move to trash', 'wp-media-helper' ) },
+		{ value: 'restore', label: __( 'Restore from trash', 'wp-media-helper' ) },
 	];
 	const PANEL_MODES = [
 		{ value: 'simple', label: __( 'Simple', 'wp-media-helper' ) },
@@ -153,7 +153,7 @@
 			media_type: item && item.media_type ? item.media_type : 'other',
 			can_import: ! ( item && false === item.can_import ),
 			import_blocker: item && item.import_blocker ? item.import_blocker : '',
-			is_hidden: !! ( item && item.is_hidden ),
+			is_trashed: !! ( item && item.is_trashed ),
 			thumbnail_url: item && item.thumbnail_url ? item.thumbnail_url : '',
 			thumbnail_large_url: item && item.thumbnail_large_url ? item.thumbnail_large_url : '',
 			width: item && item.width ? item.width : 0,
@@ -467,6 +467,8 @@
 			return featuredSupported && featuredMedia > 0 && item.attachment_ids.includes( featuredMedia );
 		};
 
+		// The files waiting for the confirmation of their move to the trash.
+		const [ trashRequest, setTrashRequest ] = useState( null );
 		const [ menu, setMenu ] = useState( null );
 		const [ sheetKey, setSheetKey ] = useState( null );
 		const [ operationNotice, setOperationNotice ] = useState( null );
@@ -627,7 +629,7 @@
 		useEffect( function () {
 			loadPage( 1 );
 			// eslint-disable-next-line react-hooks/exhaustive-deps
-		}, [ filters.date, filters.filename || '', ( filters.attachment_scope || [] ).join( ',' ), ( filters.source || [] ).join( ',' ), ( filters.media_type || [] ).join( ',' ), !! filters.show_hidden ] );
+		}, [ filters.date, filters.filename || '', ( filters.attachment_scope || [] ).join( ',' ), ( filters.source || [] ).join( ',' ), ( filters.media_type || [] ).join( ',' ), !! filters.show_trash ] );
 
 		// The list is not replaced behind the user's back, which would lose the scroll position and
 		// the selection: a check for news (every 30 s, and when the tab is shown again) only offers a refresh.
@@ -804,11 +806,11 @@
 			saveFilter( 'media_type', next, getCurrentPostId() );
 		};
 
-		// Not stored: hidden files are listed only while the box is checked.
-		const toggleShowHidden = function ( checked ) {
+		// Not stored: the trash is listed only while the box is checked.
+		const toggleShowTrash = function ( checked ) {
 			setSelectedIds( [] );
 			setFiltersState( function ( currentFilters ) {
-				return Object.assign( {}, currentFilters, { show_hidden: !! checked } );
+				return Object.assign( {}, currentFilters, { show_trash: !! checked } );
 			} );
 		};
 
@@ -886,7 +888,7 @@
 			setSelectedIds( files.map( function ( file ) { return itemKey( normalizeMediaItem( file ) ); } ) );
 		};
 
-		// Hiding or showing changes the list: the item is updated or removed where it is, without
+		// Trashing or restoring changes the list: the item is updated or removed where it is, without
 		// loading the list again (which would lose the scroll position).
 		const applyBulkResults = function ( payload ) {
 			const results = payload && payload.data && payload.data.results ? payload.data.results : [];
@@ -905,7 +907,7 @@
 						return;
 					}
 
-					if ( 'hidden' === result.operation && ! latest.current.filters.show_hidden ) {
+					if ( 'trashed' === result.operation && ! latest.current.filters.show_trash ) {
 						return;
 					}
 
@@ -916,9 +918,13 @@
 					if ( result.attachment_id ) {
 						nextItem.attachment_ids = [ result.attachment_id ];
 					}
-					if ( Object.prototype.hasOwnProperty.call( result, 'is_hidden' ) ) {
-						nextItem.is_hidden = !! result.is_hidden;
-						// Hiding deletes the previews; showing again brings new addresses. Until then
+					if ( Object.prototype.hasOwnProperty.call( result, 'is_trashed' ) ) {
+						nextItem.is_trashed = !! result.is_trashed;
+						if ( result.is_trashed ) {
+							nextItem.attachment_ids = [];
+							nextItem.is_attached_to_other_post = false;
+						}
+						// Trashing deletes the previews; restoring brings new addresses. Until then
 						// the tile keeps its shape (the dimensions stay) and shows its icon.
 						nextItem.thumbnail_url = result.thumbnail_url || '';
 						nextItem.thumbnail_large_url = result.thumbnail_large_url || '';
@@ -929,8 +935,16 @@
 				return next;
 			} );
 
+			const removedIds = [];
+			results.forEach( function ( result ) {
+				( result.removed_ids || [] ).forEach( function ( id ) { removedIds.push( id ); } );
+			} );
+			if ( featuredSupported && featuredMedia > 0 && removedIds.includes( featuredMedia ) ) {
+				setFeatured( 0 );
+			}
+
 			const removedKeys = results.filter( function ( result ) {
-				return result.success && 'hidden' === result.operation && ! latest.current.filters.show_hidden;
+				return result.success && 'trashed' === result.operation && ! latest.current.filters.show_trash;
 			} ).length;
 			if ( removedKeys > 0 ) {
 				setPagination( function ( current ) {
@@ -969,9 +983,18 @@
 				return;
 			}
 
+			if ( 'trash' === bulkAction ) {
+				setTrashRequest( { items: selectedItems, bulk: true } );
+				return;
+			}
+
+			runBulk( bulkAction, selectedItems, postId );
+		};
+
+		const runBulk = function ( action, selectedItems, postId ) {
 			setLoading( true );
 			setOperationNotice( null );
-			bulkMediaItems( bulkAction, selectedItems, postId )
+			bulkMediaItems( action, selectedItems, postId )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
 						applyBulkResults( payload );
@@ -1001,6 +1024,10 @@
 			const postId = getCurrentPostId();
 			if ( [ 'attach', 'detach', 'remove' ].includes( action ) && 0 === postId ) {
 				setOperationNotice( __( 'Save the post before changing media attachments.', 'wp-media-helper' ) );
+				return;
+			}
+			if ( 'trash' === action ) {
+				setTrashRequest( { items: [ item ], bulk: false } );
 				return;
 			}
 
@@ -1058,8 +1085,8 @@
 
 		// What can be done with an item, depending on the mode and on where it is attached.
 		const actionsFor = function ( item ) {
-			if ( item.is_hidden ) {
-				return canHide ? [ { action: 'show', label: __( 'Show again', 'wp-media-helper' ) } ] : [];
+			if ( item.is_trashed ) {
+				return canTrash ? [ { action: 'restore', label: __( 'Restore from trash', 'wp-media-helper' ) } ] : [];
 			}
 
 			const actions = [];
@@ -1085,8 +1112,8 @@
 						: { action: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) } );
 				}
 			}
-			if ( ! item.is_attached_to_other_post && canHide ) {
-				actions.push( { action: 'hide', label: __( 'Hide', 'wp-media-helper' ) } );
+			if ( canTrash ) {
+				actions.push( { action: 'trash', label: __( 'Move to trash', 'wp-media-helper' ), destructive: true } );
 			}
 
 			return actions;
@@ -1174,7 +1201,7 @@
 					'aria-haspopup': 'menu',
 					style: {
 						position: 'absolute', inset: 0, width: '100%', height: '100%', padding: 0, margin: 0, border: 0,
-						background: '#f0f0f1', cursor: 'pointer', overflow: 'hidden', borderRadius: '2px', opacity: item.is_hidden ? 0.55 : 1,
+						background: '#f0f0f1', cursor: 'pointer', overflow: 'hidden', borderRadius: '2px', opacity: item.is_trashed ? 0.55 : 1,
 						outline: selected ? '3px solid #2271b1' : 'none', outlineOffset: '-3px', userSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'manipulation'
 					}
 				},
@@ -1189,8 +1216,8 @@
 					! item.can_import && ! item.is_imported
 						? wp.element.createElement( CornerBadge, { icon: 'warning', label: item.import_blocker || __( 'This file cannot be imported.', 'wp-media-helper' ), position: { bottom: '3px', left: '3px' }, colour: '#996800' } )
 						: null,
-					item.is_hidden
-						? wp.element.createElement( CornerBadge, { icon: 'hidden', label: __( 'Hidden', 'wp-media-helper' ), position: { right: '3px' }, colour: '#8a2424' } )
+					item.is_trashed
+						? wp.element.createElement( CornerBadge, { icon: 'trash', label: __( 'In the trash', 'wp-media-helper' ), position: { right: '3px' }, colour: '#8a2424' } )
 						: null
 				),
 				selectionMode
@@ -1249,6 +1276,8 @@
 					return wp.element.createElement( MenuItem, {
 						key: entry.action,
 						disabled: loading,
+						isDestructive: !! entry.destructive,
+						style: entry.destructive ? { color: '#b32d2e' } : undefined,
 						onClick: choose( function () { handleItemAction( entry.action, item ); } )
 					}, entry.label );
 				} ),
@@ -1257,6 +1286,52 @@
 		};
 
 		// The detail sheet: a large preview, what is known about the file, and its actions.
+		// The move to the trash cannot be undone for the media library entries, so it is asked for.
+		const renderTrashDialog = function () {
+			if ( ! trashRequest ) {
+				return null;
+			}
+
+			const items = trashRequest.items;
+			const imported = items.filter( function ( item ) { return item.is_imported; } ).length;
+			const elsewhere = items.filter( function ( item ) { return item.is_attached_to_other_post; } );
+			const featured = items.filter( isFeatured ).length;
+			const close = function () { setTrashRequest( null ); };
+			const danger = { color: '#b32d2e', fontWeight: 600 };
+			const run = function () {
+				setTrashRequest( null );
+				runBulk( 'trash', items, getCurrentPostId() );
+			};
+
+			return wp.element.createElement( Modal, {
+				title: 1 === items.length ? sprintf( __( 'Move %s to the trash?', 'wp-media-helper' ), items[ 0 ].name ) : sprintf( _n( 'Move %d file to the trash?', 'Move %d files to the trash?', items.length, 'wp-media-helper' ), items.length ),
+				onRequestClose: close,
+				className: 'wpmh-trash-dialog'
+			},
+				wp.element.createElement( 'p', null, __( 'The file stays on the disk, untouched, and can be restored to the gallery from the trash.', 'wp-media-helper' ) ),
+				imported > 0
+					? wp.element.createElement( 'p', { style: danger, role: 'alert' },
+						sprintf( _n( 'Its entry in the WordPress media library will be deleted, with its title, caption and description. This cannot be undone.', 'The entries of %d of these files in the WordPress media library will be deleted, with their titles, captions and descriptions. This cannot be undone.', imported, 'wp-media-helper' ), imported ),
+						' ',
+						__( 'The file disappears from every post it is attached to, and is not attached again when it is restored.', 'wp-media-helper' )
+					)
+					: null,
+				elsewhere.length > 0
+					? wp.element.createElement( 'p', { style: danger },
+						__( 'Attached to other posts: ', 'wp-media-helper' ) + elsewhere.map( function ( item ) { return item.other_post_title || ( '#' + item.other_post_id ); } ).join( ', ' )
+					)
+					: null,
+				featured > 0
+					? wp.element.createElement( 'p', { style: danger }, __( 'It is the featured image of this post: the featured image will be removed.', 'wp-media-helper' ) )
+					: null,
+				wp.element.createElement( 'p', { style: { color: '#50575e', fontSize: '12px' } }, __( 'An image inserted in the content of a post as a block keeps showing, since the file is still there.', 'wp-media-helper' ) ),
+				wp.element.createElement( 'div', { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end' } },
+					wp.element.createElement( Button, { isSecondary: true, onClick: close, text: __( 'Cancel', 'wp-media-helper' ) } ),
+					wp.element.createElement( Button, { isDestructive: true, isPrimary: true, onClick: run, text: __( 'Move to trash', 'wp-media-helper' ) } )
+				)
+			);
+		};
+
 		const renderSheet = function () {
 			const index = sheetKey ? visibleItems.findIndex( function ( candidate ) { return itemKey( candidate ) === sheetKey; } ) : -1;
 			if ( index < 0 ) {
@@ -1310,7 +1385,7 @@
 							: null,
 						item.is_imported ? wp.element.createElement( 'span', { style: { color: '#2271b1', fontWeight: 400 } }, ' · ' + __( 'In the WordPress media library', 'wp-media-helper' ) ) : null,
 						isFeatured( item ) ? wp.element.createElement( 'span', { style: { color: '#b8860b', fontWeight: 400 } }, ' · ' + __( 'Featured image', 'wp-media-helper' ) ) : null,
-						item.is_hidden ? wp.element.createElement( 'span', { style: { color: '#8a2424', fontWeight: 400 } }, ' · ' + __( 'Hidden', 'wp-media-helper' ) ) : null
+						item.is_trashed ? wp.element.createElement( 'span', { style: { color: '#8a2424', fontWeight: 400 } }, ' · ' + __( 'In the trash', 'wp-media-helper' ) ) : null
 					),
 					! item.can_import && ! item.is_imported
 						? wp.element.createElement( 'p', { style: { color: '#996800', margin: '0 0 8px' } }, item.import_blocker || __( 'This file cannot be imported.', 'wp-media-helper' ) )
@@ -1328,7 +1403,8 @@
 							return wp.element.createElement( Button, {
 								key: entry.action,
 								isPrimary: entry === actions[ 0 ],
-								isSecondary: entry !== actions[ 0 ],
+								isSecondary: entry !== actions[ 0 ] && ! entry.destructive,
+								isDestructive: !! entry.destructive,
 								disabled: loading,
 								onClick: function () { handleItemAction( entry.action, item ); },
 								text: entry.label
@@ -1354,11 +1430,11 @@
 			? availableSources.map( function ( source ) { return source.id; } )
 			: currentSourceFilter;
 		const visibleBulkActions = BULK_ACTIONS.filter( function ( action ) {
-			if ( 'hide' === action.value ) {
-				return canHide;
+			if ( 'trash' === action.value ) {
+				return canTrash;
 			}
-			if ( 'show' === action.value ) {
-				return canHide && !! filters.show_hidden;
+			if ( 'restore' === action.value ) {
+				return canTrash && !! filters.show_trash;
 			}
 
 			return 'advanced' === panelMode || [ 'attach', 'remove' ].includes( action.value );
@@ -1440,13 +1516,13 @@
 							minSelected: 1,
 							onToggle: toggleMediaType
 						} ),
-						canSeeHidden
+						canSeeTrash
 							? wp.element.createElement( 'div', { style: { marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #ddd' } },
 								wp.element.createElement( CheckboxControl, {
-									label: __( 'Show hidden files', 'wp-media-helper' ),
-									checked: !! filters.show_hidden,
+									label: __( 'Show the trash', 'wp-media-helper' ),
+									checked: !! filters.show_trash,
 									disabled: loading,
-									onChange: toggleShowHidden
+									onChange: toggleShowTrash
 								} )
 							)
 							: null
@@ -1566,7 +1642,8 @@
 							hasMore && loading ? __( 'Loading…', 'wp-media-helper' ) : ''
 						),
 						renderContextMenu(),
-						renderSheet()
+						renderSheet(),
+						renderTrashDialog()
 					)
 				)
 			)

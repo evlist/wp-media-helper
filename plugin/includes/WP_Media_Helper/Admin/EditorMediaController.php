@@ -236,8 +236,8 @@ class EditorMediaController {
 			'attachment_scope' => $attachmentScope,
 			'media_type' => $mediaType,
 			'filename' => $filename,
-			// Not stored: asked for again by the panel, and only granted to who may see hidden files.
-			'show_hidden' => ! empty( $decoded['show_hidden'] ),
+			// Not stored: asked for again by the panel, and only granted to who may see the trash.
+			'show_trash' => ! empty( $decoded['show_trash'] ),
 		];
 	}
 
@@ -335,7 +335,7 @@ class EditorMediaController {
 		$encodedItems = wp_unslash( $_POST['items'] ?? '' );
 		$items = is_string( $encodedItems ) ? json_decode( $encodedItems, true ) : [];
 
-		if ( ! in_array( $action, [ 'import', 'remove', 'attach', 'detach', 'hide', 'show' ], true ) ) {
+		if ( ! in_array( $action, [ 'import', 'remove', 'attach', 'detach', 'trash', 'restore' ], true ) ) {
 			wp_send_json_error( [ 'message' => 'The requested bulk action is not supported.' ], 400 );
 		}
 
@@ -343,7 +343,7 @@ class EditorMediaController {
 			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
 		}
 
-		if ( in_array( $action, [ 'hide', 'show' ], true ) && ! HiddenFiles::canHide() ) {
+		if ( in_array( $action, [ 'trash', 'restore' ], true ) && ! TrashedFiles::canTrash() ) {
 			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
 		}
 
@@ -388,7 +388,7 @@ class EditorMediaController {
 		$results = [];
 		$registry = new AttachmentRegistry();
 		$registrar = new AttachmentRegistrar( $registry );
-		$activeSources = in_array( $action, [ 'import', 'attach', 'hide', 'show' ], true ) ? $this->getActiveSources() : [];
+		$activeSources = in_array( $action, [ 'import', 'attach', 'trash', 'restore' ], true ) ? $this->getActiveSources() : [];
 		foreach ( $items as $item ) {
 			$itemSourceId = (string) ( $item['source_id'] ?? $sourceId );
 			$result = [
@@ -410,7 +410,7 @@ class EditorMediaController {
 				}
 			}
 
-			if ( in_array( $action, [ 'hide', 'show' ], true ) ) {
+			if ( in_array( $action, [ 'trash', 'restore' ], true ) ) {
 				// The flag is global: the file must belong to an active source, whoever claims it.
 				$confined = PathConfinement::resolveFileInSources( $activeSources, $itemSourceId, $item['path'] );
 				if ( null === $confined ) {
@@ -419,14 +419,29 @@ class EditorMediaController {
 					continue;
 				}
 
-				HiddenFiles::set( $confined['path'], 'hide' === $action );
 				$result['path'] = $confined['path'];
+				if ( 'trash' === $action ) {
+					// The attachments of the file go too, from every post, and this cannot be undone;
+					// the file itself is never deleted. Nothing is done unless all of them may be.
+					$rows = $registry->findByPath( $confined['path'] );
+					foreach ( $rows as $row ) {
+						if ( ! current_user_can( 'delete_post', (int) $row['id'] ) ) {
+							$result['message'] = __( 'You are not allowed to remove this media from the library.', 'wp-media-helper' );
+							$results[] = $result;
+							continue 2;
+						}
+					}
+					$result['removed_ids'] = $this->removeRows( $rows, true );
+					$result['is_imported'] = false;
+				}
+
+				TrashedFiles::set( $confined['path'], 'trash' === $action );
 				$result['success'] = true;
-				$result['is_hidden'] = 'hide' === $action;
-				$result['operation'] = 'hide' === $action ? 'hidden' : 'shown';
-				// Hiding deleted the previews: a file shown again gets the addresses of new ones,
+				$result['is_trashed'] = 'trash' === $action;
+				$result['operation'] = 'trash' === $action ? 'trashed' : 'restored';
+				// Trashing deleted the previews: a restored file gets the addresses of new ones,
 				// made when the browser asks for them, so its thumbnail comes back at once.
-				if ( 'show' === $action && 'image' === MediaPanelState::resolveMediaType( basename( $confined['path'] ) ) && current_user_can( 'upload_files' ) ) {
+				if ( 'restore' === $action && 'image' === MediaPanelState::resolveMediaType( basename( $confined['path'] ) ) && current_user_can( 'upload_files' ) ) {
 					$result = array_merge( $result, PanelThumbnail::urlsFor( $confined['path'], wp_create_nonce( PanelThumbnail::NONCE ), Thumbnails::serviceForWordPress() ) );
 				}
 				$results[] = $result;
@@ -447,10 +462,10 @@ class EditorMediaController {
 				$item['path'] = $confined['path'];
 				$result['path'] = $confined['path'];
 
-				// A hidden file is not offered: a list that was not refreshed must not import it.
-				if ( HiddenFiles::isHidden( $confined['path'] ) ) {
-					$result['message'] = __( 'This file is hidden. Show it first.', 'wp-media-helper' );
-					$result['operation'] = 'hidden';
+				// A trashed file is not offered: a list that was not refreshed must not import it.
+				if ( TrashedFiles::isTrashed( $confined['path'] ) ) {
+					$result['message'] = __( 'This file is in the trash. Restore it first.', 'wp-media-helper' );
+					$result['operation'] = 'trashed';
 					$results[] = $result;
 					continue;
 				}
@@ -548,9 +563,10 @@ class EditorMediaController {
 	 * duration of the call, in case another plugin restores that value.
 	 *
 	 * @param array<int, array{id:int, parent:int, owned:bool}> $rows
+	 * @param bool $includeAttached Also remove the attachments that are attached to a post (the trash).
 	 * @return int[]
 	 */
-	private function removeRows( array $rows ): array {
+	private function removeRows( array $rows, bool $includeAttached = false ): array {
 		$removed = [];
 		$refuse = static fn (): string => '';
 		add_filter( 'wp_delete_file', $refuse, PHP_INT_MAX );
@@ -558,7 +574,7 @@ class EditorMediaController {
 		try {
 			foreach ( $rows as $row ) {
 				$attachmentId = (int) $row['id'];
-				if ( 0 !== (int) get_post_field( 'post_parent', $attachmentId ) ) {
+				if ( ! $includeAttached && 0 !== (int) get_post_field( 'post_parent', $attachmentId ) ) {
 					continue;
 				}
 				if ( ! current_user_can( 'delete_post', $attachmentId ) ) {
@@ -683,8 +699,8 @@ class EditorMediaController {
 
 		$date = new DateTimeImmutable( $dateValue );
 		$panelState = new MediaPanelState();
-		$includeHidden = ! empty( $filters['show_hidden'] ) && HiddenFiles::canSeeHidden();
-		$filters['show_hidden'] = $includeHidden;
+		$includeHidden = ! empty( $filters['show_trash'] ) && TrashedFiles::canSeeTrash();
+		$filters['show_trash'] = $includeHidden;
 		$results = [];
 		foreach ( $selectedSources as $selected ) {
 			$sourceKey = (string) ( $selected['id'] ?? '' );
@@ -760,7 +776,7 @@ class EditorMediaController {
 		$nonce   = wp_create_nonce( PanelThumbnail::NONCE );
 		$service = Thumbnails::serviceForWordPress();
 		foreach ( $files as $index => $file ) {
-			if ( 'image' === ( $file['media_type'] ?? '' ) && ! empty( $file['path'] ) && empty( $file['is_hidden'] ) ) {
+			if ( 'image' === ( $file['media_type'] ?? '' ) && ! empty( $file['path'] ) && empty( $file['is_trashed'] ) ) {
 				$files[ $index ] = array_merge(
 					$file,
 					PanelThumbnail::urlsFor( (string) $file['path'], $nonce, $service, isset( $file['width'] ) ? (int) $file['width'] : null, isset( $file['height'] ) ? (int) $file['height'] : null )

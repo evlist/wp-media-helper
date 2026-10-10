@@ -243,7 +243,7 @@ the one used by Thumbnails Folder: its existing files are reused, with its URLs.
   width of the panel, 1, 2 or 3 per row (remembered in the browser), with an infinite scroll in lots
   of *maximum entries*. A paperclip on each thumbnail shows the attachment: green, attached to
   this post; red with a lock, attached to another post; crossed out, not attached. Small badges
-  show files in the Media Library and hidden files. A click opens the **detail sheet** of the file
+  show files in the Media Library and files in the trash. A click opens the **detail sheet** of the file
   (large preview, type, dimensions, size, date and where it comes from, source, state and actions,
   with previous and next buttons and the arrow keys). A right click, the ⋮ button shown on hover and
   focus (always shown on a touch screen) or the menu key of the keyboard opens the menu of the file
@@ -265,17 +265,25 @@ the one used by Thumbnails Folder: its existing files are reused, with its URLs.
   `wp_media_helper_background_thumbnails` (force or prevent the background event) and
   `wp_media_helper_thumbnail_max_pixels` (images larger than 100 megapixels are skipped).
 
-## Hiding files
+## The trash
 
-*Hide* (bulk action and per-item link) removes a file from the lists for the whole site, for
-example a photo that is not meant to be published. It does not import anything and changes no
-attachment, file or post. A hidden file is not offered for import or attach, has no preview, and
-its thumbnails are deleted from the cache. Users who may see hidden files get a
-*Show hidden files* checkbox that lists them marked *Hidden*, with *Show again* to undo.
+*Move to trash* (bulk action and per-item action, in red) takes a file out of the gallery for the whole site, for
+example a photo that is not meant to be published. **The file itself is never touched**: it stays on the disk, and may
+be in a read-only source. What goes is everything WordPress knows about it: its entries in the media library are
+deleted (title, caption, description), so it disappears from every post it was attached to, and if it was the featured
+image of the post being edited, the featured image is removed. This cannot be undone, so the panel asks for a
+confirmation that says what will be lost, including the other posts concerned. An image inserted in a post as a block
+keeps showing, because the file is still there. A trashed file is not offered for import or attach, has no preview,
+and its thumbnails are deleted from the cache.
 
-By default whoever can upload files can hide, show and see hidden files. A site can restrict that
-in code with the filters `wp_media_helper_can_hide_files` and `wp_media_helper_can_see_hidden_files`.
-A renamed or moved file loses its hidden flag.
+Users who may see the trash get a *Show the trash* checkbox that lists the trashed files marked *In the trash*, with
+*Restore from trash* to put one back in the gallery. Restoring does not attach it again and does not bring back the
+deleted media library entry (keeping those properties is a possible later improvement).
+
+By default whoever can upload files can trash, restore and see the trash. A site can restrict that in code with the
+filters `wp_media_helper_can_trash_files` and `wp_media_helper_can_see_trash` (the former names
+`wp_media_helper_can_hide_files` and `wp_media_helper_can_see_hidden_files` still work). Trashing also needs the
+permission to delete the attachments of the file. A renamed or moved file loses its trash flag.
 
 ## Reset
 
@@ -285,7 +293,7 @@ The bottom of the settings page has a **Reset** section to start again from noth
 | Item | What it removes |
 |------|-----------------|
 | Settings and sources | The list of sources and the general settings |
-| File index | The index tables (including the hidden flags of files), the scan state and the scheduled scans (rebuilt when a source is added) |
+| File index | The index tables (including the trash flags of files), the scan state and the scheduled scans (rebuilt when a source is added) |
 | Dates saved with posts | The panel date of every post (off by default: editors chose these dates and they cannot be rebuilt) |
 | User preferences | The filters and the panel mode of each user |
 | Thumbnails of imported media | The cached sizes of the attachments imported by this plugin |

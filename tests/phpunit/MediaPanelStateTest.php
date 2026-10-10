@@ -310,19 +310,19 @@ class MediaPanelStateTest extends TestCase {
 			[ 'belledonne', 'legacy-source' ]
 		);
 
-		$this->assertSame( [ 'date' => '2026-09-20', 'source' => [ 'belledonne' ], 'attachment_scope' => [ 'other' ], 'media_type' => [ 'image' ], 'filename' => 'summit', 'show_hidden' => false ], $filters );
+		$this->assertSame( [ 'date' => '2026-09-20', 'source' => [ 'belledonne' ], 'attachment_scope' => [ 'other' ], 'media_type' => [ 'image' ], 'filename' => 'summit', 'show_trash' => false ], $filters );
 	}
 
 	public function test_normalize_filters_falls_back_to_legacy_parameters_when_payload_is_absent(): void {
 		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( '', '2026-01-01', 'legacy-source', [ 'legacy-source', 'other-source' ] );
 
-		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => \WP_Media_Helper\MediaSource\FileTypes::categories(), 'filename' => '', 'show_hidden' => false ], $filters );
+		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => \WP_Media_Helper\MediaSource\FileTypes::categories(), 'filename' => '', 'show_trash' => false ], $filters );
 	}
 
 	public function test_normalize_filters_ignores_invalid_payloads(): void {
 		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( 'not-json', '2026-01-01', 'legacy-source', [ 'legacy-source', 'other-source' ] );
 
-		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => \WP_Media_Helper\MediaSource\FileTypes::categories(), 'filename' => '', 'show_hidden' => false ], $filters );
+		$this->assertSame( [ 'date' => '2026-01-01', 'source' => [ 'legacy-source' ], 'attachment_scope' => [ 'unattached', 'current' ], 'media_type' => \WP_Media_Helper\MediaSource\FileTypes::categories(), 'filename' => '', 'show_trash' => false ], $filters );
 	}
 
 	public function test_normalize_filters_resolves_attachment_scope_from_storage_when_absent_from_payload(): void {
@@ -519,8 +519,8 @@ class MediaPanelStateTest extends TestCase {
 		$items = MediaPanelState::enrichFiles( [ '/u/a.jpg', '/u/b.jpg' ], 's', '2026-10-02' );
 
 		$marked = MediaPanelState::markHidden( $items, [ '/u/a.jpg' ] );
-		$this->assertTrue( $marked[0]['is_hidden'] );
-		$this->assertArrayNotHasKey( 'is_hidden', $marked[1] );
+		$this->assertTrue( $marked[0]['is_trashed'] );
+		$this->assertArrayNotHasKey( 'is_trashed', $marked[1] );
 		$this->assertSame( $items, MediaPanelState::markHidden( $items, [] ) );
 	}
 

@@ -328,7 +328,7 @@ class MediaPanelState {
 	}
 
 	/**
-	 * Marks the items whose file is hidden.
+	 * Marks the items whose file is in the trash.
 	 *
 	 * @param array<int, array<string, mixed>> $items
 	 * @param string[]                         $hiddenPaths
@@ -342,7 +342,7 @@ class MediaPanelState {
 		$hidden = array_flip( $hiddenPaths );
 		foreach ( $items as $index => $item ) {
 			if ( isset( $hidden[ (string) ( $item['path'] ?? '' ) ] ) ) {
-				$items[ $index ]['is_hidden'] = true;
+				$items[ $index ]['is_trashed'] = true;
 			}
 		}
 

@@ -4,7 +4,7 @@
 
 namespace WP_Media_Helper\Thumbnails;
 
-use WP_Media_Helper\Admin\HiddenFiles;
+use WP_Media_Helper\Admin\TrashedFiles;
 use WP_Media_Helper\Admin\MediaPanelState;
 use WP_Media_Helper\MediaSource\ImageDimensions;
 use WP_Media_Helper\MediaSource\PathConfinement;
@@ -109,8 +109,8 @@ final class PanelThumbnail {
 		}
 
 		$file = $confined['path'];
-		// A hidden file has no preview, and none is made.
-		if ( HiddenFiles::isHidden( $file ) ) {
+		// A trashed file has no preview, and none is made.
+		if ( TrashedFiles::isTrashed( $file ) ) {
 			self::fail( 404 );
 		}
 		$size = sanitize_key( wp_unslash( $_GET['size'] ?? 'small' ) );

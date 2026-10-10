@@ -3,7 +3,7 @@
 
 # Slice 027: Hidden files
 
-Status: **implemented, first delivery** (see "Implementation notes" at the end). Depends on
+Status (renamed *the trash* by slice 039, see the end of this file): **implemented, first delivery** (see "Implementation notes" at the end). Depends on
 [slice 025](025-database-file-index.md).
 
 ## Goal
@@ -105,3 +105,12 @@ Not done:
   flags over): a renamed or moved file loses its flag.
 - Persisting the *Show hidden files* filter per user.
 - A listing of all hidden files outside the date view.
+
+## Update: the trash (slice 039)
+
+"Hidden" was the wrong metaphor. The feature is now **the trash**: *Move to trash*, *Restore from trash*, *Show the trash*,
+`wp_media_helper_can_trash_files` and `wp_media_helper_can_see_trash` (the former filter names still work), `is_trashed`
+and `show_trash` in the panel data. The index keeps its `hidden` column. One behavior changed: moving a file to the trash
+now also **deletes the media library entries of the file** (never the file), from every post, after a confirmation in the
+panel, because a trashed file must not stay in a post. Restoring puts the file back in the gallery only. Open: keep the
+properties of the deleted entries (title, caption, alt text) to restore them; a "list of everything in the trash" view.
