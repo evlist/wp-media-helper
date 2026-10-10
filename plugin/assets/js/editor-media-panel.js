@@ -1298,15 +1298,14 @@
 				onRequestClose: close,
 				className: 'wpmh-trash-dialog'
 			},
-				wp.element.createElement( 'p', null, __( 'The file stays on the disk, untouched, and can be restored to the gallery from the trash.', 'wp-media-helper' ) ),
+				wp.element.createElement( 'p', null, _n( 'The file stays on the disk, untouched, and can be restored to the gallery from the trash.', 'The files stay on the disk, untouched, and can be restored to the gallery from the trash.', items.length, 'wp-media-helper' ) ),
 				imported > 0
 					? wp.element.createElement( 'p', { style: danger, role: 'alert' },
-						_n(
-							'It loses its title, caption and description, leaves every post it is attached to and is no longer a featured image. Restoring the file brings none of this back.',
-							'They lose their titles, captions and descriptions, leave every post they are attached to and are no longer featured images. Restoring the files brings none of this back.',
-							imported,
-							'wp-media-helper'
-						)
+						1 === items.length
+							? __( 'It loses its title, caption and description, leaves every post it is attached to and is no longer a featured image. Restoring the file brings none of this back.', 'wp-media-helper' )
+							: ( imported < items.length
+								? sprintf( _n( '%d of these files is in the media library: it loses its title, caption and description, leaves every post it is attached to and is no longer a featured image. Restoring the file brings none of this back.', '%d of these files are in the media library: they lose their titles, captions and descriptions, leave every post they are attached to and are no longer featured images. Restoring the files brings none of this back.', imported, 'wp-media-helper' ), imported )
+								: __( 'They lose their titles, captions and descriptions, leave every post they are attached to and are no longer featured images. Restoring the files brings none of this back.', 'wp-media-helper' ) )
 					)
 					: null,
 				elsewhere.length > 0
