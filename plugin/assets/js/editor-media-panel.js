@@ -225,32 +225,58 @@
 		return query.replace( /\s+/g, ' ' ).trim().replace( /^[._/\\-]+|[._/\\-]+$/g, '' ).trim();
 	};
 
-	const FilterCheckboxGroup = function ( { label, options, selectedValues, disabled, minSelected, onToggle } ) {
+	// A group of checkboxes with a checkbox "All" that, like the one of the tables of WordPress, checks everything
+	// when it is not checked and unchecks everything when it is. Nothing checked is allowed.
+	const FilterCheckboxGroup = function ( { label, options, selectedValues, disabled, onChange } ) {
+		const allValues = options.map( function ( option ) { return option.value; } );
+		const checkedValues = allValues.filter( function ( value ) { return selectedValues.includes( value ); } );
+		const all = allValues.length > 0 && checkedValues.length === allValues.length;
+		const none = 0 === checkedValues.length;
 		const selectedLabels = options.filter( function ( option ) {
 			return selectedValues.includes( option.value );
 		} ).map( function ( option ) {
 			return option.label;
 		} );
-		const selectionSummary = selectedLabels.length === options.length
-			? __( 'All', 'wp-media-helper' )
-			: selectedLabels.length > 0 ? selectedLabels.join( ', ' ) : __( 'None', 'wp-media-helper' );
+		let summary;
+		if ( all ) {
+			summary = wp.element.createElement( 'span', { style: { color: '#007017', fontWeight: 600 } }, __( 'All', 'wp-media-helper' ) );
+		} else if ( none ) {
+			summary = wp.element.createElement( 'span', { style: { color: '#b32d2e', fontWeight: 600 } }, __( 'None', 'wp-media-helper' ) );
+		} else {
+			summary = selectedLabels.join( ', ' );
+		}
 
 		return wp.element.createElement( 'details', { style: { borderTop: '1px solid #ddd' } },
 			wp.element.createElement( 'summary', { style: { cursor: 'pointer', padding: '7px 0' } },
 				wp.element.createElement( 'span', { style: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '0.5rem' } },
 					wp.element.createElement( 'strong', { style: { fontSize: '12px', fontWeight: 600, flexShrink: 0 } }, label ),
-					wp.element.createElement( 'span', { style: { color: '#757575', fontSize: '11px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'right' } }, selectionSummary )
+					wp.element.createElement( 'span', { style: { color: '#757575', fontSize: '11px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'right' } }, summary )
 				)
 			),
 			wp.element.createElement( 'div', { role: 'group', 'aria-label': label, style: { display: 'flex', flexDirection: 'column', gap: '0.1rem', padding: '0 0 8px' } },
+				wp.element.createElement( 'label', { style: { display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '12px', fontWeight: 600, paddingBottom: '3px', marginBottom: '3px', borderBottom: '1px solid #eee' } },
+					wp.element.createElement( 'input', {
+						type: 'checkbox',
+						checked: all,
+						disabled: disabled,
+						// The dash of a partial selection.
+						ref: function ( element ) { if ( element ) { element.indeterminate = ! all && ! none; } },
+						onChange: function () { onChange( all ? [] : allValues ); }
+					} ),
+					__( 'All', 'wp-media-helper' )
+				),
 				options.map( function ( option ) {
 					const checked = selectedValues.includes( option.value );
 					return wp.element.createElement( 'label', { key: option.value, style: { display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '12px' } },
 						wp.element.createElement( 'input', {
 							type: 'checkbox',
 							checked: checked,
-							disabled: disabled || ( checked && selectedValues.length <= minSelected ),
-							onChange: function () { onToggle( option.value ); }
+							disabled: disabled,
+							onChange: function () {
+								onChange( allValues.filter( function ( value ) {
+									return value === option.value ? ! checked : selectedValues.includes( value );
+								} ) );
+							}
 						} ),
 						option.label
 					);
@@ -458,6 +484,8 @@
 		const [ density, setDensity ] = useState( readDensity );
 		const [ galleryWidth, setGalleryWidth ] = useState( 0 );
 		const [ hasNews, setHasNews ] = useState( false );
+		// The filters with nothing checked, as the server reports them: the list is empty because of them.
+		const [ emptyFilters, setEmptyFilters ] = useState( [] );
 		// The featured image of the post being edited (undefined when its type has none).
 		const featuredMedia = wp.data.useSelect( function ( select ) {
 			return select( 'core/editor' ).getEditedPostAttribute( 'featured_media' );
@@ -528,6 +556,7 @@
 			setStatus( payload.data.status || 'fresh' );
 			setReason( payload.data.reason || null );
 			setAvailableSources( payload.data.available_sources || [] );
+			setEmptyFilters( Array.isArray( payload.data.empty_filters ) ? payload.data.empty_filters : [] );
 			if ( payload.data.pagination ) {
 				setPagination( payload.data.pagination );
 			}
@@ -629,7 +658,7 @@
 		useEffect( function () {
 			loadPage( 1 );
 			// eslint-disable-next-line react-hooks/exhaustive-deps
-		}, [ filters.date, filters.filename || '', ( filters.attachment_scope || [] ).join( ',' ), ( filters.source || [] ).join( ',' ), ( filters.media_type || [] ).join( ',' ), !! filters.show_trash ] );
+		}, [ filters.date, filters.filename || '', ( filters.attachment_scope ? filters.attachment_scope.join( ',' ) : '(default)' ), ( filters.source ? filters.source.join( ',' ) : '(default)' ), ( filters.media_type ? filters.media_type.join( ',' ) : '(default)' ), !! filters.show_trash ] );
 
 		// The list is not replaced behind the user's back, which would lose the scroll position and
 		// the selection: a check for news (every 30 s, and when the tab is shown again) only offers a refresh.
@@ -774,36 +803,24 @@
 			writeDensity( value );
 		};
 
-		const toggleAttachmentScope = function ( state ) {
-			const current = filters.attachment_scope || DEFAULT_ATTACHMENT_SCOPE;
-			const next = current.includes( state )
-				? current.filter( function ( value ) { return value !== state; } )
-				: current.concat( [ state ] );
-
-			if ( 0 === next.length ) {
-				return;
-			}
-
-			setFiltersState( Object.assign( {}, filters, { attachment_scope: next } ) );
-			saveFilter( 'attachment_scope', next, getCurrentPostId() );
+		const changeFilterList = function ( key, values ) {
+			setFiltersState( function ( currentFilters ) {
+				return Object.assign( {}, currentFilters, { [ key ]: values } );
+			} );
+			saveFilter( key, values, getCurrentPostId() );
 		};
 
-		const toggleMediaType = function ( mediaType ) {
-			const current = filters.media_type || DEFAULT_MEDIA_TYPE;
-			const next = current.includes( mediaType )
-				? current.filter( function ( value ) { return value !== mediaType; } )
-				: MEDIA_TYPE_OPTIONS.map( function ( option ) { return option.value; } ).filter( function ( value ) {
-					return current.includes( value ) || value === mediaType;
-				} );
+		const changeAttachmentScope = function ( values ) {
+			changeFilterList( 'attachment_scope', values );
+		};
 
-			if ( 0 === next.length ) {
-				return;
-			}
+		const changeMediaType = function ( values ) {
+			changeFilterList( 'media_type', values );
+		};
 
-			setFiltersState( function ( currentFilters ) {
-				return Object.assign( {}, currentFilters, { media_type: next } );
-			} );
-			saveFilter( 'media_type', next, getCurrentPostId() );
+		// Every source checked is stored as "all", which also covers the sources added later.
+		const changeSource = function ( values ) {
+			changeFilterList( 'source', values.length === availableSources.length ? DEFAULT_SOURCE_FILTER : values );
 		};
 
 		// Not stored: the trash is listed only while the box is checked.
@@ -830,33 +847,6 @@
 			}
 		};
 
-		const toggleSource = function ( sourceId ) {
-			const current = filters.source || DEFAULT_SOURCE_FILTER;
-			let next;
-
-			if ( 'all' === sourceId ) {
-				next = DEFAULT_SOURCE_FILTER;
-			} else if ( current.includes( 'all' ) ) {
-				next = availableSources
-					.map( function ( source ) { return source.id; } )
-					.filter( function ( id ) { return id !== sourceId; } );
-			} else {
-				next = current.includes( sourceId )
-					? current.filter( function ( value ) { return value !== sourceId; } )
-					: current.concat( [ sourceId ] );
-
-				if ( 0 === next.length ) {
-					next = DEFAULT_SOURCE_FILTER;
-				} else if ( availableSources.length === next.length ) {
-					next = DEFAULT_SOURCE_FILTER;
-				}
-			}
-
-			setFiltersState( function ( currentFilters ) {
-				return Object.assign( {}, currentFilters, { source: next } );
-			} );
-			saveFilter( 'source', next, getCurrentPostId() );
-		};
 
 		const toggleSelected = function ( item ) {
 			const key = itemKey( item );
@@ -1439,6 +1429,23 @@
 
 			return 'advanced' === panelMode || [ 'attach', 'remove' ].includes( action.value );
 		} );
+		const emptyFilterLabels = {
+			source: __( 'Sources', 'wp-media-helper' ),
+			attachment_scope: __( 'Attachment', 'wp-media-helper' ),
+			media_type: __( 'Media type', 'wp-media-helper' ),
+		};
+		// Puts back "all" in each filter that has nothing checked.
+		const checkEmptyFilters = function () {
+			emptyFilters.forEach( function ( key ) {
+				if ( 'source' === key ) {
+					changeFilterList( 'source', DEFAULT_SOURCE_FILTER );
+				} else if ( 'attachment_scope' === key ) {
+					changeFilterList( 'attachment_scope', ATTACHMENT_SCOPE_STATES.map( function ( state ) { return state.value; } ) );
+				} else if ( 'media_type' === key ) {
+					changeFilterList( 'media_type', DEFAULT_MEDIA_TYPE );
+				}
+			} );
+		};
 		const hasMore = pagination.page < pagination.total_pages;
 
 		return wp.element.createElement(
@@ -1496,8 +1503,7 @@
 								} ),
 								selectedValues: checkedSourceIds,
 								disabled: loading,
-								minSelected: 1,
-								onToggle: toggleSource
+								onChange: changeSource
 							} )
 							: null,
 						wp.element.createElement( FilterCheckboxGroup, {
@@ -1505,16 +1511,14 @@
 							options: ATTACHMENT_SCOPE_STATES,
 							selectedValues: currentAttachmentScope,
 							disabled: loading,
-							minSelected: 1,
-							onToggle: toggleAttachmentScope
+							onChange: changeAttachmentScope
 						} ),
 						wp.element.createElement( FilterCheckboxGroup, {
 							label: __( 'Media type', 'wp-media-helper' ),
 							options: MEDIA_TYPE_OPTIONS,
 							selectedValues: currentMediaType,
 							disabled: loading,
-							minSelected: 1,
-							onToggle: toggleMediaType
+							onChange: changeMediaType
 						} ),
 						canSeeTrash
 							? wp.element.createElement( 'div', { style: { marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #ddd' } },
@@ -1634,7 +1638,15 @@
 								);
 							} )
 						),
-						0 === visibleItems.length && ! loading
+						0 === visibleItems.length && ! loading && emptyFilters.length > 0
+							? wp.element.createElement( 'div', { role: 'status', style: { fontSize: '12px' } },
+								wp.element.createElement( 'p', { style: { color: '#b32d2e', fontWeight: 600 } },
+									sprintf( __( 'Nothing is selected in: %s.', 'wp-media-helper' ), emptyFilters.map( function ( key ) { return emptyFilterLabels[ key ] || key; } ).join( ', ' ) )
+								),
+								wp.element.createElement( Button, { isSecondary: true, onClick: checkEmptyFilters, text: __( 'Select all', 'wp-media-helper' ) } )
+							)
+							: null,
+						0 === visibleItems.length && ! loading && 0 === emptyFilters.length
 							? wp.element.createElement( 'p', { style: { color: '#757575', fontSize: '12px' } }, __( 'No file for these filters.', 'wp-media-helper' ) )
 							: null,
 						// Reaching this marker loads the next lot.

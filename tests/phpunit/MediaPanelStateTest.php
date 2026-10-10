@@ -395,8 +395,18 @@ class MediaPanelStateTest extends TestCase {
 
 	public function test_normalize_attachment_scope_defaults_when_empty_or_invalid(): void {
 		$this->assertSame( [ 'unattached', 'current' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeAttachmentScope( null ) );
-		$this->assertSame( [ 'unattached', 'current' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeAttachmentScope( [] ) );
 		$this->assertSame( [ 'unattached', 'current' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeAttachmentScope( [ 'bogus' ] ) );
+	}
+
+	public function test_nothing_checked_is_a_choice_for_every_filter(): void {
+		$this->assertSame( [], \WP_Media_Helper\Admin\EditorMediaController::normalizeAttachmentScope( [] ) );
+		$this->assertSame( [], \WP_Media_Helper\Admin\EditorMediaController::normalizeMediaTypeFilter( [] ) );
+		$this->assertSame( [], \WP_Media_Helper\Admin\EditorMediaController::normalizeSourceFilter( [], [ 'a', 'b' ] ) );
+		$this->assertSame( [ 'all' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeSourceFilter( null, [ 'a', 'b' ] ) );
+		$this->assertSame( [], \WP_Media_Helper\Admin\EditorMediaController::resolveSourcesForFilter( [ [ 'id' => 'a' ] ], [] ) );
+		$this->assertSame( [ [ 'id' => 'a' ] ], \WP_Media_Helper\Admin\EditorMediaController::resolveSourcesForFilter( [ [ 'id' => 'a' ] ], [ 'all' ] ) );
+		$this->assertSame( [ 'source', 'media_type' ], \WP_Media_Helper\Admin\EditorMediaController::emptyFilters( [ 'source' => [], 'attachment_scope' => [ 'current' ], 'media_type' => [] ] ) );
+		$this->assertSame( [ 'media_type' ], \WP_Media_Helper\Admin\EditorMediaController::emptyFilters( [ 'source' => [], 'media_type' => [] ], false ), 'No source configured: that is another message.' );
 	}
 
 	public function test_normalize_attachment_scope_keeps_only_known_states(): void {
@@ -408,7 +418,6 @@ class MediaPanelStateTest extends TestCase {
 
 	public function test_normalize_media_type_filter_defaults_to_all_categories(): void {
 		$this->assertSame( \WP_Media_Helper\MediaSource\FileTypes::categories(), \WP_Media_Helper\Admin\EditorMediaController::normalizeMediaTypeFilter( null ) );
-		$this->assertSame( \WP_Media_Helper\MediaSource\FileTypes::categories(), \WP_Media_Helper\Admin\EditorMediaController::normalizeMediaTypeFilter( [] ) );
 		$this->assertSame( \WP_Media_Helper\MediaSource\FileTypes::categories(), \WP_Media_Helper\Admin\EditorMediaController::normalizeMediaTypeFilter( [ 'unknown' ] ) );
 	}
 

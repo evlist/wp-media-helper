@@ -96,7 +96,8 @@ class EditorMediaController {
 		$values = is_array( $rawScope ) ? array_map( 'strval', $rawScope ) : [];
 		$normalized = array_values( array_intersect( $allowed, $values ) );
 
-		return [] === $normalized ? [ 'unattached', 'current' ] : $normalized;
+		// An empty list is a choice (nothing checked); anything unusable gives the default.
+		return [] === $normalized && [] !== $rawScope ? [ 'unattached', 'current' ] : $normalized;
 	}
 
 	/**
@@ -109,8 +110,13 @@ class EditorMediaController {
 		$values = is_array( $rawTypes ) ? array_map( 'strval', $rawTypes ) : [];
 		$normalized = array_values( array_intersect( $allowed, $values ) );
 
+		// An empty list is a choice (nothing checked); anything unusable gives everything.
+		if ( [] === $normalized ) {
+			return [] === $rawTypes ? [] : $allowed;
+		}
+
 		// Before the file categories, a choice of "everything" was these three values: it still means everything.
-		return [] === $normalized || [ 'image', 'video', 'other' ] === $normalized ? $allowed : $normalized;
+		return [ 'image', 'video', 'other' ] === $normalized ? $allowed : $normalized;
 	}
 
 	public static function normalizeFilenameFilter( mixed $rawFilename ): string {
@@ -158,6 +164,11 @@ class EditorMediaController {
 			return [ 'all' ];
 		}
 
+		// Nothing checked is a choice of its own: the panel lists nothing and says so.
+		if ( [] === $rawSource ) {
+			return [];
+		}
+
 		$requested = is_array( $rawSource ) ? array_map( 'strval', $rawSource ) : [ (string) $rawSource ];
 		if ( in_array( 'all', $requested, true ) ) {
 			return [ 'all' ];
@@ -169,12 +180,29 @@ class EditorMediaController {
 	}
 
 	/**
+	 * The filters that have nothing checked.
+	 *
+	 * @param array<string, mixed> $filters
+	 * @return string[] Among `source`, `attachment_scope` and `media_type`.
+	 */
+	public static function emptyFilters( array $filters, bool $hasSources = true ): array {
+		$empty = [];
+		foreach ( [ 'source', 'attachment_scope', 'media_type' ] as $key ) {
+			if ( isset( $filters[ $key ] ) && is_array( $filters[ $key ] ) && [] === $filters[ $key ] && ( 'source' !== $key || $hasSources ) ) {
+				$empty[] = $key;
+			}
+		}
+
+		return $empty;
+	}
+
+	/**
 	 * @param array<int, array<string, mixed>> $activeSources
 	 * @param array<int, string>               $sourceFilter
 	 * @return array<int, array<string, mixed>>
 	 */
 	public static function resolveSourcesForFilter( array $activeSources, array $sourceFilter ): array {
-		if ( [] === $sourceFilter || in_array( 'all', $sourceFilter, true ) ) {
+		if ( in_array( 'all', $sourceFilter, true ) ) {
 			return $activeSources;
 		}
 
@@ -676,8 +704,11 @@ class EditorMediaController {
 			'name' => (string) $source['name'],
 		], $activeSources );
 
-		if ( [] === $selectedSources ) {
+		// A filter with nothing checked lists nothing, without reading any source; the panel says which one.
+		$emptyFilters = self::emptyFilters( $filters, [] !== $activeSources );
+		if ( [] === $selectedSources || [] !== $emptyFilters ) {
 			wp_send_json_success( [
+				'empty_filters' => $emptyFilters,
 				'source_id' => '',
 				'date' => $dateValue,
 				'date_range' => null,
