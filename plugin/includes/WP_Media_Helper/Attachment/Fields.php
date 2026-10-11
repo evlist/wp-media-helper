@@ -13,11 +13,18 @@ final class Fields {
 
 	public const TYPES = [ 'multiselect', 'select', 'boolean', 'integer', 'text' ];
 
+	/**
+	 * The value of the filter of a field for the links that have no value in it ("No mode").
+	 */
+	public const NONE = '_none';
+
 	private const MAX_TEXT = 255;
 
 	/**
 	 * Keeps the valid declarations: a `key` (lower case letters, digits, `_` and `-`), a `label`, one of
-	 * the types, for the selects a list of `options` (`value`, `label`), and a `default` of the right kind.
+	 * the types, for the selects a list of `options` (`value`, `label`, and a pictogram: `icon`, a Dashicon name, or `icon_svg`,
+	 * the data of an SVG path), and a `default` of the right kind. `filter` makes a select a filter of the panel, with
+	 * `filter_default` the values checked at first (every option and `_none`, the links with no value, when not said).
 	 *
 	 * @param mixed $declared
 	 * @return array<int, array{key:string, label:string, type:string, options:array<int, array{value:string, label:string}>, default:mixed}>
@@ -41,13 +48,24 @@ final class Fields {
 			}
 
 			$fields[ $key ] = [
-				'key'     => $key,
-				'label'   => isset( $field['label'] ) && is_scalar( $field['label'] ) ? (string) $field['label'] : $key,
-				'type'    => $type,
-				'options' => $options,
-				'default' => null,
+				'key'            => $key,
+				'label'          => isset( $field['label'] ) && is_scalar( $field['label'] ) ? (string) $field['label'] : $key,
+				'type'           => $type,
+				'options'        => $options,
+				'default'        => null,
+				'filter'         => false,
+				'filter_default' => [],
 			];
 			$fields[ $key ]['default'] = self::coerce( $fields[ $key ], $field['default'] ?? null );
+
+			// A select or multiselect may be a filter of the panel (slice 042): which values are checked at first
+			// (every option when not said).
+			if ( ! empty( $field['filter'] ) && in_array( $type, [ 'select', 'multiselect' ], true ) ) {
+				$all                              = array_merge( array_column( $options, 'value' ), [ self::NONE ] );
+				$asked                            = isset( $field['filter_default'] ) && is_array( $field['filter_default'] ) ? array_map( 'strval', array_filter( $field['filter_default'], 'is_scalar' ) ) : $all;
+				$fields[ $key ]['filter']         = true;
+				$fields[ $key ]['filter_default'] = array_values( array_filter( $all, static fn ( string $value ): bool => in_array( $value, $asked, true ) ) );
+			}
 		}
 
 		return array_values( $fields );
@@ -106,16 +124,37 @@ final class Fields {
 	}
 
 	/**
+	 * A pictogram given by the name of a Dashicon (`admin-site`, `media-document`...): lower case letters, digits and dashes.
+	 *
+	 * @param mixed $icon
+	 */
+	private static function icon( $icon ): string {
+		return is_string( $icon ) && 1 === preg_match( '/^[a-z0-9-]{1,40}$/', $icon ) ? $icon : '';
+	}
+
+	/**
+	 * A pictogram given as the `d` attribute of an SVG path drawn in a 24 x 24 box, so the plugin can draw it without
+	 * accepting any markup: only the characters of path data.
+	 *
+	 * @param mixed $path
+	 */
+	private static function svgPath( $path ): string {
+		return is_string( $path ) && 1 === preg_match( '/^[MmLlHhVvCcSsQqTtAaZz0-9\s,.+eE-]{1,1500}$/', $path ) ? trim( $path ) : '';
+	}
+
+	/**
 	 * @param mixed $options
-	 * @return array<int, array{value:string, label:string}>
+	 * @return array<int, array{value:string, label:string, icon:string, icon_svg:string}>
 	 */
 	private static function options( $options ): array {
 		$clean = [];
 		foreach ( is_array( $options ) ? $options : [] as $option ) {
 			if ( is_array( $option ) && isset( $option['value'] ) && is_scalar( $option['value'] ) && '' !== (string) $option['value'] ) {
 				$clean[ (string) $option['value'] ] = [
-					'value' => (string) $option['value'],
-					'label' => isset( $option['label'] ) && is_scalar( $option['label'] ) ? (string) $option['label'] : (string) $option['value'],
+					'value'    => (string) $option['value'],
+					'label'    => isset( $option['label'] ) && is_scalar( $option['label'] ) ? (string) $option['label'] : (string) $option['value'],
+					'icon'     => self::icon( $option['icon'] ?? '' ),
+					'icon_svg' => self::svgPath( $option['icon_svg'] ?? '' ),
 				];
 			}
 		}

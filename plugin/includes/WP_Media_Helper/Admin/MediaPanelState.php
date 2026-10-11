@@ -183,6 +183,50 @@ class MediaPanelState {
 	}
 
 	/**
+	 * Applies the filters on the fields of the link (slice 042) to the files attached to the current post: such a file stays
+	 * when, for each filtered field, one of its values is selected (a file with no value matches `_none`). Files that are not
+	 * attached to this post are not concerned by these filters.
+	 *
+	 * @param array<int, array<string, mixed>> $items
+	 * @param array<int, array<string, mixed>> $fields    As returned by `Fields::normalize()`.
+	 * @param array<string, string[]>          $selection Selected values, keyed by field key.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function filterByLinkFields( array $items, array $fields, array $selection ): array {
+		$filtered = [];
+		foreach ( $fields as $field ) {
+			$key = (string) $field['key'];
+			if ( ! empty( $field['filter'] ) && isset( $selection[ $key ] ) ) {
+				$all = array_merge( array_column( $field['options'], 'value' ), [ \WP_Media_Helper\Attachment\Fields::NONE ] );
+				// Everything selected filters nothing: a link whose value is not among the options still shows.
+				if ( count( array_diff( $all, $selection[ $key ] ) ) > 0 ) {
+					$filtered[ $key ] = $selection[ $key ];
+				}
+			}
+		}
+		if ( [] === $filtered ) {
+			return $items;
+		}
+
+		return array_values( array_filter( $items, static function ( $item ) use ( $filtered ): bool {
+			if ( ! is_array( $item ) || empty( $item['is_attached_to_current_post'] ) ) {
+				return true;
+			}
+
+			foreach ( $filtered as $key => $selected ) {
+				$value  = is_array( $item['attachment_data'] ?? null ) ? ( $item['attachment_data'][ $key ] ?? null ) : null;
+				$values = is_array( $value ) ? array_map( 'strval', $value ) : ( null === $value || '' === $value ? [] : [ (string) $value ] );
+				$values = [] === $values ? [ \WP_Media_Helper\Attachment\Fields::NONE ] : $values;
+				if ( [] === array_intersect( $values, $selected ) ) {
+					return false;
+				}
+			}
+
+			return true;
+		} ) );
+	}
+
+	/**
 	 * Gives the files attached to the current post the data of their link (the declared fields of the
 	 * attachment method: modes, position...), to show and to edit.
 	 *

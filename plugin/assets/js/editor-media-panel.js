@@ -242,6 +242,20 @@
 		return query.replace( /\s+/g, ' ' ).trim().replace( /^[._/\\-]+|[._/\\-]+$/g, '' ).trim();
 	};
 
+	// The pictogram of an option of a filter: the path of an SVG (24 x 24) or the name of a Dashicon.
+	const OptionIcon = function ( { option } ) {
+		if ( option.icon_svg ) {
+			return wp.element.createElement( 'svg', { width: 14, height: 14, viewBox: '0 0 24 24', 'aria-hidden': true, focusable: 'false', style: { flexShrink: 0, verticalAlign: 'text-bottom' }, fill: 'currentColor' },
+				wp.element.createElement( 'path', { d: option.icon_svg } )
+			);
+		}
+		if ( option.icon ) {
+			return wp.element.createElement( Dashicon, { icon: option.icon, size: 14 } );
+		}
+
+		return null;
+	};
+
 	// A group of checkboxes with a checkbox "All" that, like the one of the tables of WordPress, checks everything
 	// when it is not checked and unchecks everything when it is. Nothing checked is allowed.
 	const FilterCheckboxGroup = function ( { label, options, selectedValues, disabled, onChange } ) {
@@ -260,7 +274,12 @@
 		} else if ( none ) {
 			summary = wp.element.createElement( 'span', { style: { color: '#b32d2e', fontWeight: 600 } }, __( 'None', 'wp-media-helper' ) );
 		} else {
-			summary = selectedLabels.join( ', ' );
+			summary = options.filter( function ( option ) { return selectedValues.includes( option.value ); } ).map( function ( option, index ) {
+				return wp.element.createElement( 'span', { key: option.value, style: { display: 'inline-flex', alignItems: 'center', gap: '2px', marginLeft: index > 0 ? '6px' : 0 } },
+					wp.element.createElement( OptionIcon, { option: option } ),
+					option.label
+				);
+			} );
 		}
 
 		return wp.element.createElement( 'details', { style: { borderTop: '1px solid #ddd' } },
@@ -295,6 +314,7 @@
 								} ) );
 							}
 						} ),
+						wp.element.createElement( OptionIcon, { option: option } ),
 						option.label
 					);
 				} )
@@ -687,6 +707,11 @@
 			if ( payload.data.filters && Array.isArray( payload.data.filters.media_type ) ) {
 				adoptList( 'media_type', payload.data.filters.media_type );
 			}
+			if ( payload.data.filters && payload.data.filters.link && 'object' === typeof payload.data.filters.link && ! Array.isArray( payload.data.filters.link ) ) {
+				setFiltersState( function ( currentFilters ) {
+					return JSON.stringify( currentFilters.link || null ) === JSON.stringify( payload.data.filters.link ) ? currentFilters : Object.assign( {}, currentFilters, { link: payload.data.filters.link } );
+				} );
+			}
 			if ( payload.data.filters && 'string' === typeof payload.data.filters.filename ) {
 				setFiltersState( function ( currentFilters ) {
 					if ( Object.prototype.hasOwnProperty.call( requestedFilters, 'filename' ) || Object.prototype.hasOwnProperty.call( currentFilters, 'filename' ) ) {
@@ -775,7 +800,7 @@
 		useEffect( function () {
 			loadPage( 1 );
 			// eslint-disable-next-line react-hooks/exhaustive-deps
-		}, [ filters.date, filters.filename || '', ( filters.attachment_scope ? filters.attachment_scope.join( ',' ) : '(default)' ), ( filters.source ? filters.source.join( ',' ) : '(default)' ), ( filters.media_type ? filters.media_type.join( ',' ) : '(default)' ), !! filters.show_trash ] );
+		}, [ filters.date, filters.filename || '', ( filters.attachment_scope ? filters.attachment_scope.join( ',' ) : '(default)' ), ( filters.source ? filters.source.join( ',' ) : '(default)' ), ( filters.media_type ? filters.media_type.join( ',' ) : '(default)' ), JSON.stringify( filters.link || null ), !! filters.show_trash ] );
 
 		// The list is not replaced behind the user's back, which would lose the scroll position and
 		// the selection: a check for news (every 30 s, and when the tab is shown again) only offers a refresh.
@@ -925,6 +950,37 @@
 				return Object.assign( {}, currentFilters, { [ key ]: values } );
 			} );
 			saveFilter( key, values, getCurrentPostId() );
+		};
+
+		const changeLinkFilter = function ( key, values ) {
+			setFiltersState( function ( currentFilters ) {
+				return Object.assign( {}, currentFilters, { link: Object.assign( {}, currentFilters.link || {}, { [ key ]: values } ) } );
+			} );
+			saveFilter( 'link_' + key, values, getCurrentPostId() );
+		};
+
+		// The fields of the link that are filters (modes...): the panel's choice of what to attach for. When exactly one value
+		// is selected in such a filter, attaching uses it instead of the default of the field.
+		const linkContext = function () {
+			const data = {};
+			const labels = [];
+			attachmentMethod.fields.forEach( function ( field ) {
+				const selected = filters.link && Array.isArray( filters.link[ field.key ] ) ? filters.link[ field.key ] : null;
+				if ( ! field.filter || ! selected || 1 !== selected.length || '_none' === selected[ 0 ] ) {
+					return;
+				}
+				data[ field.key ] = 'multiselect' === field.type ? [ selected[ 0 ] ] : selected[ 0 ];
+				const option = field.options.filter( function ( candidate ) { return candidate.value === selected[ 0 ]; } )[ 0 ];
+				labels.push( option ? option.label : selected[ 0 ] );
+			} );
+
+			return { data: data, labels: labels };
+		};
+
+		const withLinkContext = function ( items ) {
+			const context = linkContext();
+
+			return 0 === Object.keys( context.data ).length ? items : items.map( function ( item ) { return Object.assign( {}, item, { data: context.data } ); } );
 		};
 
 		const changeAttachmentScope = function ( values ) {
@@ -1100,7 +1156,7 @@
 				return;
 			}
 
-			runBulk( bulkAction, selectedItems, postId );
+			runBulk( bulkAction, 'attach' === bulkAction ? withLinkContext( selectedItems ) : selectedItems, postId );
 		};
 
 		const runBulk = function ( action, selectedItems, postId ) {
@@ -1154,10 +1210,13 @@
 
 			setLoading( true );
 			setOperationNotice( null );
-			bulkMediaItems( action, [ item ], postId )
+			bulkMediaItems( action, 'attach' === action ? withLinkContext( [ item ] ) : [ item ], postId )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
 						applyBulkResults( payload );
+						if ( 'attach' === action && linkContext().labels.length > 0 ) {
+							announce( sprintf( __( 'Attached for: %s', 'wp-media-helper' ), linkContext().labels.join( ', ' ) ) );
+						}
 					} else {
 						setOperationNotice( payload && payload.data && payload.data.message ? payload.data.message : __( 'The action failed.', 'wp-media-helper' ) );
 					}
@@ -1713,6 +1772,18 @@
 							selectedValues: currentMediaType,
 							disabled: loading,
 							onChange: changeMediaType
+						} ),
+						attachmentMethod.fields.filter( function ( field ) { return field.filter; } ).map( function ( field ) {
+							const selected = filters.link && Array.isArray( filters.link[ field.key ] ) ? filters.link[ field.key ] : field.filter_default;
+
+							return wp.element.createElement( FilterCheckboxGroup, {
+								key: 'link-' + field.key,
+								label: field.label,
+								options: field.options.concat( [ { value: '_none', label: __( 'None', 'wp-media-helper' ) } ] ),
+								selectedValues: selected,
+								disabled: loading,
+								onChange: function ( values ) { changeLinkFilter( field.key, values ); }
+							} );
 						} ),
 						canSeeTrash
 							? wp.element.createElement( 'div', { style: { marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #ddd' } },

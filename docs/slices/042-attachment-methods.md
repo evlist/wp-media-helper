@@ -212,3 +212,25 @@ Choosing the modes in the same step as attaching, and fields in bulk, are not do
 
 Tested with stubs and in Chromium with a mock of the server (dialog, save, sheet, menus); never tried on a real site or
 with a real second method.
+
+## Step 5: a filter on a field of the link, with pictograms (the modes)
+
+Asked by Eric: choosing the mode when attaching, and filtering the panel by mode. One mechanism for both.
+
+- **A field may be a filter of the panel**: `'filter' => true` on a `select` or `multiselect` field, with `'filter_default'` (the
+  values checked at first; every option and `_none` when not said). The panel adds a group of checkboxes named after the field,
+  like the other filters (*All*, none allowed, the values in the collapsed summary), plus a value **None** (`_none`): the links
+  that have no value in that field ("no mode"), to find and correct them.
+- **Pictograms**: each option may carry `icon` (the name of a Dashicon, for example `admin-site` for a globe) or `icon_svg`
+  (the data `d` of an SVG path drawn in a 24 x 24 box, for example a printer); only these two forms are accepted, no markup. They
+  are drawn in the group and in the collapsed summary.
+- **What it filters**: only the files attached to the current post, by the values of their link; files that are not attached, or
+  attached elsewhere, are not concerned (so new files can still be chosen for a mode). All values selected filters nothing;
+  nothing selected hides the attached files only. Used with the filter *Attachment: this post* it shows what a mode will show.
+- **What it attaches**: when exactly one real value is selected in such a filter, *Attach* (item or bulk) uses it as the value
+  of the field instead of the default (a notification says "Attached for: Print"); with several values, or *All*, the defaults
+  of the fields apply.
+- **Persistence**: per user and post, key `link_<field key>` of the filter requests (`filters.link` in the list request,
+  `save_filter` with `link_modes`), like the other filters (slice 040).
+- Server: `Fields::normalize()` (`filter`, `filter_default`, `icon`, `icon_svg`), `EditorMediaController::normalizeLinkFilters()`,
+  `MediaPanelState::filterByLinkFields()`. Tested with stubs and in Chromium with a mocked server; not tried on a real site.

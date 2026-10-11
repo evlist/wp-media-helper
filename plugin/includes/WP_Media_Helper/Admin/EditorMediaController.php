@@ -126,6 +126,36 @@ class EditorMediaController {
 		return [ 'image', 'video', 'other' ] === $normalized ? $allowed : $normalized;
 	}
 
+	/**
+	 * The selection of each filter that a method declares on one of its fields (`filter` => true), as the panel asked for
+	 * it, else as the user last chose it for this post, else the default of the field. A selection holds values of the
+	 * field and `_none` (the links with no value). An empty selection is a choice.
+	 *
+	 * @param array<int, array<string, mixed>> $fields Fields as returned by `Fields::normalize()`.
+	 * @param mixed                            $raw    The `link` entry of the filters of the request.
+	 * @param callable(string): mixed          $stored Returns what was stored for a key of the user and post, or null.
+	 * @return array<string, string[]> Keyed by field key, filterable fields only.
+	 */
+	public static function normalizeLinkFilters( array $fields, mixed $raw, callable $stored ): array {
+		$raw      = is_array( $raw ) ? $raw : [];
+		$selected = [];
+		foreach ( $fields as $field ) {
+			if ( empty( $field['filter'] ) ) {
+				continue;
+			}
+
+			$key     = (string) $field['key'];
+			$allowed = array_merge( array_column( $field['options'], 'value' ), [ Fields::NONE ] );
+			$value   = array_key_exists( $key, $raw ) ? $raw[ $key ] : $stored( $key );
+			if ( ! is_array( $value ) ) {
+				$value = $field['filter_default'];
+			}
+			$selected[ $key ] = array_values( array_intersect( $allowed, array_map( 'strval', array_filter( $value, 'is_scalar' ) ) ) );
+		}
+
+		return $selected;
+	}
+
 	public static function normalizeFilenameFilter( mixed $rawFilename ): string {
 		if ( ! is_string( $rawFilename ) || strlen( $rawFilename ) > 4 * self::MAX_FILENAME_QUERY_LENGTH || 1 !== preg_match( '//u', $rawFilename ) ) {
 			return '';
@@ -326,6 +356,21 @@ class EditorMediaController {
 		$postId = absint( $_POST['post_id'] ?? 0 );
 		$rawValue = wp_unslash( $_POST['value'] ?? '' );
 		$decodedValue = is_string( $rawValue ) ? json_decode( $rawValue, true ) : null;
+
+		$linkField = str_starts_with( $key, 'link_' ) ? substr( $key, 5 ) : '';
+		if ( '' !== $linkField ) {
+			// A filter on a field of the attachment method of this post.
+			$selection = self::normalizeLinkFilters(
+				Fields::normalize( Methods::active( $postId )->capabilities()['fields'] ?? [] ),
+				[ $linkField => $decodedValue ],
+				static fn (): mixed => null
+			);
+			if ( ! isset( $selection[ $linkField ] ) ) {
+				wp_send_json_error( [ 'message' => 'The requested filter is not supported.' ], 400 );
+			}
+			$this->makeMediaFilters()->persistUserPost( $postId, $key, $selection[ $linkField ] );
+			wp_send_json_success( [ 'key' => $key, 'value' => $selection[ $linkField ] ] );
+		}
 
 		if ( ! in_array( $key, [ 'attachment_scope', 'source', 'media_type', 'filename' ], true ) ) {
 			wp_send_json_error( [ 'message' => 'The requested filter is not supported.' ], 400 );
@@ -756,6 +801,13 @@ class EditorMediaController {
 		$forceRefresh = ! empty( $_POST['force_refresh'] );
 		$selectedSources = self::resolveSourcesForFilter( $activeSources, $filters['source'] );
 		$method = Methods::active( $postId );
+		$linkFields = Fields::normalize( $method->capabilities()['fields'] ?? [] );
+		$decodedRequest = is_string( $rawFilters ) ? json_decode( $rawFilters, true ) : null;
+		$filters['link'] = self::normalizeLinkFilters(
+			$linkFields,
+			is_array( $decodedRequest ) ? ( $decodedRequest['link'] ?? null ) : null,
+			fn ( string $key ) => $this->makeMediaFilters()->resolveUserPost( $postId, 'link_' . $key, null )
+		);
 		$sourceOptions = array_map( static fn ( array $source ): array => [
 			'id' => (string) $source['id'],
 			'name' => (string) $source['name'],
@@ -836,6 +888,7 @@ class EditorMediaController {
 		$merged['files'] = MediaPanelState::setOtherPostState( $merged['files'], $attachmentStates['other_post_by_path'] );
 		$merged['files'] = MediaPanelState::setAttachmentIds( $merged['files'], $attachmentStates['attachment_ids'] );
 		$merged['files'] = MediaPanelState::setAttachmentData( $merged['files'], $attachmentStates['data_by_path'] );
+		$merged['files'] = MediaPanelState::filterByLinkFields( $merged['files'], $linkFields, $filters['link'] );
 		$merged['files'] = MediaPanelState::filterByAttachmentScope( $merged['files'], $filters['attachment_scope'] );
 		$merged['files'] = MediaPanelState::filterByMediaType( $merged['files'], $filters['media_type'] );
 		$merged['files'] = MediaPanelState::markImportable( $merged['files'], static fn ( string $name ): array => wp_check_filetype( $name ) );
