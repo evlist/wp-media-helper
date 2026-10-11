@@ -190,27 +190,38 @@ class MediaPanelState {
 	 * @param array<int, array<string, mixed>> $items
 	 * @param array<int, array<string, mixed>> $fields    As returned by `Fields::normalize()`.
 	 * @param array<string, string[]>          $selection Selected values, keyed by field key.
+	 * @param bool                             $cohabitation Both mechanisms are in use (the first filter also has `_native`).
 	 * @return array<int, array<string, mixed>>
 	 */
-	public static function filterByLinkFields( array $items, array $fields, array $selection ): array {
-		$filtered = [];
+	public static function filterByLinkFields( array $items, array $fields, array $selection, bool $cohabitation = false ): array {
+		$filtered   = [];
+		$nativeKey  = null;
 		foreach ( $fields as $field ) {
 			$key = (string) $field['key'];
-			if ( ! empty( $field['filter'] ) && isset( $selection[ $key ] ) ) {
-				$all = array_merge( array_column( $field['options'], 'value' ), [ \WP_Media_Helper\Attachment\Fields::NONE ] );
-				// Everything selected filters nothing: a link whose value is not among the options still shows.
-				if ( count( array_diff( $all, $selection[ $key ] ) ) > 0 ) {
-					$filtered[ $key ] = $selection[ $key ];
-				}
+			if ( empty( $field['filter'] ) || ! isset( $selection[ $key ] ) ) {
+				continue;
+			}
+
+			// With both mechanisms in use, the first filter also says which of the files attached the WordPress way are shown.
+			$nativeKey = $cohabitation && null === $nativeKey ? $key : $nativeKey;
+			$all       = array_merge( array_column( $field['options'], 'value' ), [ \WP_Media_Helper\Attachment\Fields::NONE ], $nativeKey === $key ? [ \WP_Media_Helper\Attachment\Fields::NATIVE ] : [] );
+			// Everything selected filters nothing.
+			if ( count( array_diff( $all, $selection[ $key ] ) ) > 0 ) {
+				$filtered[ $key ] = $selection[ $key ];
 			}
 		}
 		if ( [] === $filtered ) {
 			return $items;
 		}
 
-		return array_values( array_filter( $items, static function ( $item ) use ( $filtered ): bool {
+		return array_values( array_filter( $items, static function ( $item ) use ( $filtered, $nativeKey ): bool {
 			if ( ! is_array( $item ) || empty( $item['is_attached_to_current_post'] ) ) {
 				return true;
+			}
+
+			// A file attached the WordPress way has no link data: it only answers the value `_native`.
+			if ( ! empty( $item['attached_natively_only'] ) ) {
+				return null === $nativeKey || ! isset( $filtered[ $nativeKey ] ) || in_array( \WP_Media_Helper\Attachment\Fields::NATIVE, $filtered[ $nativeKey ], true );
 			}
 
 			foreach ( $filtered as $key => $selected ) {

@@ -11,6 +11,8 @@ final class Methods {
 
 	public const OPTION = 'wp_media_helper_attachment_method';
 
+	public const COHABITATION_OPTION = 'wp_media_helper_attachment_cohabitation';
+
 	/**
 	 * Every method: `native` and those added with the filter `wp_media_helper_attachment_methods`.
 	 * Anything that is not a `Method` registered under its own identifier is ignored.
@@ -53,5 +55,20 @@ final class Methods {
 		}
 
 		return $methods[ $id ] ?? $methods[ NativeMethod::ID ];
+	}
+
+	/**
+	 * Whether both mechanisms are in use for a post: the attachments made the WordPress way (`post_parent` only) count as attached,
+	 * and a media item can be switched from one mechanism to the other. Only with a method other than the native one. The
+	 * setting may be changed by the filter `wp_media_helper_attachment_cohabitation` (the ID of the post is the second argument).
+	 */
+	public static function cohabitation( int $postId = 0 ): bool {
+		if ( NativeMethod::ID === self::active( $postId )->id() ) {
+			return false;
+		}
+
+		$on = function_exists( 'get_option' ) && (bool) get_option( self::COHABITATION_OPTION, false );
+
+		return function_exists( 'apply_filters' ) ? (bool) apply_filters( 'wp_media_helper_attachment_cohabitation', $on, $postId ) : $on;
 	}
 }

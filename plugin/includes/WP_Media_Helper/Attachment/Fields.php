@@ -18,6 +18,11 @@ final class Fields {
 	 */
 	public const NONE = '_none';
 
+	/**
+	 * The value of the filter for the links made the WordPress way (`post_parent` only), when both mechanisms are in use.
+	 */
+	public const NATIVE = '_native';
+
 	private const MAX_TEXT = 255;
 
 	/**

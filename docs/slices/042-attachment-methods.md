@@ -247,3 +247,33 @@ does with it. A method whose reading already includes the native links (the unio
 Not done: a count in the settings of the media attached the WordPress way (it needs the method to know all its links, and a
 query on the whole site); the migration of everything at once is the job of the method's plugin. Tested with stubs and in
 Chromium with a mocked server.
+
+## Step 7: cohabitation of the two mechanisms (decided by Eric on 2026-10-11)
+
+Remark of Eric: with another method active, a post whose files were all attached through the media library showed none of them
+as attached; he wants both mechanisms active, to pass from one to the other, to be asked for the mode when attaching through the
+method, a bulk action, and a filter on the mechanism and the mode (*WordPress, web, print*).
+
+- **Setting** `wp_media_helper_attachment_cohabitation` (a checkbox under the choice of the method in the settings, shown when
+  a method other than the native one exists; filter of the same name with the ID of the post). `Methods::cohabitation( $postId )` is
+  true only with a method other than `native`. Reset deletes it.
+- **Definition of the two mechanisms**: a file is attached *the WordPress way* when `post_parent` is the post and the method does
+  not know the link (`attached_natively_only`); *through the method* when the method says it is attached here (a method that
+  keeps `post_parent` as its primary parent is therefore never "native"). **Media Helper does the cohabitation: a method must
+  not add the native links to its own reading** (the union proposed earlier to the Otherguise session), or the panel could not tell
+  the two apart.
+- **State**: in cohabitation a file attached the WordPress way **counts as attached to the post** (filters, badge, state "Attached
+  the WordPress way"; the other posts of the native links are added to *Also in*).
+- **Actions** (menu, sheet, bulk, in simple and advanced modes): *Attach (WordPress)* (`attach_native`), *Attach with the
+  method…* (`attach_method`, a dialog asks for the values of the fields: the modes), *Switch to the method…* (`to_method`, same
+  dialog), *Switch to WordPress* (`to_native`: the method detaches, then the attachment is attached natively; refused when it is
+  attached natively to another post), *Detach* (detaches through whichever mechanism holds the file), *Edit link…* (method links
+  only). The dialog is prefilled with the selection of the field filter when it holds one value, else the defaults of the fields.
+  The former bulk action *Convert* is replaced by *Switch to the method…* in cohabitation. Events: `wp_media_helper_attached` and
+  `wp_media_helper_detached` with the identifier of the mechanism (`native` or the method).
+- **Filter "Attached through"**: the first filterable field gets the extra value **WordPress** (`_native`, with the name of the
+  mechanism, then the values of the field, then *None*); files attached the WordPress way answer `_native` only, the files attached
+  through the method answer the values of their link; unattached files are not concerned. Stored with the other link filters
+  (`link_<field>`).
+- Tested with stubs (selection and filtering) and in Chromium with a mocked server (menus, dialog, bulk actions, filter); not on a
+  real site, and never with a real method.

@@ -137,20 +137,23 @@ class EditorMediaController {
 	 * @param callable(string): mixed          $stored Returns what was stored for a key of the user and post, or null.
 	 * @return array<string, string[]> Keyed by field key, filterable fields only.
 	 */
-	public static function normalizeLinkFilters( array $fields, mixed $raw, callable $stored ): array {
+	public static function normalizeLinkFilters( array $fields, mixed $raw, callable $stored, bool $cohabitation = false ): array {
 		$raw      = is_array( $raw ) ? $raw : [];
 		$selected = [];
+		$nativeCarried = false;
 		foreach ( $fields as $field ) {
 			if ( empty( $field['filter'] ) ) {
 				continue;
 			}
 
 			$key     = (string) $field['key'];
-			$allowed = array_merge( array_column( $field['options'], 'value' ), [ Fields::NONE ] );
+			$allowed = array_merge( array_column( $field['options'], 'value' ), [ Fields::NONE ], $cohabitation && ! $nativeCarried ? [ Fields::NATIVE ] : [] );
 			$value   = array_key_exists( $key, $raw ) ? $raw[ $key ] : $stored( $key );
 			if ( ! is_array( $value ) ) {
-				$value = $field['filter_default'];
+				$value = array_merge( $field['filter_default'], $cohabitation && ! $nativeCarried ? [ Fields::NATIVE ] : [] );
 			}
+			// With both mechanisms in use, the first filter also has the value `_native`: the files attached the WordPress way.
+			$nativeCarried = $nativeCarried || $cohabitation;
 			$selected[ $key ] = array_values( array_intersect( $allowed, array_map( 'strval', array_filter( $value, 'is_scalar' ) ) ) );
 		}
 
@@ -364,7 +367,8 @@ class EditorMediaController {
 			$selection = self::normalizeLinkFilters(
 				Fields::normalize( Methods::active( $postId )->capabilities()['fields'] ?? [] ),
 				[ $linkField => $decodedValue ],
-				static fn (): mixed => null
+				static fn (): mixed => null,
+				Methods::cohabitation( $postId )
 			);
 			if ( ! isset( $selection[ $linkField ] ) ) {
 				wp_send_json_error( [ 'message' => 'The requested filter is not supported.' ], 400 );
@@ -416,11 +420,11 @@ class EditorMediaController {
 		$encodedItems = wp_unslash( $_POST['items'] ?? '' );
 		$items = is_string( $encodedItems ) ? json_decode( $encodedItems, true ) : [];
 
-		if ( ! in_array( $action, [ 'import', 'remove', 'attach', 'detach', 'update', 'convert', 'trash', 'restore' ], true ) ) {
+		if ( ! in_array( $action, [ 'import', 'remove', 'attach', 'detach', 'update', 'convert', 'attach_native', 'attach_method', 'to_native', 'to_method', 'trash', 'restore' ], true ) ) {
 			wp_send_json_error( [ 'message' => 'The requested bulk action is not supported.' ], 400 );
 		}
 
-		if ( in_array( $action, [ 'import', 'attach' ], true ) && ! current_user_can( 'upload_files' ) ) {
+		if ( in_array( $action, [ 'import', 'attach', 'attach_native', 'attach_method' ], true ) && ! current_user_can( 'upload_files' ) ) {
 			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
 		}
 
@@ -428,7 +432,12 @@ class EditorMediaController {
 			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
 		}
 
-		if ( in_array( $action, [ 'attach', 'detach', 'remove', 'update', 'convert' ], true ) && ( 0 === $postId || ! get_post( $postId ) || ! current_user_can( 'edit_post', $postId ) ) ) {
+		// The actions of the cohabitation (both mechanisms in use) are refused when it is not on.
+		if ( in_array( $action, [ 'attach_native', 'attach_method', 'to_native', 'to_method' ], true ) && ! Methods::cohabitation( $postId ) ) {
+			wp_send_json_error( [ 'message' => 'The requested bulk action is not supported.' ], 400 );
+		}
+
+		if ( in_array( $action, [ 'attach', 'detach', 'remove', 'update', 'convert', 'attach_native', 'attach_method', 'to_native', 'to_method' ], true ) && ( 0 === $postId || ! get_post( $postId ) || ! current_user_can( 'edit_post', $postId ) ) ) {
 			wp_send_json_error( [ 'message' => 'The current post must be saved before media can be changed.' ], 400 );
 		}
 
@@ -472,6 +481,14 @@ class EditorMediaController {
 		// How media items are attached to posts: the method in use for this post (slice 042).
 		$method = Methods::active( $postId );
 		$fields = Fields::normalize( $method->capabilities()['fields'] ?? [] );
+		$cohabit = Methods::cohabitation( $postId );
+		$native = new NativeMethod();
+		// With both mechanisms in use, *attach* says which one: the native method or the method in use.
+		$attachVia = null;
+		if ( 'attach_native' === $action || 'attach_method' === $action ) {
+			$attachVia = 'attach_native' === $action ? $native : $method;
+			$action = 'attach';
+		}
 		$activeSources = in_array( $action, [ 'import', 'attach', 'trash', 'restore' ], true ) ? $this->getActiveSources() : [];
 		foreach ( $items as $item ) {
 			$itemSourceId = (string) ( $item['source_id'] ?? $sourceId );
@@ -485,7 +502,7 @@ class EditorMediaController {
 			];
 
 			if ( in_array( $action, [ 'attach', 'detach', 'remove', 'update' ], true ) ) {
-				$blocked = $this->protectedMessage( $method, $registry->findByPath( $item['path'] ), $postId );
+				$blocked = $this->protectedMessage( $attachVia ?? $method, $registry->findByPath( $item['path'] ), $postId );
 				if ( null !== $blocked ) {
 					$result['message'] = $blocked;
 					$result['operation'] = 'protected_other_post';
@@ -580,17 +597,22 @@ class EditorMediaController {
 				$result['operation'] = 'imported';
 
 				if ( 'attach' === $action ) {
-					// What the browser did not send takes the default of each field.
-					$data     = Fields::sanitize( $fields, $item['data'] ?? null, true );
-					$attached = $method->attach( (int) $attachmentId, $postId, $data );
+					$attacher = $attachVia ?? $method;
+					$viaNative = $attacher instanceof NativeMethod;
+					// What the browser did not send takes the default of each field (the native method has none).
+					$data     = $viaNative ? [] : Fields::sanitize( $fields, $item['data'] ?? null, true );
+					$attached = $attacher->attach( (int) $attachmentId, $postId, $data );
 					if ( is_wp_error( $attached ) ) {
 						$result['success'] = false;
 						$result['message'] = $attached->get_error_message();
 						$results[] = $result;
 						continue;
 					}
-					do_action( 'wp_media_helper_attached', (int) $attachmentId, $postId, $method->id(), $data );
-					$result['attachment_data'] = $data;
+					do_action( 'wp_media_helper_attached', (int) $attachmentId, $postId, $attacher->id(), $data );
+					if ( ! $viaNative ) {
+						$result['attachment_data'] = $data;
+					}
+					$result['attached_natively_only'] = $viaNative && $cohabit;
 
 					$result['is_attached_to_current_post'] = true;
 					$result['operation'] = 'attached';
@@ -601,7 +623,12 @@ class EditorMediaController {
 			}
 
 			$rows = $registry->findByPath( $item['path'] );
-			if ( 'convert' === $action ) {
+			if ( 'to_native' === $action ) {
+				$results[] = $this->switchToNative( $method, $native, $rows, $postId, $result );
+				continue;
+			}
+
+			if ( 'convert' === $action || 'to_method' === $action ) {
 				$results[] = $this->convertLink( $method, $fields, $rows, $postId, $item, $result );
 				continue;
 			}
@@ -611,7 +638,7 @@ class EditorMediaController {
 				continue;
 			}
 
-			$detached = $this->detachRows( $method, $rows, $postId );
+			$detached = $this->detachRows( $method, $rows, $postId, $cohabit );
 			if ( is_wp_error( $detached ) ) {
 				$result['message'] = $detached->get_error_message();
 				$results[] = $result;
@@ -688,16 +715,25 @@ class EditorMediaController {
 	 * @param array<int, array{id:int, parent:int, owned:bool}> $rows
 	 * @return int[]|\WP_Error The IDs that were detached.
 	 */
-	private function detachRows( Method $method, array $rows, int $postId ) {
-		$described = $method->describe( array_map( static fn ( array $row ): int => (int) $row['id'], $rows ), $postId );
-		$detached  = [];
+	private function detachRows( Method $method, array $rows, int $postId, bool $cohabit = false ) {
+		$ids        = array_map( static fn ( array $row ): int => (int) $row['id'], $rows );
+		$described  = $method->describe( $ids, $postId );
+		$native     = new NativeMethod();
+		$nativeHere = $cohabit ? $native->describe( $ids, $postId ) : [];
+		$detached   = [];
 		foreach ( $rows as $row ) {
 			$attachmentId = (int) $row['id'];
-			if ( empty( $described[ $attachmentId ]['attached_here'] ) ) {
+			if ( ! empty( $described[ $attachmentId ]['attached_here'] ) ) {
+				$done = $method->detach( $attachmentId, $postId );
+				$by   = $method->id();
+			} elseif ( ! empty( $nativeHere[ $attachmentId ]['attached_here'] ) ) {
+				// With both mechanisms in use, a file attached the WordPress way is detached too.
+				$done = $native->detach( $attachmentId, $postId );
+				$by   = $native->id();
+			} else {
 				continue;
 			}
 
-			$done = $method->detach( $attachmentId, $postId );
 			if ( is_wp_error( $done ) ) {
 				// The user may not change this attachment: it is skipped, as it always was.
 				if ( 'not_allowed' === $done->get_error_code() ) {
@@ -708,105 +744,10 @@ class EditorMediaController {
 			}
 
 			$detached[] = $attachmentId;
-			do_action( 'wp_media_helper_detached', $attachmentId, $postId, $method->id() );
+			do_action( 'wp_media_helper_detached', $attachmentId, $postId, $by );
 		}
 
 		return $detached;
-	}
-
-	/**
-	 * Makes the method in use know the links that exist only through `post_parent` (the action `convert`, slice 042):
-	 * a file attached to the current post the WordPress way is attached again through the method, with the data of the
-	 * browser or the defaults of its fields. `post_parent` is not touched here; what the method does with it is its business.
-	 *
-	 * @param array<int, array<string, mixed>>                          $fields
-	 * @param array<int, array{id:int, parent:int, owned:bool}>         $rows
-	 * @param array{id:string, path:string, data?:array<string, mixed>} $item
-	 * @param array<string, mixed>                                      $result
-	 * @return array<string, mixed>
-	 */
-	private function convertLink( Method $method, array $fields, array $rows, int $postId, array $item, array $result ): array {
-		$ids       = array_map( static fn ( array $row ): int => (int) $row['id'], $rows );
-		$native    = ( new NativeMethod() )->describe( $ids, $postId );
-		$current   = $method->describe( $ids, $postId );
-		$data      = Fields::sanitize( $fields, $item['data'] ?? null, true );
-		$converted = [];
-		foreach ( $ids as $attachmentId ) {
-			if ( empty( $native[ $attachmentId ]['attached_here'] ) || ! empty( $current[ $attachmentId ]['attached_here'] ) ) {
-				continue;
-			}
-
-			$done = $method->attach( $attachmentId, $postId, $data );
-			if ( is_wp_error( $done ) ) {
-				$result['message'] = $done->get_error_message();
-
-				return $result;
-			}
-
-			$converted[] = $attachmentId;
-			do_action( 'wp_media_helper_attached', $attachmentId, $postId, $method->id(), $data );
-		}
-
-		if ( [] === $converted ) {
-			$result['message'] = __( 'Nothing to convert: this media is not attached to the current post the WordPress way only.', 'wp-media-helper' );
-
-			return $result;
-		}
-
-		$after                                 = $method->describe( $converted, $postId );
-		$result['success']                     = true;
-		$result['is_imported']                 = true;
-		$result['is_attached_to_current_post'] = true;
-		$result['attachment_data']             = $after[ $converted[0] ]['data'] ?? $data;
-		$result['operation']                   = 'converted';
-
-		return $result;
-	}
-
-	/**
-	 * Changes the data of the link between a file and the current post (the action `update`).
-	 *
-	 * @param array<int, array<string, mixed>>                                 $fields
-	 * @param array<int, array{id:int, parent:int, owned:bool}>                $rows
-	 * @param array{id:string, path:string, data?:array<string, mixed>}        $item
-	 * @param array<string, mixed>                                             $result
-	 * @return array<string, mixed>
-	 */
-	private function updateLink( Method $method, array $fields, array $rows, int $postId, array $item, array $result ): array {
-		$ids       = array_map( static fn ( array $row ): int => (int) $row['id'], $rows );
-		$described = $method->describe( $ids, $postId );
-		$data      = Fields::sanitize( $fields, $item['data'] ?? null );
-		$updated   = [];
-		foreach ( $ids as $attachmentId ) {
-			if ( empty( $described[ $attachmentId ]['attached_here'] ) ) {
-				continue;
-			}
-
-			$done = $method->update( $attachmentId, $postId, $data );
-			if ( is_wp_error( $done ) ) {
-				$result['message'] = $done->get_error_message();
-
-				return $result;
-			}
-
-			$updated[] = $attachmentId;
-			do_action( 'wp_media_helper_attachment_updated', $attachmentId, $postId, $method->id(), $data );
-		}
-
-		if ( [] === $updated ) {
-			$result['message'] = __( 'This media is not attached to the current post.', 'wp-media-helper' );
-
-			return $result;
-		}
-
-		$after                        = $method->describe( $updated, $postId );
-		$result['success']            = true;
-		$result['is_imported']        = true;
-		$result['is_attached_to_current_post'] = true;
-		$result['attachment_data']    = $after[ $updated[0] ]['data'] ?? $data;
-		$result['operation']          = 'updated';
-
-		return $result;
 	}
 
 	/**
@@ -861,7 +802,8 @@ class EditorMediaController {
 		$filters['link'] = self::normalizeLinkFilters(
 			$linkFields,
 			is_array( $decodedRequest ) ? ( $decodedRequest['link'] ?? null ) : null,
-			fn ( string $key ) => $this->makeMediaFilters()->resolveUserPost( $postId, 'link_' . $key, null )
+			fn ( string $key ) => $this->makeMediaFilters()->resolveUserPost( $postId, 'link_' . $key, null ),
+			Methods::cohabitation( $postId )
 		);
 		$sourceOptions = array_map( static fn ( array $source ): array => [
 			'id' => (string) $source['id'],
@@ -889,7 +831,7 @@ class EditorMediaController {
 				],
 				'available_sources' => $sourceOptions,
 				'filters' => $filters,
-				'attachment_method' => self::methodForPanel( $method ),
+				'attachment_method' => self::methodForPanel( $method, Methods::cohabitation( $postId ) ),
 			] );
 		}
 
@@ -944,7 +886,7 @@ class EditorMediaController {
 		$merged['files'] = MediaPanelState::setAttachmentIds( $merged['files'], $attachmentStates['attachment_ids'] );
 		$merged['files'] = MediaPanelState::setAttachmentData( $merged['files'], $attachmentStates['data_by_path'] );
 		$merged['files'] = MediaPanelState::setNativeOnly( $merged['files'], $attachmentStates['legacy_paths'] );
-		$merged['files'] = MediaPanelState::filterByLinkFields( $merged['files'], $linkFields, $filters['link'] );
+		$merged['files'] = MediaPanelState::filterByLinkFields( $merged['files'], $linkFields, $filters['link'], Methods::cohabitation( $postId ) );
 		$merged['files'] = MediaPanelState::filterByAttachmentScope( $merged['files'], $filters['attachment_scope'] );
 		$merged['files'] = MediaPanelState::filterByMediaType( $merged['files'], $filters['media_type'] );
 		$merged['files'] = MediaPanelState::markImportable( $merged['files'], static fn ( string $name ): array => wp_check_filetype( $name ) );
@@ -957,22 +899,23 @@ class EditorMediaController {
 		unset( $merged['directory'] );
 		$merged['status'] = $merged['refresh_required'] ? 'stale' : 'fresh';
 		$merged['filters'] = $filters;
-		$merged['attachment_method'] = self::methodForPanel( $method );
+		$merged['attachment_method'] = self::methodForPanel( $method, Methods::cohabitation( $postId ) );
 		wp_send_json_success( $merged );
 	}
 
 	/**
 	 * What the panel needs to know of the method in use.
 	 *
-	 * @return array{id:string, label:string, multiple_posts:bool, fields:array<int, array<string, mixed>>}
+	 * @return array{id:string, label:string, multiple_posts:bool, cohabitation:bool, fields:array<int, array<string, mixed>>}
 	 */
-	public static function methodForPanel( Method $method ): array {
+	public static function methodForPanel( Method $method, bool $cohabitation = false ): array {
 		$capabilities = $method->capabilities();
 
 		return [
 			'id'             => $method->id(),
 			'label'          => $method->label(),
 			'multiple_posts' => ! empty( $capabilities['multiple_posts'] ),
+			'cohabitation'   => $cohabitation,
 			'fields'         => Fields::normalize( $capabilities['fields'] ?? [] ),
 		];
 	}
@@ -1097,6 +1040,7 @@ class EditorMediaController {
 		// With a method other than the native one, files attached only the WordPress way (`post_parent`) are marked.
 		$nativeHere = NativeMethod::ID === $method->id() ? [] : ( new NativeMethod() )->describe( $ids, $postId );
 		$legacy     = [];
+		$cohabit    = Methods::cohabitation( $postId );
 
 		foreach ( $statesByPath as $path => $rows ) {
 			$path = (string) $path;
@@ -1117,10 +1061,20 @@ class EditorMediaController {
 				if ( ! $state['attached_here'] && ! empty( $nativeHere[ (int) $row['id'] ]['attached_here'] ) ) {
 					$legacy[ $path ] = true;
 				}
+				// With both mechanisms in use, the other posts of the WordPress way count too.
+				if ( $cohabit ) {
+					foreach ( $nativeHere[ (int) $row['id'] ]['elsewhere'] ?? [] as $otherId ) {
+						$elsewhere[ $path ][] = (int) $otherId;
+					}
+				}
 			}
 		}
 		// A file that one of its attachments attaches through the method is not "only the WordPress way".
 		$legacy = array_values( array_diff( array_keys( $legacy ), $attached ) );
+		// With both mechanisms in use, a file attached the WordPress way is attached to the post (the panel says how).
+		if ( $cohabit ) {
+			$attached = array_values( array_unique( array_merge( $attached, $legacy ) ) );
+		}
 
 		foreach ( $elsewhere as $path => $otherIds ) {
 			// With one post per media item, being attached here means not being attached to another post.

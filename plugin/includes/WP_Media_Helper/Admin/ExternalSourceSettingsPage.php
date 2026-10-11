@@ -242,6 +242,11 @@ class ExternalSourceSettingsPage {
 									<?php endforeach; ?>
 								</select>
 								<p class="description"><?php esc_html_e( 'Added by another plugin. WordPress attaches a media item to one post; a method can attach it to several posts, with more information.', 'wp-media-helper' ); ?></p>
+								<p>
+									<input type="hidden" name="general[attachment_cohabitation]" value="0" />
+									<label><input type="checkbox" name="general[attachment_cohabitation]" value="1" <?php checked( (bool) get_option( Methods::COHABITATION_OPTION, false ) ); ?> /> <?php esc_html_e( 'Keep the WordPress attachments too (cohabitation)', 'wp-media-helper' ); ?></label>
+								</p>
+								<p class="description"><?php esc_html_e( 'With the box checked both mechanisms are in use: the media attached the WordPress way count as attached, and a media item can be switched from one mechanism to the other. Without it, only the method chosen above counts.', 'wp-media-helper' ); ?></p>
 							</td>
 						</tr>
 						<?php endif; ?>
@@ -436,6 +441,9 @@ class ExternalSourceSettingsPage {
 			$this->loadGeneralSettings( true )->save( $general );
 			if ( is_array( $rawGeneral ) && isset( $rawGeneral['attachment_method'] ) && is_string( $rawGeneral['attachment_method'] ) && isset( Methods::all()[ $rawGeneral['attachment_method'] ] ) ) {
 				update_option( Methods::OPTION, $rawGeneral['attachment_method'] );
+			}
+			if ( is_array( $rawGeneral ) && isset( $rawGeneral['attachment_cohabitation'] ) ) {
+				update_option( Methods::COHABITATION_OPTION, '1' === (string) $rawGeneral['attachment_cohabitation'] );
 			}
 		} catch ( InvalidArgumentException $exception ) {
 			$this->redirectBackWithSubmission( $submitted, $exception->getMessage(), $submittedMaxEntries );

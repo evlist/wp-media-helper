@@ -21,6 +21,8 @@
 	const normalizeMethod = function ( method ) {
 		return {
 			id: method && method.id ? String( method.id ) : 'native',
+			label: method && method.label ? String( method.label ) : '',
+			cohabitation: !! ( method && method.cohabitation ),
 			multiple_posts: !! ( method && method.multiple_posts ),
 			fields: method && Array.isArray( method.fields ) ? method.fields : [],
 		};
@@ -37,6 +39,11 @@
 		{ value: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) },
 		{ value: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) },
 		{ value: 'convert', label: __( 'Convert to the attachment method', 'wp-media-helper' ) },
+		// With both mechanisms in use (cohabitation): the labels are completed with the name of the method.
+		{ value: 'attach_native', label: __( 'Attach (WordPress)', 'wp-media-helper' ) },
+		{ value: 'attach_method', label: __( 'Attach with the method…', 'wp-media-helper' ) },
+		{ value: 'to_method', label: __( 'Switch to the method…', 'wp-media-helper' ) },
+		{ value: 'to_native', label: __( 'Switch to WordPress', 'wp-media-helper' ) },
 		{ value: 'trash', label: __( 'Move to trash', 'wp-media-helper' ) },
 		{ value: 'restore', label: __( 'Restore from trash', 'wp-media-helper' ) },
 	];
@@ -443,7 +450,7 @@
 
 	const stateLabel = function ( item ) {
 		if ( item.attached_natively_only ) {
-			return __( 'Attached the WordPress way only (not converted)', 'wp-media-helper' );
+			return attachmentMethod.cohabitation ? __( 'Attached the WordPress way', 'wp-media-helper' ) : __( 'Attached the WordPress way only (not converted)', 'wp-media-helper' );
 		}
 
 		if ( attachmentMethod.multiple_posts ) {
@@ -972,12 +979,14 @@
 			const labels = [];
 			attachmentMethod.fields.forEach( function ( field ) {
 				const selected = filters.link && Array.isArray( filters.link[ field.key ] ) ? filters.link[ field.key ] : null;
-				if ( ! field.filter || ! selected || 1 !== selected.length || '_none' === selected[ 0 ] ) {
+				// The values of the field itself: `_native` and `_none` are not values to attach for.
+				const real = selected ? selected.filter( function ( value ) { return '_native' !== value && '_none' !== value; } ) : [];
+				if ( ! field.filter || 1 !== real.length ) {
 					return;
 				}
-				data[ field.key ] = 'multiselect' === field.type ? [ selected[ 0 ] ] : selected[ 0 ];
-				const option = field.options.filter( function ( candidate ) { return candidate.value === selected[ 0 ]; } )[ 0 ];
-				labels.push( option ? option.label : selected[ 0 ] );
+				data[ field.key ] = 'multiselect' === field.type ? [ real[ 0 ] ] : real[ 0 ];
+				const option = field.options.filter( function ( candidate ) { return candidate.value === real[ 0 ]; } )[ 0 ];
+				labels.push( option ? option.label : real[ 0 ] );
 			} );
 
 			return { data: data, labels: labels };
@@ -1087,13 +1096,16 @@
 					if ( result.attachment_id ) {
 						nextItem.attachment_ids = [ result.attachment_id ];
 					}
-					if ( 'converted' === result.operation ) {
-						nextItem.attached_natively_only = false;
+					if ( Object.prototype.hasOwnProperty.call( result, 'attached_natively_only' ) ) {
+						nextItem.attached_natively_only = !! result.attached_natively_only;
 					}
 					if ( result.attachment_data && 'object' === typeof result.attachment_data ) {
 						nextItem.attachment_data = result.attachment_data;
-					} else if ( Object.prototype.hasOwnProperty.call( result, 'is_attached_to_current_post' ) && ! result.is_attached_to_current_post ) {
+					} else if ( null === result.attachment_data || ( Object.prototype.hasOwnProperty.call( result, 'is_attached_to_current_post' ) && ! result.is_attached_to_current_post ) ) {
 						nextItem.attachment_data = null;
+					}
+					if ( Object.prototype.hasOwnProperty.call( result, 'is_attached_to_current_post' ) && ! result.is_attached_to_current_post ) {
+						nextItem.attached_natively_only = false;
 					}
 					if ( Object.prototype.hasOwnProperty.call( result, 'is_trashed' ) ) {
 						nextItem.is_trashed = !! result.is_trashed;
@@ -1155,8 +1167,27 @@
 				return;
 			}
 			const postId = getCurrentPostId();
-			if ( [ 'attach', 'detach', 'remove', 'convert' ].includes( bulkAction ) && 0 === postId ) {
+			if ( [ 'attach', 'detach', 'remove', 'convert', 'attach_native', 'attach_method', 'to_native', 'to_method' ].includes( bulkAction ) && 0 === postId ) {
 				setOperationNotice( __( 'Save the post before changing media attachments.', 'wp-media-helper' ) );
+				return;
+			}
+
+			// With both mechanisms in use, each action concerns the files that are in the right state.
+			const cohabFilters = {
+				attach_native: function ( item ) { return ! item.is_attached_to_current_post; },
+				attach_method: function ( item ) { return ! item.is_attached_to_current_post; },
+				to_method: function ( item ) { return item.is_attached_to_current_post && item.attached_natively_only; },
+				to_native: function ( item ) { return item.is_attached_to_current_post && ! item.attached_natively_only; },
+			};
+			if ( cohabFilters[ bulkAction ] ) {
+				selectedItems = selectedItems.filter( cohabFilters[ bulkAction ] );
+				if ( 0 === selectedItems.length ) {
+					setOperationNotice( __( 'None of the selected files is in the right state for this action.', 'wp-media-helper' ) );
+					return;
+				}
+			}
+			if ( [ 'attach_method', 'to_method' ].includes( bulkAction ) && attachmentMethod.fields.length > 0 ) {
+				askLinkValues( bulkAction, selectedItems );
 				return;
 			}
 
@@ -1165,7 +1196,7 @@
 				return;
 			}
 
-			runBulk( bulkAction, [ 'attach', 'convert' ].includes( bulkAction ) ? withLinkContext( selectedItems ) : selectedItems, postId );
+			runBulk( bulkAction, [ 'attach', 'convert', 'attach_method', 'to_method' ].includes( bulkAction ) ? withLinkContext( selectedItems ) : selectedItems, postId );
 		};
 
 		const runBulk = function ( action, selectedItems, postId ) {
@@ -1194,13 +1225,8 @@
 				handleFeature( item );
 				return;
 			}
-			if ( 'edit' === action ) {
-				const values = {};
-				attachmentMethod.fields.forEach( function ( field ) {
-					const stored = item.attachment_data && Object.prototype.hasOwnProperty.call( item.attachment_data, field.key ) ? item.attachment_data[ field.key ] : field.default;
-					values[ field.key ] = stored;
-				} );
-				setLinkEdit( { item: item, values: values } );
+			if ( 'edit' === action || 'attach_method' === action || 'to_method' === action ) {
+				askLinkValues( action, [ item ] );
 				return;
 			}
 			if ( 'unfeature' === action ) {
@@ -1208,7 +1234,7 @@
 				return;
 			}
 			const postId = getCurrentPostId();
-			if ( [ 'attach', 'detach', 'remove', 'update', 'convert' ].includes( action ) && 0 === postId ) {
+			if ( [ 'attach', 'detach', 'remove', 'update', 'convert', 'attach_native', 'attach_method', 'to_native', 'to_method' ].includes( action ) && 0 === postId ) {
 				setOperationNotice( __( 'Save the post before changing media attachments.', 'wp-media-helper' ) );
 				return;
 			}
@@ -1219,11 +1245,11 @@
 
 			setLoading( true );
 			setOperationNotice( null );
-			bulkMediaItems( action, [ 'attach', 'convert' ].includes( action ) ? withLinkContext( [ item ] ) : [ item ], postId )
+			bulkMediaItems( action, [ 'attach', 'convert', 'attach_method', 'to_method' ].includes( action ) ? withLinkContext( [ item ] ) : [ item ], postId )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
 						applyBulkResults( payload );
-						if ( [ 'attach', 'convert' ].includes( action ) && linkContext().labels.length > 0 ) {
+						if ( [ 'attach', 'convert', 'attach_method', 'to_method' ].includes( action ) && linkContext().labels.length > 0 ) {
 							announce( sprintf( __( 'Attached for: %s', 'wp-media-helper' ), linkContext().labels.join( ', ' ) ) );
 						}
 					} else {
@@ -1287,7 +1313,26 @@
 					? { action: 'unfeature', label: __( 'Remove featured image', 'wp-media-helper' ) }
 					: { action: 'feature', label: __( 'Set as featured image', 'wp-media-helper' ) } );
 			}
-			if ( ( ! blockedElsewhere( item ) ) && importable ) {
+			if ( attachmentMethod.cohabitation ) {
+				// Both mechanisms are in use: a file is attached the WordPress way or through the method, and can be switched.
+				if ( importable ) {
+					const methodName = attachmentMethod.label || __( 'the method', 'wp-media-helper' );
+					if ( ! item.is_attached_to_current_post ) {
+						actions.push( { action: 'attach_native', label: __( 'Attach (WordPress)', 'wp-media-helper' ) } );
+						actions.push( { action: 'attach_method', label: sprintf( __( 'Attach with %s…', 'wp-media-helper' ), methodName ) } );
+					} else if ( item.attached_natively_only ) {
+						actions.push( { action: 'to_method', label: sprintf( __( 'Switch to %s…', 'wp-media-helper' ), methodName ) } );
+					} else {
+						actions.push( { action: 'to_native', label: __( 'Switch to WordPress', 'wp-media-helper' ) } );
+					}
+					if ( item.is_attached_to_current_post ) {
+						actions.push( { action: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) } );
+					}
+				}
+				if ( importable && item.is_imported && ! item.is_attached_to_current_post ) {
+					actions.push( { action: 'remove', label: __( 'Remove from library', 'wp-media-helper' ) } );
+				}
+			} else if ( ( ! blockedElsewhere( item ) ) && importable ) {
 				if ( 'simple' === panelMode ) {
 					actions.push( item.is_attached_to_current_post
 						? { action: 'remove', label: __( 'Remove', 'wp-media-helper' ) }
@@ -1301,11 +1346,11 @@
 						: { action: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) } );
 				}
 			}
-			if ( item.attached_natively_only && 'native' !== attachmentMethod.id && importable ) {
+			if ( item.attached_natively_only && 'native' !== attachmentMethod.id && importable && ! attachmentMethod.cohabitation ) {
 				actions.push( { action: 'convert', label: __( 'Convert to the attachment method', 'wp-media-helper' ) } );
 			}
 			// The data of the link (modes, position...) that the method declares.
-			if ( attachmentMethod.fields.length > 0 && item.is_attached_to_current_post && importable ) {
+			if ( attachmentMethod.fields.length > 0 && item.is_attached_to_current_post && ! item.attached_natively_only && importable ) {
 				actions.push( { action: 'edit', label: __( 'Edit link…', 'wp-media-helper' ) } );
 			}
 			if ( canTrash ) {
@@ -1410,7 +1455,7 @@
 						? wp.element.createElement( CornerBadge, { icon: 'star-filled', label: __( 'Featured image', 'wp-media-helper' ), position: { left: '24px' }, colour: '#b8860b' } )
 						: null,
 					item.attached_natively_only
-						? wp.element.createElement( CornerBadge, { icon: 'update', label: stateLabel( item ), position: { bottom: '3px', right: '3px' }, colour: '#996800' } )
+						? wp.element.createElement( CornerBadge, { icon: attachmentMethod.cohabitation ? 'wordpress' : 'update', label: stateLabel( item ), position: { bottom: '3px', right: '3px' }, colour: attachmentMethod.cohabitation ? '#2271b1' : '#996800' } )
 						: null,
 					! item.can_import && ! item.is_imported
 						? wp.element.createElement( CornerBadge, { icon: 'warning', label: item.import_blocker || __( 'This file cannot be imported.', 'wp-media-helper' ), position: { bottom: '3px', left: '3px' }, colour: '#996800' } )
@@ -1537,18 +1582,49 @@
 			);
 		};
 
+		// The values of the fields of a link to ask for: those of the link when it is edited, else the selection of the field
+		// filters when it holds one value, else the defaults.
+		const askLinkValues = function ( action, items ) {
+			const context = linkContext().data;
+			const values = {};
+			attachmentMethod.fields.forEach( function ( field ) {
+				const first = items[ 0 ];
+				if ( 'edit' === action && 1 === items.length && first.attachment_data && Object.prototype.hasOwnProperty.call( first.attachment_data, field.key ) ) {
+					values[ field.key ] = first.attachment_data[ field.key ];
+				} else if ( Object.prototype.hasOwnProperty.call( context, field.key ) ) {
+					values[ field.key ] = context[ field.key ];
+				} else {
+					values[ field.key ] = field.default;
+				}
+			} );
+			setLinkEdit( { action: action, items: items, values: values } );
+		};
+
 		const renderLinkDialog = function () {
 			if ( ! linkEdit ) {
 				return null;
 			}
 
 			const close = function () { setLinkEdit( null ); };
+			const methodName = attachmentMethod.label || __( 'the method', 'wp-media-helper' );
+			const single = 1 === linkEdit.items.length ? linkEdit.items[ 0 ].name : '';
+			const titles = {
+				edit: sprintf( __( 'Link of %s with this post', 'wp-media-helper' ), single ),
+				attach_method: single ? sprintf( __( 'Attach %1$s with %2$s', 'wp-media-helper' ), single, methodName ) : sprintf( _n( 'Attach %1$d file with %2$s', 'Attach %1$d files with %2$s', linkEdit.items.length, 'wp-media-helper' ), linkEdit.items.length, methodName ),
+				to_method: single ? sprintf( __( 'Switch %1$s to %2$s', 'wp-media-helper' ), single, methodName ) : sprintf( _n( 'Switch %1$d file to %2$s', 'Switch %1$d files to %2$s', linkEdit.items.length, 'wp-media-helper' ), linkEdit.items.length, methodName ),
+			};
 			const save = function () {
-				const item = Object.assign( {}, linkEdit.item, { data: linkEdit.values } );
+				const request = linkEdit;
+				const items = request.items.map( function ( item ) { return Object.assign( {}, item, { data: request.values } ); } );
 				setLinkEdit( null );
+				if ( 'edit' !== request.action ) {
+					runBulk( request.action, items, getCurrentPostId() );
+					return;
+				}
+
 				setLoading( true );
 				setOperationNotice( null );
-				bulkMediaItems( 'update', [ item ], getCurrentPostId() )
+				bulkMediaItems( 'update', items, getCurrentPostId() )
 					.then( function ( payload ) {
 						const result = payload && payload.success && payload.data.results ? payload.data.results[ 0 ] : null;
 						if ( result && result.success ) {
@@ -1561,10 +1637,11 @@
 			};
 
 			return wp.element.createElement( Modal, {
-				title: sprintf( __( 'Link of %s with this post', 'wp-media-helper' ), linkEdit.item.name ),
+				title: titles[ linkEdit.action ] || titles.edit,
 				onRequestClose: close,
 				className: 'wpmh-link-dialog'
 			},
+				'edit' === linkEdit.action ? null : wp.element.createElement( 'p', { style: { fontSize: '12px', color: '#50575e' } }, __( 'Choose the values of the link.', 'wp-media-helper' ) ),
 				attachmentMethod.fields.map( function ( field ) {
 					return wp.element.createElement( FieldControl, {
 						key: field.key,
@@ -1579,7 +1656,7 @@
 				} ),
 				wp.element.createElement( 'div', { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end' } },
 					wp.element.createElement( Button, { isSecondary: true, onClick: close, text: __( 'Cancel', 'wp-media-helper' ) } ),
-					wp.element.createElement( Button, { isPrimary: true, onClick: save, text: __( 'Save', 'wp-media-helper' ) } )
+					wp.element.createElement( Button, { isPrimary: true, onClick: save, text: 'edit' === linkEdit.action ? __( 'Save', 'wp-media-helper' ) : __( 'Apply', 'wp-media-helper' ) } )
 				)
 			);
 		};
@@ -1687,7 +1764,15 @@
 		const checkedSourceIds = currentSourceFilter.includes( 'all' )
 			? availableSources.map( function ( source ) { return source.id; } )
 			: currentSourceFilter;
+		const methodName = attachmentMethod.label || __( 'the method', 'wp-media-helper' );
 		const visibleBulkActions = BULK_ACTIONS.filter( function ( action ) {
+			const cohabitationOnly = [ 'attach_native', 'attach_method', 'to_method', 'to_native' ].includes( action.value );
+			if ( cohabitationOnly ) {
+				return !! attachmentMethod.cohabitation;
+			}
+			if ( attachmentMethod.cohabitation && [ 'attach', 'convert', 'import' ].includes( action.value ) ) {
+				return false;
+			}
 			if ( 'convert' === action.value ) {
 				return 'advanced' === panelMode && 'native' !== attachmentMethod.id;
 			}
@@ -1699,6 +1784,15 @@
 			}
 
 			return 'advanced' === panelMode || [ 'attach', 'remove' ].includes( action.value );
+		} ).map( function ( action ) {
+			if ( 'attach_method' === action.value ) {
+				return Object.assign( {}, action, { label: sprintf( __( 'Attach with %s…', 'wp-media-helper' ), methodName ) } );
+			}
+			if ( 'to_method' === action.value ) {
+				return Object.assign( {}, action, { label: sprintf( __( 'Switch to %s…', 'wp-media-helper' ), methodName ) } );
+			}
+
+			return action;
 		} );
 		const emptyFilterLabels = {
 			source: __( 'Sources', 'wp-media-helper' ),
@@ -1791,13 +1885,15 @@
 							disabled: loading,
 							onChange: changeMediaType
 						} ),
-						attachmentMethod.fields.filter( function ( field ) { return field.filter; } ).map( function ( field ) {
-							const selected = filters.link && Array.isArray( filters.link[ field.key ] ) ? filters.link[ field.key ] : field.filter_default;
+						attachmentMethod.fields.filter( function ( field ) { return field.filter; } ).map( function ( field, index ) {
+							// With both mechanisms in use the first filter says which is shown: the WordPress way, and each value of the method.
+							const withNative = attachmentMethod.cohabitation && 0 === index;
+							const selected = filters.link && Array.isArray( filters.link[ field.key ] ) ? filters.link[ field.key ] : field.filter_default.concat( withNative ? [ '_native' ] : [] );
 
 							return wp.element.createElement( FilterCheckboxGroup, {
 								key: 'link-' + field.key,
-								label: field.label,
-								options: field.options.concat( [ { value: '_none', label: __( 'None', 'wp-media-helper' ) } ] ),
+								label: withNative ? __( 'Attached through', 'wp-media-helper' ) : field.label,
+								options: ( withNative ? [ { value: '_native', label: __( 'WordPress', 'wp-media-helper' ), icon: 'wordpress' } ] : [] ).concat( field.options ).concat( [ { value: '_none', label: __( 'None', 'wp-media-helper' ) } ] ),
 								selectedValues: selected,
 								disabled: loading,
 								onChange: function ( values ) { changeLinkFilter( field.key, values ); }
@@ -1861,7 +1957,7 @@
 									className: 'wp-media-helper-bulk-actions',
 									disabled: loading,
 									renderToggle: function ( { isOpen, onToggle } ) {
-										const selectedAction = BULK_ACTIONS.find( function ( action ) {
+										const selectedAction = visibleBulkActions.find( function ( action ) {
 											return action.value === bulkAction;
 										} );
 

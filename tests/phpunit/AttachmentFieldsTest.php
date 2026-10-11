@@ -155,4 +155,32 @@ class AttachmentFieldsTest extends TestCase {
 		$this->assertSame( [ 'free', 'elsewhere' ], $paths( [] ), 'Nothing selected hides the attached files only.' );
 		$this->assertSame( array_column( $items, 'path' ), $paths( [ 'web', 'print', '_none' ] ), 'Everything selected filters nothing.' );
 	}
+
+	public function test_with_both_mechanisms_the_first_filter_also_selects_the_wordpress_way(): void {
+		$fields = $this->modes();
+		$none   = static fn (): mixed => null;
+		$filters = \WP_Media_Helper\Admin\EditorMediaController::class;
+
+		$this->assertSame( [ 'modes' => [ 'web', '_native' ] ], $filters::normalizeLinkFilters( $fields, null, $none, true ), 'The default of the field, and the WordPress way.' );
+		$this->assertSame( [ 'modes' => [ 'web', '_native' ] ], $filters::normalizeLinkFilters( $fields, [ 'modes' => [ '_native', 'web' ] ], $none, true ), 'In the order of the options, then the WordPress way.' );
+		$this->assertSame( [ 'modes' => [ 'web', '_none', '_native' ] ], $filters::normalizeLinkFilters( $fields, [ 'modes' => [ 'web', '_none', '_native', 'zzz' ] ], $none, true ) );
+		$this->assertSame( [ 'modes' => [ 'web' ] ], $filters::normalizeLinkFilters( $fields, [ 'modes' => [ 'web', '_native' ] ], $none, false ), '`_native` is not a value without the cohabitation.' );
+	}
+
+	public function test_the_files_attached_the_wordpress_way_answer_the_native_value_only(): void {
+		$fields = $this->modes();
+		$items  = [
+			[ 'path' => 'native', 'is_attached_to_current_post' => true, 'attached_natively_only' => true ],
+			[ 'path' => 'web', 'is_attached_to_current_post' => true, 'attachment_data' => [ 'modes' => [ 'web' ] ] ],
+			[ 'path' => 'print', 'is_attached_to_current_post' => true, 'attachment_data' => [ 'modes' => [ 'print' ] ] ],
+			[ 'path' => 'free', 'is_attached_to_current_post' => false ],
+		];
+		$paths = static fn ( array $selection ): array => array_column( \WP_Media_Helper\Admin\MediaPanelState::filterByLinkFields( $items, $fields, [ 'modes' => $selection ], true ), 'path' );
+
+		$this->assertSame( [ 'native', 'free' ], $paths( [ '_native' ] ) );
+		$this->assertSame( [ 'web', 'free' ], $paths( [ 'web' ] ) );
+		$this->assertSame( [ 'native', 'web', 'free' ], $paths( [ 'web', '_native' ] ) );
+		$this->assertSame( array_column( $items, 'path' ), $paths( [ 'web', 'print', '_none', '_native' ] ) );
+		$this->assertSame( [ 'free' ], $paths( [] ) );
+	}
 }

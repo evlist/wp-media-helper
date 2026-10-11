@@ -34,7 +34,7 @@ class EditorPanel {
 			'fileTypes' => self::fileTypes(),
 			'date' => current_time( 'Y-m-d' ),
 			'panelMode' => EditorMediaController::normalizePanelMode( get_user_meta( get_current_user_id(), EditorMediaController::panelModeMetaKey, true ) ),
-			'attachmentMethod' => EditorMediaController::methodForPanel( Methods::active( $postId ) ),
+			'attachmentMethod' => EditorMediaController::methodForPanel( Methods::active( $postId ), Methods::cohabitation( $postId ) ),
 		];
 
 		/**
