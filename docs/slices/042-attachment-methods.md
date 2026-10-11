@@ -234,3 +234,16 @@ Asked by Eric: choosing the mode when attaching, and filtering the panel by mode
   `save_filter` with `link_modes`), like the other filters (slice 040).
 - Server: `Fields::normalize()` (`filter`, `filter_default`, `icon`, `icon_svg`), `EditorMediaController::normalizeLinkFilters()`,
   `MediaPanelState::filterByLinkFields()`. Tested with stubs and in Chromium with a mocked server; not tried on a real site.
+
+## Step 6: converting what is attached the WordPress way (panel side)
+
+When the active method is not `native`, a file attached to the current post only through `post_parent` (the method's `describe()`
+says it is not attached here, `native` says it is) is marked in the panel: item field `attached_natively_only`, a badge at the
+bottom right of the tile, the state "Attached the WordPress way only (not converted)", and the action **Convert to the attachment
+method** (menu, sheet, and a bulk action in the advanced mode). The action `convert` (AJAX `bulk_media`) calls `Method::attach()`
+for those attachments with the data of the browser (the mode selected in a field filter, see step 5) or the defaults of the fields,
+fires `wp_media_helper_attached` and answers `converted`. `post_parent` is not touched by Media Helper; the method decides what it
+does with it. A method whose reading already includes the native links (the union proposed to Otherguise) never shows the badge.
+Not done: a count in the settings of the media attached the WordPress way (it needs the method to know all its links, and a
+query on the whole site); the migration of everything at once is the job of the method's plugin. Tested with stubs and in
+Chromium with a mocked server.

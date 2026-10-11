@@ -227,6 +227,29 @@ class MediaPanelState {
 	}
 
 	/**
+	 * Marks the files that are attached to the current post only the WordPress way (`post_parent`) while another attachment
+	 * method is in use: the method does not know them yet, and the panel offers to convert them.
+	 *
+	 * @param array<int, array<string, mixed>> $items
+	 * @param string[]                         $paths Paths of the listed items.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function setNativeOnly( array $items, array $paths ): array {
+		if ( [] === $paths ) {
+			return $items;
+		}
+
+		$known = array_flip( $paths );
+		foreach ( $items as $index => $item ) {
+			if ( is_array( $item ) && isset( $known[ (string) ( $item['path'] ?? '' ) ] ) ) {
+				$items[ $index ]['attached_natively_only'] = true;
+			}
+		}
+
+		return $items;
+	}
+
+	/**
 	 * Gives the files attached to the current post the data of their link (the declared fields of the
 	 * attachment method: modes, position...), to show and to edit.
 	 *

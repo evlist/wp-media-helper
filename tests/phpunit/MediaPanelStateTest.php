@@ -601,4 +601,12 @@ class MediaPanelStateTest extends TestCase {
 		$this->assertTrue( $described['multiple_posts'] );
 		$this->assertSame( [ 'position' ], array_column( $described['fields'], 'key' ) );
 	}
+
+	public function test_the_files_attached_only_the_wordpress_way_are_marked(): void {
+		$items = MediaPanelState::setNativeOnly( [ [ 'path' => '/u/a.jpg' ], [ 'path' => '/u/b.jpg' ] ], [ '/u/b.jpg' ] );
+
+		$this->assertArrayNotHasKey( 'attached_natively_only', $items[0] );
+		$this->assertTrue( $items[1]['attached_natively_only'] );
+		$this->assertSame( [ [ 'path' => '/u/a.jpg' ] ], MediaPanelState::setNativeOnly( [ [ 'path' => '/u/a.jpg' ] ], [] ) );
+	}
 }

@@ -36,6 +36,7 @@
 		{ value: 'remove', label: __( 'Remove', 'wp-media-helper' ) },
 		{ value: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) },
 		{ value: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) },
+		{ value: 'convert', label: __( 'Convert to the attachment method', 'wp-media-helper' ) },
 		{ value: 'trash', label: __( 'Move to trash', 'wp-media-helper' ) },
 		{ value: 'restore', label: __( 'Restore from trash', 'wp-media-helper' ) },
 	];
@@ -161,6 +162,7 @@
 			other_posts: item && Array.isArray( item.other_posts ) ? item.other_posts : [],
 			other_posts_count: item && item.other_posts_count ? item.other_posts_count : 0,
 			attachment_data: item && item.attachment_data && 'object' === typeof item.attachment_data ? item.attachment_data : null,
+			attached_natively_only: !! ( item && item.attached_natively_only ),
 			other_post_edit_url: item && item.other_post_edit_url ? item.other_post_edit_url : '',
 			media_type: item && item.media_type ? item.media_type : 'other',
 			can_import: ! ( item && false === item.can_import ),
@@ -440,6 +442,10 @@
 	};
 
 	const stateLabel = function ( item ) {
+		if ( item.attached_natively_only ) {
+			return __( 'Attached the WordPress way only (not converted)', 'wp-media-helper' );
+		}
+
 		if ( attachmentMethod.multiple_posts ) {
 			if ( item.is_attached_to_current_post ) {
 				return item.is_attached_to_other_post ? __( 'Attached to this post and to others', 'wp-media-helper' ) : __( 'Attached to this post', 'wp-media-helper' );
@@ -1081,6 +1087,9 @@
 					if ( result.attachment_id ) {
 						nextItem.attachment_ids = [ result.attachment_id ];
 					}
+					if ( 'converted' === result.operation ) {
+						nextItem.attached_natively_only = false;
+					}
 					if ( result.attachment_data && 'object' === typeof result.attachment_data ) {
 						nextItem.attachment_data = result.attachment_data;
 					} else if ( Object.prototype.hasOwnProperty.call( result, 'is_attached_to_current_post' ) && ! result.is_attached_to_current_post ) {
@@ -1146,7 +1155,7 @@
 				return;
 			}
 			const postId = getCurrentPostId();
-			if ( [ 'attach', 'detach', 'remove' ].includes( bulkAction ) && 0 === postId ) {
+			if ( [ 'attach', 'detach', 'remove', 'convert' ].includes( bulkAction ) && 0 === postId ) {
 				setOperationNotice( __( 'Save the post before changing media attachments.', 'wp-media-helper' ) );
 				return;
 			}
@@ -1156,7 +1165,7 @@
 				return;
 			}
 
-			runBulk( bulkAction, 'attach' === bulkAction ? withLinkContext( selectedItems ) : selectedItems, postId );
+			runBulk( bulkAction, [ 'attach', 'convert' ].includes( bulkAction ) ? withLinkContext( selectedItems ) : selectedItems, postId );
 		};
 
 		const runBulk = function ( action, selectedItems, postId ) {
@@ -1199,7 +1208,7 @@
 				return;
 			}
 			const postId = getCurrentPostId();
-			if ( [ 'attach', 'detach', 'remove', 'update' ].includes( action ) && 0 === postId ) {
+			if ( [ 'attach', 'detach', 'remove', 'update', 'convert' ].includes( action ) && 0 === postId ) {
 				setOperationNotice( __( 'Save the post before changing media attachments.', 'wp-media-helper' ) );
 				return;
 			}
@@ -1210,11 +1219,11 @@
 
 			setLoading( true );
 			setOperationNotice( null );
-			bulkMediaItems( action, 'attach' === action ? withLinkContext( [ item ] ) : [ item ], postId )
+			bulkMediaItems( action, [ 'attach', 'convert' ].includes( action ) ? withLinkContext( [ item ] ) : [ item ], postId )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
 						applyBulkResults( payload );
-						if ( 'attach' === action && linkContext().labels.length > 0 ) {
+						if ( [ 'attach', 'convert' ].includes( action ) && linkContext().labels.length > 0 ) {
 							announce( sprintf( __( 'Attached for: %s', 'wp-media-helper' ), linkContext().labels.join( ', ' ) ) );
 						}
 					} else {
@@ -1291,6 +1300,9 @@
 						? { action: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) }
 						: { action: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) } );
 				}
+			}
+			if ( item.attached_natively_only && 'native' !== attachmentMethod.id && importable ) {
+				actions.push( { action: 'convert', label: __( 'Convert to the attachment method', 'wp-media-helper' ) } );
 			}
 			// The data of the link (modes, position...) that the method declares.
 			if ( attachmentMethod.fields.length > 0 && item.is_attached_to_current_post && importable ) {
@@ -1396,6 +1408,9 @@
 						: null,
 					isFeatured( item )
 						? wp.element.createElement( CornerBadge, { icon: 'star-filled', label: __( 'Featured image', 'wp-media-helper' ), position: { left: '24px' }, colour: '#b8860b' } )
+						: null,
+					item.attached_natively_only
+						? wp.element.createElement( CornerBadge, { icon: 'update', label: stateLabel( item ), position: { bottom: '3px', right: '3px' }, colour: '#996800' } )
 						: null,
 					! item.can_import && ! item.is_imported
 						? wp.element.createElement( CornerBadge, { icon: 'warning', label: item.import_blocker || __( 'This file cannot be imported.', 'wp-media-helper' ), position: { bottom: '3px', left: '3px' }, colour: '#996800' } )
@@ -1673,6 +1688,9 @@
 			? availableSources.map( function ( source ) { return source.id; } )
 			: currentSourceFilter;
 		const visibleBulkActions = BULK_ACTIONS.filter( function ( action ) {
+			if ( 'convert' === action.value ) {
+				return 'advanced' === panelMode && 'native' !== attachmentMethod.id;
+			}
 			if ( 'trash' === action.value ) {
 				return canTrash;
 			}

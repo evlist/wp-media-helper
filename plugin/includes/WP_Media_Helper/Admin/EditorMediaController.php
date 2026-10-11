@@ -10,6 +10,7 @@ use DateTimeImmutable;
 use WP_Media_Helper\Attachment\Fields;
 use WP_Media_Helper\Attachment\Method;
 use WP_Media_Helper\Attachment\Methods;
+use WP_Media_Helper\Attachment\NativeMethod;
 use WP_Media_Helper\MediaSource\AttachmentRegistrar;
 use WP_Media_Helper\MediaSource\AttachmentRegistry;
 use WP_Media_Helper\MediaSource\FileTypes;
@@ -415,7 +416,7 @@ class EditorMediaController {
 		$encodedItems = wp_unslash( $_POST['items'] ?? '' );
 		$items = is_string( $encodedItems ) ? json_decode( $encodedItems, true ) : [];
 
-		if ( ! in_array( $action, [ 'import', 'remove', 'attach', 'detach', 'update', 'trash', 'restore' ], true ) ) {
+		if ( ! in_array( $action, [ 'import', 'remove', 'attach', 'detach', 'update', 'convert', 'trash', 'restore' ], true ) ) {
 			wp_send_json_error( [ 'message' => 'The requested bulk action is not supported.' ], 400 );
 		}
 
@@ -427,7 +428,7 @@ class EditorMediaController {
 			wp_send_json_error( [ 'message' => 'Unauthorized' ], 403 );
 		}
 
-		if ( in_array( $action, [ 'attach', 'detach', 'remove', 'update' ], true ) && ( 0 === $postId || ! get_post( $postId ) || ! current_user_can( 'edit_post', $postId ) ) ) {
+		if ( in_array( $action, [ 'attach', 'detach', 'remove', 'update', 'convert' ], true ) && ( 0 === $postId || ! get_post( $postId ) || ! current_user_can( 'edit_post', $postId ) ) ) {
 			wp_send_json_error( [ 'message' => 'The current post must be saved before media can be changed.' ], 400 );
 		}
 
@@ -600,6 +601,11 @@ class EditorMediaController {
 			}
 
 			$rows = $registry->findByPath( $item['path'] );
+			if ( 'convert' === $action ) {
+				$results[] = $this->convertLink( $method, $fields, $rows, $postId, $item, $result );
+				continue;
+			}
+
 			if ( 'update' === $action ) {
 				$results[] = $this->updateLink( $method, $fields, $rows, $postId, $item, $result );
 				continue;
@@ -706,6 +712,55 @@ class EditorMediaController {
 		}
 
 		return $detached;
+	}
+
+	/**
+	 * Makes the method in use know the links that exist only through `post_parent` (the action `convert`, slice 042):
+	 * a file attached to the current post the WordPress way is attached again through the method, with the data of the
+	 * browser or the defaults of its fields. `post_parent` is not touched here; what the method does with it is its business.
+	 *
+	 * @param array<int, array<string, mixed>>                          $fields
+	 * @param array<int, array{id:int, parent:int, owned:bool}>         $rows
+	 * @param array{id:string, path:string, data?:array<string, mixed>} $item
+	 * @param array<string, mixed>                                      $result
+	 * @return array<string, mixed>
+	 */
+	private function convertLink( Method $method, array $fields, array $rows, int $postId, array $item, array $result ): array {
+		$ids       = array_map( static fn ( array $row ): int => (int) $row['id'], $rows );
+		$native    = ( new NativeMethod() )->describe( $ids, $postId );
+		$current   = $method->describe( $ids, $postId );
+		$data      = Fields::sanitize( $fields, $item['data'] ?? null, true );
+		$converted = [];
+		foreach ( $ids as $attachmentId ) {
+			if ( empty( $native[ $attachmentId ]['attached_here'] ) || ! empty( $current[ $attachmentId ]['attached_here'] ) ) {
+				continue;
+			}
+
+			$done = $method->attach( $attachmentId, $postId, $data );
+			if ( is_wp_error( $done ) ) {
+				$result['message'] = $done->get_error_message();
+
+				return $result;
+			}
+
+			$converted[] = $attachmentId;
+			do_action( 'wp_media_helper_attached', $attachmentId, $postId, $method->id(), $data );
+		}
+
+		if ( [] === $converted ) {
+			$result['message'] = __( 'Nothing to convert: this media is not attached to the current post the WordPress way only.', 'wp-media-helper' );
+
+			return $result;
+		}
+
+		$after                                 = $method->describe( $converted, $postId );
+		$result['success']                     = true;
+		$result['is_imported']                 = true;
+		$result['is_attached_to_current_post'] = true;
+		$result['attachment_data']             = $after[ $converted[0] ]['data'] ?? $data;
+		$result['operation']                   = 'converted';
+
+		return $result;
 	}
 
 	/**
@@ -888,6 +943,7 @@ class EditorMediaController {
 		$merged['files'] = MediaPanelState::setOtherPostState( $merged['files'], $attachmentStates['other_post_by_path'] );
 		$merged['files'] = MediaPanelState::setAttachmentIds( $merged['files'], $attachmentStates['attachment_ids'] );
 		$merged['files'] = MediaPanelState::setAttachmentData( $merged['files'], $attachmentStates['data_by_path'] );
+		$merged['files'] = MediaPanelState::setNativeOnly( $merged['files'], $attachmentStates['legacy_paths'] );
 		$merged['files'] = MediaPanelState::filterByLinkFields( $merged['files'], $linkFields, $filters['link'] );
 		$merged['files'] = MediaPanelState::filterByAttachmentScope( $merged['files'], $filters['attachment_scope'] );
 		$merged['files'] = MediaPanelState::filterByMediaType( $merged['files'], $filters['media_type'] );
@@ -1038,6 +1094,9 @@ class EditorMediaController {
 		$multiple  = ! empty( $method->capabilities()['multiple_posts'] );
 		$described = $method->describe( $ids, $postId );
 		$elsewhere = [];
+		// With a method other than the native one, files attached only the WordPress way (`post_parent`) are marked.
+		$nativeHere = NativeMethod::ID === $method->id() ? [] : ( new NativeMethod() )->describe( $ids, $postId );
+		$legacy     = [];
 
 		foreach ( $statesByPath as $path => $rows ) {
 			$path = (string) $path;
@@ -1055,8 +1114,13 @@ class EditorMediaController {
 				foreach ( $state['elsewhere'] as $otherId ) {
 					$elsewhere[ $path ][] = (int) $otherId;
 				}
+				if ( ! $state['attached_here'] && ! empty( $nativeHere[ (int) $row['id'] ]['attached_here'] ) ) {
+					$legacy[ $path ] = true;
+				}
 			}
 		}
+		// A file that one of its attachments attaches through the method is not "only the WordPress way".
+		$legacy = array_values( array_diff( array_keys( $legacy ), $attached ) );
 
 		foreach ( $elsewhere as $path => $otherIds ) {
 			// With one post per media item, being attached here means not being attached to another post.
@@ -1073,6 +1137,7 @@ class EditorMediaController {
 			'other_post_by_path' => $otherPostByPath,
 			'attachment_ids' => $attachmentIds,
 			'data_by_path' => $dataByPath,
+			'legacy_paths' => $legacy,
 		];
 	}
 }
