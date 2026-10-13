@@ -28,6 +28,17 @@ namespace WP_Media_Helper\Attachment {
 	}
 }
 
+namespace WP_Media_Helper\Blocks {
+
+	function get_the_ID() {
+		return $GLOBALS['wpmh_test_loop_post'] ?? false;
+	}
+
+	function get_block_wrapper_attributes(): string {
+		return 'class="wp-block-wp-media-helper-gallery"';
+	}
+}
+
 namespace {
 
 	use PHPUnit\Framework\TestCase;
@@ -305,6 +316,115 @@ namespace {
 			] );
 
 			$this->assertSame( '<a href="https://e.test/wp-admin/post.php?post=1&amp;action=edit">Trip &lt;1&gt;</a><br /><span>Other</span><br /><span>(no title)</span>', $html );
+		}
+
+		private function methodWith( array $attached, array $knownHere ): Method {
+			return new class( $attached, $knownHere ) implements Method {
+				private array $attached;
+				private array $knownHere;
+
+				public function __construct( array $attached, array $knownHere ) {
+					$this->attached  = $attached;
+					$this->knownHere = $knownHere;
+				}
+				public function id(): string {
+					return 'mine';
+				}
+				public function label(): string {
+					return 'Mine';
+				}
+				public function capabilities(): array {
+					return [ 'multiple_posts' => true, 'fields' => [] ];
+				}
+				public function describe( array $attachmentIds, int $postId ): array {
+					$described = [];
+					foreach ( $attachmentIds as $id ) {
+						$described[ $id ] = [ 'attached_here' => in_array( $id, $this->knownHere, true ), 'elsewhere' => [], 'protected' => null, 'data' => [] ];
+					}
+
+					return $described;
+				}
+				public function attach( int $attachmentId, int $postId, array $data ) {
+					return true;
+				}
+				public function detach( int $attachmentId, int $postId ) {
+					return true;
+				}
+				public function update( int $attachmentId, int $postId, array $data ) {
+					return true;
+				}
+				public function attached( int $postId, array $args ): array {
+					return $this->attached;
+				}
+				public function posts_of( array $attachmentIds ): array {
+					return [];
+				}
+				public function may_remove( int $attachmentId, string $context = 'remove' ) {
+					return true;
+				}
+			};
+		}
+
+		private function useMethod( Method $method, bool $cohabitation ): void {
+			$GLOBALS['wpmh_test_filters']['wp_media_helper_attachment_methods'][] = static function ( array $methods ) use ( $method ): array {
+				$methods['mine'] = $method;
+
+				return $methods;
+			};
+			$GLOBALS['wpmh_test_options'][ Methods::OPTION ]               = 'mine';
+			$GLOBALS['wpmh_test_options'][ Methods::COHABITATION_OPTION ] = $cohabitation;
+		}
+
+		public function test_with_both_mechanisms_the_wordpress_links_unknown_to_the_method_are_read_when_no_context_is_asked(): void {
+			// The method has 5, and knows 30 (the native stub returns 31 and 30).
+			$this->useMethod( $this->methodWith( [ 5, 30 ], [ 30 ] ), true );
+
+			$this->assertSame( [ 5, 30, 31 ], wp_media_helper_get_attached_media( 7, [ 'mime_type' => 'image' ] ) );
+			$this->assertSame( [ 5, 30 ], wp_media_helper_get_attached_media( 7, [ 'context' => 'print' ] ), 'A WordPress link says nothing about a context.' );
+
+			$GLOBALS['wpmh_test_filters']['wp_media_helper_native_links_in_context'][] = static fn ( bool $include, string $context ): bool => $include || 'web' === $context;
+			$this->assertSame( [ 5, 30, 31 ], wp_media_helper_get_attached_media( 7, [ 'context' => 'web' ] ), 'A plugin may say that they count for the default mode.' );
+			$this->assertSame( [ 5, 30 ], wp_media_helper_get_attached_media( 7, [ 'context' => 'print' ] ) );
+		}
+
+		public function test_without_the_cohabitation_only_the_method_is_read(): void {
+			$this->useMethod( $this->methodWith( [ 5 ], [] ), false );
+
+			$this->assertSame( [ 5 ], wp_media_helper_get_attached_media( 7, [] ) );
+		}
+
+		public function test_the_gallery_block_hands_the_attached_images_to_the_wordpress_gallery(): void {
+			$seen = null;
+			$html = \WP_Media_Helper\Blocks\GalleryBlock::render( [], 7, static function ( array $attributes ) use ( &$seen ): string {
+				$seen = $attributes;
+
+				return '<figure>gallery</figure>';
+			} );
+
+			$this->assertSame( '<div class="wp-block-wp-media-helper-gallery"><figure>gallery</figure></div>', $html );
+			$this->assertSame( [ 'id' => 7, 'ids' => '31,30', 'columns' => 2, 'size' => 'gallery', 'link' => 'file' ], $seen, 'The attributes of today\'s gallery.' );
+		}
+
+		public function test_the_gallery_block_takes_the_post_of_the_loop_and_cleans_its_attributes(): void {
+			$GLOBALS['wpmh_test_loop_post'] = 12;
+			$seen = null;
+			\WP_Media_Helper\Blocks\GalleryBlock::render( [ 'columns' => 50, 'size' => '', 'link' => 'evil' ], 0, static function ( array $attributes ) use ( &$seen ): string {
+				$seen = $attributes;
+
+				return '';
+			} );
+
+			$this->assertSame( 12, $seen['id'] );
+			$this->assertSame( [ 9, 'gallery', 'file' ], [ $seen['columns'], $seen['size'], $seen['link'] ] );
+			unset( $GLOBALS['wpmh_test_loop_post'] );
+			$this->assertSame( '', \WP_Media_Helper\Blocks\GalleryBlock::render( [], 0, static fn (): string => 'never' ), 'No post: nothing.' );
+		}
+
+		public function test_the_gallery_block_asks_for_the_context_and_shows_nothing_without_images(): void {
+			$this->useMethod( $this->methodWith( [], [] ), false );
+			$GLOBALS['wpmh_test_filters']['wp_media_helper_gallery_context'][] = static fn ( string $context ): string => 'print';
+
+			$this->assertSame( '', \WP_Media_Helper\Blocks\GalleryBlock::render( [], 7, static fn (): string => 'never' ), 'No image: no gallery, no wrapper.' );
 		}
 	}
 }

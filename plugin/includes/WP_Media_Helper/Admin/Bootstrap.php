@@ -22,5 +22,6 @@ class Bootstrap {
 		new Thumbnails();
 		new PostDateMeta();
 		new MediaLibraryColumn();
+		new \WP_Media_Helper\Blocks\GalleryBlock();
 	}
 }

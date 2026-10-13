@@ -1,0 +1,32 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "wp-media-helper/gallery",
+	"version": "0.1.0",
+	"title": "Attached images gallery",
+	"category": "media",
+	"icon": "format-gallery",
+	"description": "The standard WordPress gallery of the images attached to the post, for the mode of the page when there is one.",
+	"keywords": [ "gallery", "images", "attached" ],
+	"textdomain": "wp-media-helper",
+	"usesContext": [ "postId" ],
+	"supports": {
+		"html": false
+	},
+	"attributes": {
+		"columns": {
+			"type": "number",
+			"default": 2
+		},
+		"size": {
+			"type": "string",
+			"default": "gallery"
+		},
+		"link": {
+			"type": "string",
+			"default": "file"
+		}
+	},
+	"editorScript": "file:./editor.js",
+	"render": "file:./render.php"
+}
