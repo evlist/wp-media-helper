@@ -14,8 +14,9 @@ gallery (`gallery_shortcode()`) with the images of the post:
 
 - the images come from `wp_media_helper_get_attached_media( $post, [ 'mime_type' => 'image', 'context' => <context> ] )`, so from the
   attachment method in use for the post (with the native method: `get_attached_media( 'image' )`);
-- the **context** is the mode of the page when the plugin Otherguise is active (`modes_active_mode()`, tested with
-  `function_exists()`), nothing otherwise; the filter `wp_media_helper_gallery_context( $context, $postId )` can set it;
+- the **context** is the slug of the mode of the page when the plugin Otherguise is active, nothing otherwise. It is asked with the
+  filter `modes_active_mode` that Otherguise answers (`apply_filters( 'modes_active_mode', '' )`; the PHP function of the same name
+  returns an object, not a slug, and is not used); the filter `wp_media_helper_gallery_context( $context, $postId )` can set it;
 - the post is the one of the block context (`postId`), else the one of the loop (`get_the_ID()`);
 - the order is the one of the standard gallery given `ids`: `menu_order`, then ID. **Unchanged on purpose**; ordering by date taken is a
   later, visible change (it is part of the sorting of slice 038, which also has to say what a gallery order means for a post);

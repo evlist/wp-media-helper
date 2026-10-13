@@ -426,5 +426,29 @@ namespace {
 
 			$this->assertSame( '', \WP_Media_Helper\Blocks\GalleryBlock::render( [], 7, static fn (): string => 'never' ), 'No image: no gallery, no wrapper.' );
 		}
+
+		public function test_the_gallery_block_asks_the_mode_of_the_page_through_the_filter_of_otherguise(): void {
+			$this->useMethod( $this->methodWith( [ 8 ], [] ), false );
+			$seen = null;
+			// Seen by the filter that can still change it, after the one of Otherguise has answered.
+			$GLOBALS['wpmh_test_filters']['wp_media_helper_gallery_context'][] = static function ( string $context ) use ( &$seen ): string {
+				$seen = $context;
+
+				return $context;
+			};
+			$render = static fn () => \WP_Media_Helper\Blocks\GalleryBlock::render( [], 7, static fn (): string => '<i/>' );
+
+			$GLOBALS['wpmh_test_filters']['modes_active_mode'] = [ static fn ( $default ): string => 'print' ];
+			$render();
+			$this->assertSame( 'print', $seen, 'The slug of the mode, from the filter of Otherguise.' );
+
+			$GLOBALS['wpmh_test_filters']['modes_active_mode'] = [ static fn (): object => new \stdClass() ];
+			$render();
+			$this->assertSame( '', $seen, 'Anything that is not a string gives no context.' );
+
+			$GLOBALS['wpmh_test_filters']['modes_active_mode'] = [];
+			$render();
+			$this->assertSame( '', $seen, 'Without Otherguise: no context.' );
+		}
 	}
 }

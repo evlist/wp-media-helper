@@ -58,11 +58,13 @@ final class GalleryBlock {
 	}
 
 	/**
-	 * What the attachments are asked for: the mode of the page when Otherguise is active, nothing otherwise. The filter
-	 * `wp_media_helper_gallery_context` can set it (the ID of the post is the second argument).
+	 * What the attachments are asked for: the slug of the mode of the page when Otherguise is active, nothing otherwise. Otherguise
+	 * answers the filter `modes_active_mode` (the PHP function of the same name returns an object, not a slug, and is not used).
+	 * The filter `wp_media_helper_gallery_context` can set it (the ID of the post is the second argument).
 	 */
 	private static function context( int $postId ): string {
-		$context = function_exists( 'modes_active_mode' ) ? (string) modes_active_mode() : '';
+		$mode    = apply_filters( 'modes_active_mode', '' );
+		$context = is_string( $mode ) ? $mode : '';
 
 		return (string) apply_filters( 'wp_media_helper_gallery_context', $context, $postId );
 	}
