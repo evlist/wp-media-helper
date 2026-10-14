@@ -43,5 +43,6 @@
 		}
 	},
 	"editorScript": "file:./editor.js",
+	"style": "file:./style.css",
 	"render": "file:./render.php"
 }

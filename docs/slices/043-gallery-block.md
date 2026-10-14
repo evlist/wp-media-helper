@@ -34,6 +34,8 @@ gallery (`gallery_shortcode()`) with the images of the post:
 
 ## Wrapper class and CSS
 
+The block has its own stylesheet (`blocks/gallery/style.css`, loaded with the block): `.wp-block-wp-media-helper-gallery .gallery figure img { aspect-ratio: 16 / 9; object-fit: cover }`, the rule of the old block (its `style.scss`: `.gallery figure img { object-fit: cover; aspect-ratio: 16/9 }`, which applied to every gallery of a page that had the block). Without it a vertical photo, whose thumbnail file is portrait although its name says 480x270, is squeezed into 480 x 270 instead of cropped (seen on the testing site, same files and same HTML as production). The rule is limited to the gallery of the block: another gallery of the same page is no longer cropped.
+
 The theme must replace `.wp-block-wpprg-wp-printable-gallery` by **`.wp-block-wp-media-helper-gallery`** (for example the rule
 `margin-top: 0 !important` of `modes/print.css`), and the block name `wpprg/wp-printable-gallery` by `wp-media-helper/gallery` in
 the templates.

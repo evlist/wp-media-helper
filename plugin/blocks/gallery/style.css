@@ -1,0 +1,13 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Eric van der Vlist <vdv@dyomedea.com>
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+/*
+ * The thumbnails of the gallery are 16/9 whatever the photo: a vertical photo is cropped, not squeezed. This is the rule of the
+ * block that this one replaces (wp-printable-gallery), limited to the gallery of this block.
+ */
+.wp-block-wp-media-helper-gallery .gallery figure img {
+	aspect-ratio: 16 / 9;
+	object-fit: cover;
+}
