@@ -44,8 +44,8 @@ the attachment the date and the metadata that the plugin gives to the files it r
 5. **Scope guards**: only a new attachment created by an upload (a file in uploads, MIME type of a media the plugin can read),
    never one registered by the plugin (it already carries its date and would be resolved twice), never an update of an
    existing attachment, never a `post_date` given explicitly by the caller (REST or code passing a date keeps it).
-6. **Existing attachments**: not touched. A bulk *"Set date from metadata"* action on selected attachments is possible later
-   and belongs to 026 (*Set date*), not here.
+6. **Existing attachments**: not touched here. A tool and a WP-CLI command redate them: [047](047-redate-existing-attachments.md), for
+   those attached through Otherguise: [048](048-redate-attachments-of-other-methods.md).
 
 ## Open questions
 
@@ -62,7 +62,7 @@ the attachment the date and the metadata that the plugin gives to the files it r
 ## Non-goals
 
 - Changing the title, the slug or the file name of an upload.
-- Dating attachments that already exist.
+- Dating attachments that already exist (047, 048).
 - A date model for uploads based on patterns (possible later, with a per-site pattern list).
 
 ## Acceptance criteria
