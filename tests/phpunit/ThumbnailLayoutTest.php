@@ -54,4 +54,18 @@ class ThumbnailLayoutTest extends TestCase {
 		);
 		$this->assertNull( ThumbnailLayout::url( '/var/u', 'https://e.test/u', '/var/elsewhere/a.jpg' ) );
 	}
+
+	public function test_the_size_chosen_by_wordpress_for_dimensions_is_found_again_by_its_file_name(): void {
+		$metadata = [ 'sizes' => [
+			'thumbnail' => [ 'file' => 'photo-150x150.jpg', 'width' => 150, 'height' => 150 ],
+			'medium'    => [ 'file' => 'photo-300x169.jpg', 'width' => 300, 'height' => 169 ],
+			'broken'    => 'not an entry',
+		] ];
+
+		$this->assertSame( 'thumbnail', ThumbnailLayout::sizeNameForFile( $metadata, 'photo-150x150.jpg' ) );
+		$this->assertSame( 'medium', ThumbnailLayout::sizeNameForFile( $metadata, 'photo-300x169.jpg' ) );
+		$this->assertNull( ThumbnailLayout::sizeNameForFile( $metadata, 'photo-1x1.jpg' ) );
+		$this->assertNull( ThumbnailLayout::sizeNameForFile( $metadata, '' ) );
+		$this->assertNull( ThumbnailLayout::sizeNameForFile( [], 'photo-150x150.jpg' ) );
+	}
 }

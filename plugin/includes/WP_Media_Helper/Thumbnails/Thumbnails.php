@@ -87,7 +87,7 @@ final class Thumbnails {
 	 * @return mixed
 	 */
 	public function downsize( $out, $attachmentId, $size ) {
-		if ( false !== $out || ! is_string( $size ) || 'full' === $size ) {
+		if ( false !== $out || 'full' === $size || ( ! is_string( $size ) && ! is_array( $size ) ) ) {
 			return $out;
 		}
 
@@ -97,6 +97,18 @@ final class Thumbnails {
 		$metadata = wp_get_attachment_metadata( $attachmentId );
 		if ( null === $service || null === $relative || ! is_array( $metadata ) ) {
 			return $out;
+		}
+
+		// A size given as `[ width, height ]` (the thumbnails of the media library, 60 x 60): WordPress chooses a size of the
+		// metadata by its dimensions and then builds the address next to the original, ignoring the cache. The size chosen is
+		// found again by its file name and handled as a named size.
+		if ( is_array( $size ) ) {
+			$intermediate = image_get_intermediate_size( $attachmentId, $size );
+			$name         = is_array( $intermediate ) && isset( $intermediate['file'] ) ? ThumbnailLayout::sizeNameForFile( $metadata, (string) $intermediate['file'] ) : null;
+			if ( null === $name ) {
+				return $out;
+			}
+			$size = $name;
 		}
 
 		$entry = $metadata['sizes'][ $size ] ?? null;

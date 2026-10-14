@@ -74,6 +74,23 @@ final class ThumbnailLayout {
 	}
 
 	/**
+	 * The name of the size of an attachment whose file is `$file` (`photo-150x150.jpg`), from its metadata, or null. WordPress
+	 * picks a size by its dimensions when it is asked for a size given as `[ width, height ]`, as the list of the media library
+	 * does (60 x 60), and tells which one it chose by its file name only.
+	 *
+	 * @param array<string, mixed> $metadata `_wp_attachment_metadata`
+	 */
+	public static function sizeNameForFile( array $metadata, string $file ): ?string {
+		foreach ( (array) ( $metadata['sizes'] ?? [] ) as $name => $entry ) {
+			if ( is_array( $entry ) && isset( $entry['file'] ) && $entry['file'] === $file && '' !== $file ) {
+				return (string) $name;
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * True when `$path` is below `$directory` with no `.` or `..` segment.
 	 */
 	public static function isSafeInside( string $directory, string $path ): bool {

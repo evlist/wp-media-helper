@@ -251,3 +251,10 @@ the fix is defensive: this plugin's filter now runs at priority 5 (before other 
 turns any non-absolute address returned by `image_downsize` into the address of the file, looked up in the cache then in
 uploads (`ThumbnailService::urlForRelative`, which refuses `..` segments and links). Running both plugins at once is not a
 supported setup; Thumbnails Folder should be deactivated once the sizes of existing images are in the shared cache.
+
+## Follow-up: sizes given as `[width, height]`
+
+The media library list asks for an array size (`[60, 60]`). The filter used to ignore it, so core built the address from the
+`file` of the intermediate size next to the original (`…-150x150.jpg`), a file that is not there. The filter now resolves
+the array through `image_get_intermediate_size()`, maps the chosen file back to its named size
+(`ThumbnailLayout::sizeNameForFile`) and then follows the usual path: cache file if present, made on demand otherwise.
