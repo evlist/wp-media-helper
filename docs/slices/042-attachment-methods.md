@@ -290,3 +290,10 @@ method, a bulk action, and a filter on the mechanism and the mode (*WordPress, w
   *Switch to the method…* (one control per field, prefilled with the selection of the field filter when it holds one value, else the defaults)
   and send the chosen values with the request; without fields, nothing is asked. The dialog is titled "Attach … with <method>" or "Switch … to <method>".
 - Tested in Chromium with a mocked server (chips, dialog of one file and of a bulk selection, request with the values); not on a real site.
+
+## Step 9: no more "Convert" (after the question of Eric)
+
+*Convert* never removed anything from the media library: it called `Method::attach()` for a file attached the WordPress way only, which is what *Attach* does (a
+method's `attach()` is idempotent). With the method alone (no cohabitation) it was redundant and is **removed** (menu, sheet, bulk action and the server action
+`convert`); a file attached the WordPress way only is shown as "not counted" and *Attach* (which asks for the values) makes it count. With the cohabitation,
+*Switch to the method…* (`to_method`) stays, since there the file counts as attached and the choice is between the two mechanisms.

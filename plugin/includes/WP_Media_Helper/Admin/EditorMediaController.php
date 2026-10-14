@@ -420,7 +420,7 @@ class EditorMediaController {
 		$encodedItems = wp_unslash( $_POST['items'] ?? '' );
 		$items = is_string( $encodedItems ) ? json_decode( $encodedItems, true ) : [];
 
-		if ( ! in_array( $action, [ 'import', 'remove', 'attach', 'detach', 'update', 'convert', 'attach_native', 'attach_method', 'to_native', 'to_method', 'trash', 'restore' ], true ) ) {
+		if ( ! in_array( $action, [ 'import', 'remove', 'attach', 'detach', 'update', 'attach_native', 'attach_method', 'to_native', 'to_method', 'trash', 'restore' ], true ) ) {
 			wp_send_json_error( [ 'message' => 'The requested bulk action is not supported.' ], 400 );
 		}
 
@@ -437,7 +437,7 @@ class EditorMediaController {
 			wp_send_json_error( [ 'message' => 'The requested bulk action is not supported.' ], 400 );
 		}
 
-		if ( in_array( $action, [ 'attach', 'detach', 'remove', 'update', 'convert', 'attach_native', 'attach_method', 'to_native', 'to_method' ], true ) && ( 0 === $postId || ! get_post( $postId ) || ! current_user_can( 'edit_post', $postId ) ) ) {
+		if ( in_array( $action, [ 'attach', 'detach', 'remove', 'update', 'attach_native', 'attach_method', 'to_native', 'to_method' ], true ) && ( 0 === $postId || ! get_post( $postId ) || ! current_user_can( 'edit_post', $postId ) ) ) {
 			wp_send_json_error( [ 'message' => 'The current post must be saved before media can be changed.' ], 400 );
 		}
 
@@ -628,7 +628,7 @@ class EditorMediaController {
 				continue;
 			}
 
-			if ( 'convert' === $action || 'to_method' === $action ) {
+			if ( 'to_method' === $action ) {
 				$results[] = $this->convertLink( $method, $fields, $rows, $postId, $item, $result );
 				continue;
 			}
@@ -818,7 +818,7 @@ class EditorMediaController {
 	}
 
 	/**
-	 * Makes the method in use know the links that exist only through `post_parent` (the action `convert`, slice 042):
+	 * Makes the method in use know the links that exist only through `post_parent` (the action `to_method`, slice 042):
 	 * a file attached to the current post the WordPress way is attached again through the method, with the data of the
 	 * browser or the defaults of its fields. `post_parent` is not touched here; what the method does with it is its business.
 	 *

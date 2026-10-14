@@ -38,7 +38,6 @@
 		{ value: 'remove', label: __( 'Remove', 'wp-media-helper' ) },
 		{ value: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) },
 		{ value: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) },
-		{ value: 'convert', label: __( 'Convert to the attachment method', 'wp-media-helper' ) },
 		// With both mechanisms in use (cohabitation): the labels are completed with the name of the method.
 		{ value: 'attach_native', label: __( 'Attach (WordPress)', 'wp-media-helper' ) },
 		{ value: 'attach_method', label: __( 'Attach with the method…', 'wp-media-helper' ) },
@@ -450,7 +449,7 @@
 
 	const stateLabel = function ( item ) {
 		if ( item.attached_natively_only ) {
-			return attachmentMethod.cohabitation ? __( 'Attached the WordPress way', 'wp-media-helper' ) : __( 'Attached the WordPress way only (not converted)', 'wp-media-helper' );
+			return attachmentMethod.cohabitation ? __( 'Attached the WordPress way', 'wp-media-helper' ) : __( 'Attached the WordPress way only (not counted: attach it to use the method)', 'wp-media-helper' );
 		}
 
 		if ( attachmentMethod.multiple_posts ) {
@@ -1206,7 +1205,7 @@
 				return;
 			}
 			const postId = getCurrentPostId();
-			if ( [ 'attach', 'detach', 'remove', 'convert', 'attach_native', 'attach_method', 'to_native', 'to_method' ].includes( bulkAction ) && 0 === postId ) {
+			if ( [ 'attach', 'detach', 'remove', 'attach_native', 'attach_method', 'to_native', 'to_method' ].includes( bulkAction ) && 0 === postId ) {
 				setOperationNotice( __( 'Save the post before changing media attachments.', 'wp-media-helper' ) );
 				return;
 			}
@@ -1225,7 +1224,7 @@
 					return;
 				}
 			}
-			if ( [ 'attach', 'attach_method', 'to_method', 'convert' ].includes( bulkAction ) && attachmentMethod.fields.length > 0 ) {
+			if ( [ 'attach', 'attach_method', 'to_method' ].includes( bulkAction ) && attachmentMethod.fields.length > 0 ) {
 				askLinkValues( bulkAction, selectedItems );
 				return;
 			}
@@ -1235,7 +1234,7 @@
 				return;
 			}
 
-			runBulk( bulkAction, [ 'attach', 'convert', 'attach_method', 'to_method' ].includes( bulkAction ) ? withLinkContext( selectedItems ) : selectedItems, postId );
+			runBulk( bulkAction, [ 'attach', 'attach_method', 'to_method' ].includes( bulkAction ) ? withLinkContext( selectedItems ) : selectedItems, postId );
 		};
 
 		const runBulk = function ( action, selectedItems, postId ) {
@@ -1264,7 +1263,7 @@
 				handleFeature( item );
 				return;
 			}
-			if ( 'edit' === action || [ 'attach', 'attach_method', 'to_method', 'convert' ].includes( action ) && attachmentMethod.fields.length > 0 ) {
+			if ( 'edit' === action || [ 'attach', 'attach_method', 'to_method' ].includes( action ) && attachmentMethod.fields.length > 0 ) {
 				askLinkValues( action, [ item ] );
 				return;
 			}
@@ -1273,7 +1272,7 @@
 				return;
 			}
 			const postId = getCurrentPostId();
-			if ( [ 'attach', 'detach', 'remove', 'update', 'convert', 'attach_native', 'attach_method', 'to_native', 'to_method' ].includes( action ) && 0 === postId ) {
+			if ( [ 'attach', 'detach', 'remove', 'update', 'attach_native', 'attach_method', 'to_native', 'to_method' ].includes( action ) && 0 === postId ) {
 				setOperationNotice( __( 'Save the post before changing media attachments.', 'wp-media-helper' ) );
 				return;
 			}
@@ -1284,11 +1283,11 @@
 
 			setLoading( true );
 			setOperationNotice( null );
-			bulkMediaItems( action, [ 'attach', 'convert', 'attach_method', 'to_method' ].includes( action ) ? withLinkContext( [ item ] ) : [ item ], postId )
+			bulkMediaItems( action, [ 'attach', 'attach_method', 'to_method' ].includes( action ) ? withLinkContext( [ item ] ) : [ item ], postId )
 				.then( function ( payload ) {
 					if ( payload && payload.success ) {
 						applyBulkResults( payload );
-						if ( [ 'attach', 'convert', 'attach_method', 'to_method' ].includes( action ) && linkContext().labels.length > 0 ) {
+						if ( [ 'attach', 'attach_method', 'to_method' ].includes( action ) && linkContext().labels.length > 0 ) {
 							announce( sprintf( __( 'Attached for: %s', 'wp-media-helper' ), linkContext().labels.join( ', ' ) ) );
 						}
 					} else {
@@ -1384,9 +1383,6 @@
 						? { action: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) }
 						: { action: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) } );
 				}
-			}
-			if ( item.attached_natively_only && 'native' !== attachmentMethod.id && importable && ! attachmentMethod.cohabitation ) {
-				actions.push( { action: 'convert', label: __( 'Convert to the attachment method', 'wp-media-helper' ) } );
 			}
 			// The data of the link (modes, position...) that the method declares.
 			if ( attachmentMethod.fields.length > 0 && item.is_attached_to_current_post && ! item.attached_natively_only && importable ) {
@@ -1651,7 +1647,6 @@
 			const titles = {
 				edit: sprintf( __( 'Link of %s with this post', 'wp-media-helper' ), single ),
 				attach: single ? sprintf( __( 'Attach %1$s with %2$s', 'wp-media-helper' ), single, methodName ) : sprintf( _n( 'Attach %1$d file with %2$s', 'Attach %1$d files with %2$s', linkEdit.items.length, 'wp-media-helper' ), linkEdit.items.length, methodName ),
-				convert: single ? sprintf( __( 'Switch %1$s to %2$s', 'wp-media-helper' ), single, methodName ) : sprintf( _n( 'Switch %1$d file to %2$s', 'Switch %1$d files to %2$s', linkEdit.items.length, 'wp-media-helper' ), linkEdit.items.length, methodName ),
 				attach_method: single ? sprintf( __( 'Attach %1$s with %2$s', 'wp-media-helper' ), single, methodName ) : sprintf( _n( 'Attach %1$d file with %2$s', 'Attach %1$d files with %2$s', linkEdit.items.length, 'wp-media-helper' ), linkEdit.items.length, methodName ),
 				to_method: single ? sprintf( __( 'Switch %1$s to %2$s', 'wp-media-helper' ), single, methodName ) : sprintf( _n( 'Switch %1$d file to %2$s', 'Switch %1$d files to %2$s', linkEdit.items.length, 'wp-media-helper' ), linkEdit.items.length, methodName ),
 			};
@@ -1812,11 +1807,8 @@
 			if ( cohabitationOnly ) {
 				return !! attachmentMethod.cohabitation;
 			}
-			if ( attachmentMethod.cohabitation && [ 'attach', 'convert', 'import' ].includes( action.value ) ) {
+			if ( attachmentMethod.cohabitation && [ 'attach', 'import' ].includes( action.value ) ) {
 				return false;
-			}
-			if ( 'convert' === action.value ) {
-				return 'advanced' === panelMode && 'native' !== attachmentMethod.id;
 			}
 			if ( 'trash' === action.value ) {
 				return canTrash;
