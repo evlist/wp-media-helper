@@ -501,6 +501,45 @@
 		);
 	};
 
+	// The pictograms of the values of the link (the modes) of a file attached to the post: the options of the fields that are filters,
+	// drawn with their icon (a letter when an option has none), at the bottom right of the tile.
+	const LinkValueBadges = function ( { item } ) {
+		if ( ! item.is_attached_to_current_post || item.attached_natively_only || ! item.attachment_data ) {
+			return null;
+		}
+
+		const chips = [];
+		attachmentMethod.fields.filter( function ( field ) { return field.filter; } ).forEach( function ( field ) {
+			const raw = item.attachment_data[ field.key ];
+			const values = Array.isArray( raw ) ? raw : ( raw ? [ raw ] : [] );
+			values.forEach( function ( value ) {
+				const option = field.options.filter( function ( candidate ) { return candidate.value === value; } )[ 0 ];
+				if ( option ) {
+					chips.push( { key: field.key + ':' + value, option: option, field: field } );
+				}
+			} );
+		} );
+		if ( 0 === chips.length ) {
+			return null;
+		}
+
+		return wp.element.createElement( 'span', { style: { position: 'absolute', right: '3px', bottom: '3px', display: 'flex', gap: '2px' } },
+			chips.map( function ( chip ) {
+				const label = chip.field.label + ': ' + chip.option.label;
+
+				return wp.element.createElement( 'span', {
+					key: chip.key,
+					role: 'img',
+					'aria-label': label,
+					title: label,
+					style: { minWidth: '18px', height: '18px', padding: '0 2px', boxSizing: 'border-box', borderRadius: '9px', background: 'rgba(255,255,255,0.92)', boxShadow: '0 0 2px rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1d2327', fontSize: '10px', fontWeight: 600 }
+				},
+					chip.option.icon || chip.option.icon_svg ? wp.element.createElement( OptionIcon, { option: chip.option } ) : chip.option.label.slice( 0, 2 )
+				);
+			} )
+		);
+	};
+
 	const CornerBadge = function ( { icon, label, position, colour } ) {
 		return wp.element.createElement( 'span', {
 			role: 'img',
@@ -1186,7 +1225,7 @@
 					return;
 				}
 			}
-			if ( [ 'attach_method', 'to_method' ].includes( bulkAction ) && attachmentMethod.fields.length > 0 ) {
+			if ( [ 'attach', 'attach_method', 'to_method', 'convert' ].includes( bulkAction ) && attachmentMethod.fields.length > 0 ) {
 				askLinkValues( bulkAction, selectedItems );
 				return;
 			}
@@ -1225,7 +1264,7 @@
 				handleFeature( item );
 				return;
 			}
-			if ( 'edit' === action || 'attach_method' === action || 'to_method' === action ) {
+			if ( 'edit' === action || [ 'attach', 'attach_method', 'to_method', 'convert' ].includes( action ) && attachmentMethod.fields.length > 0 ) {
 				askLinkValues( action, [ item ] );
 				return;
 			}
@@ -1454,6 +1493,7 @@
 					isFeatured( item )
 						? wp.element.createElement( CornerBadge, { icon: 'star-filled', label: __( 'Featured image', 'wp-media-helper' ), position: { left: '24px' }, colour: '#b8860b' } )
 						: null,
+					wp.element.createElement( LinkValueBadges, { item: item } ),
 					item.attached_natively_only
 						? wp.element.createElement( CornerBadge, { icon: attachmentMethod.cohabitation ? 'wordpress' : 'update', label: stateLabel( item ), position: { bottom: '3px', right: '3px' }, colour: attachmentMethod.cohabitation ? '#2271b1' : '#996800' } )
 						: null,
@@ -1610,6 +1650,8 @@
 			const single = 1 === linkEdit.items.length ? linkEdit.items[ 0 ].name : '';
 			const titles = {
 				edit: sprintf( __( 'Link of %s with this post', 'wp-media-helper' ), single ),
+				attach: single ? sprintf( __( 'Attach %1$s with %2$s', 'wp-media-helper' ), single, methodName ) : sprintf( _n( 'Attach %1$d file with %2$s', 'Attach %1$d files with %2$s', linkEdit.items.length, 'wp-media-helper' ), linkEdit.items.length, methodName ),
+				convert: single ? sprintf( __( 'Switch %1$s to %2$s', 'wp-media-helper' ), single, methodName ) : sprintf( _n( 'Switch %1$d file to %2$s', 'Switch %1$d files to %2$s', linkEdit.items.length, 'wp-media-helper' ), linkEdit.items.length, methodName ),
 				attach_method: single ? sprintf( __( 'Attach %1$s with %2$s', 'wp-media-helper' ), single, methodName ) : sprintf( _n( 'Attach %1$d file with %2$s', 'Attach %1$d files with %2$s', linkEdit.items.length, 'wp-media-helper' ), linkEdit.items.length, methodName ),
 				to_method: single ? sprintf( __( 'Switch %1$s to %2$s', 'wp-media-helper' ), single, methodName ) : sprintf( _n( 'Switch %1$d file to %2$s', 'Switch %1$d files to %2$s', linkEdit.items.length, 'wp-media-helper' ), linkEdit.items.length, methodName ),
 			};

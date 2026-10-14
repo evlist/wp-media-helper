@@ -280,3 +280,13 @@ method, a bulk action, and a filter on the mechanism and the mode (*WordPress, w
   (`link_<field>`).
 - Tested with stubs (selection and filtering) and in Chromium with a mocked server (menus, dialog, bulk actions, filter); not on a
   real site, and never with a real method.
+
+## Step 8: pictograms of the modes on the tiles, and the values asked when attaching (after the tests of Eric on testing)
+
+- **Pictograms on the tiles**: a file attached to the post through a method that has fields flagged `filter` (the modes) shows at the bottom
+  right of its tile one small round chip per value of its link (the icon of the option, a letter when it has none), with the name of the field
+  and the value as accessible name and tooltip (for example "Modes: Web"). Files attached the WordPress way, and files not attached, have none.
+- **Attaching asks for the values**: with a method that declares fields, *Attach* (menu, sheet and bulk action) and *Convert* open the same dialog as
+  *Switch to the method…* (one control per field, prefilled with the selection of the field filter when it holds one value, else the defaults)
+  and send the chosen values with the request; without fields, nothing is asked. The dialog is titled "Attach … with <method>" or "Switch … to <method>".
+- Tested in Chromium with a mocked server (chips, dialog of one file and of a bulk selection, request with the values); not on a real site.
