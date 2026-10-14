@@ -751,6 +751,169 @@ class EditorMediaController {
 	}
 
 	/**
+	 * Switches a file attached to the current post through the method to the WordPress way (the action `to_native`):
+	 * the method detaches it, then the attachment is attached natively. Nothing is changed when the file is attached
+	 * natively to another post, since it could not be attached here.
+	 *
+	 * @param array<int, array{id:int, parent:int, owned:bool}> $rows
+	 * @param array<string, mixed>                              $result
+	 * @return array<string, mixed>
+	 */
+	private function switchToNative( Method $method, NativeMethod $native, array $rows, int $postId, array $result ): array {
+		$ids      = array_map( static fn ( array $row ): int => (int) $row['id'], $rows );
+		$current  = $method->describe( $ids, $postId );
+		$switched = [];
+		foreach ( $ids as $attachmentId ) {
+			if ( empty( $current[ $attachmentId ]['attached_here'] ) ) {
+				continue;
+			}
+
+			$before = $native->describe( [ $attachmentId ], $postId )[ $attachmentId ] ?? null;
+			if ( null !== $before && null !== $before['protected'] ) {
+				$result['message'] = (string) $before['protected'];
+
+				return $result;
+			}
+
+			$done = $method->detach( $attachmentId, $postId );
+			if ( is_wp_error( $done ) ) {
+				if ( 'not_allowed' === $done->get_error_code() ) {
+					continue;
+				}
+				$result['message'] = $done->get_error_message();
+
+				return $result;
+			}
+			do_action( 'wp_media_helper_detached', $attachmentId, $postId, $method->id() );
+
+			// The method may keep the post as the primary parent: then the media item is already attached the WordPress way.
+			$after = $native->describe( [ $attachmentId ], $postId )[ $attachmentId ] ?? null;
+			if ( null === $after || ! $after['attached_here'] ) {
+				$attached = $native->attach( $attachmentId, $postId, [] );
+				if ( is_wp_error( $attached ) ) {
+					$result['message'] = $attached->get_error_message();
+
+					return $result;
+				}
+				do_action( 'wp_media_helper_attached', $attachmentId, $postId, $native->id(), [] );
+			}
+
+			$switched[] = $attachmentId;
+		}
+
+		if ( [] === $switched ) {
+			$result['message'] = __( 'Nothing to switch: this media is not attached to the current post through the method.', 'wp-media-helper' );
+
+			return $result;
+		}
+
+		$result['success']                     = true;
+		$result['is_imported']                 = true;
+		$result['is_attached_to_current_post'] = true;
+		$result['attached_natively_only']      = true;
+		$result['attachment_data']             = null;
+		$result['operation']                   = 'switched_to_native';
+
+		return $result;
+	}
+
+	/**
+	 * Makes the method in use know the links that exist only through `post_parent` (the action `convert`, slice 042):
+	 * a file attached to the current post the WordPress way is attached again through the method, with the data of the
+	 * browser or the defaults of its fields. `post_parent` is not touched here; what the method does with it is its business.
+	 *
+	 * @param array<int, array<string, mixed>>                          $fields
+	 * @param array<int, array{id:int, parent:int, owned:bool}>         $rows
+	 * @param array{id:string, path:string, data?:array<string, mixed>} $item
+	 * @param array<string, mixed>                                      $result
+	 * @return array<string, mixed>
+	 */
+	private function convertLink( Method $method, array $fields, array $rows, int $postId, array $item, array $result ): array {
+		$ids       = array_map( static fn ( array $row ): int => (int) $row['id'], $rows );
+		$native    = ( new NativeMethod() )->describe( $ids, $postId );
+		$current   = $method->describe( $ids, $postId );
+		$data      = Fields::sanitize( $fields, $item['data'] ?? null, true );
+		$converted = [];
+		foreach ( $ids as $attachmentId ) {
+			if ( empty( $native[ $attachmentId ]['attached_here'] ) || ! empty( $current[ $attachmentId ]['attached_here'] ) ) {
+				continue;
+			}
+
+			$done = $method->attach( $attachmentId, $postId, $data );
+			if ( is_wp_error( $done ) ) {
+				$result['message'] = $done->get_error_message();
+
+				return $result;
+			}
+
+			$converted[] = $attachmentId;
+			do_action( 'wp_media_helper_attached', $attachmentId, $postId, $method->id(), $data );
+		}
+
+		if ( [] === $converted ) {
+			$result['message'] = __( 'Nothing to convert: this media is not attached to the current post the WordPress way only.', 'wp-media-helper' );
+
+			return $result;
+		}
+
+		$after                                 = $method->describe( $converted, $postId );
+		$result['success']                     = true;
+		$result['is_imported']                 = true;
+		$result['is_attached_to_current_post'] = true;
+		$result['attachment_data']             = $after[ $converted[0] ]['data'] ?? $data;
+		$result['operation']                   = 'converted';
+		$result['attached_natively_only']      = false;
+
+		return $result;
+	}
+
+	/**
+	 * Changes the data of the link between a file and the current post (the action `update`).
+	 *
+	 * @param array<int, array<string, mixed>>                                 $fields
+	 * @param array<int, array{id:int, parent:int, owned:bool}>                $rows
+	 * @param array{id:string, path:string, data?:array<string, mixed>}        $item
+	 * @param array<string, mixed>                                             $result
+	 * @return array<string, mixed>
+	 */
+	private function updateLink( Method $method, array $fields, array $rows, int $postId, array $item, array $result ): array {
+		$ids       = array_map( static fn ( array $row ): int => (int) $row['id'], $rows );
+		$described = $method->describe( $ids, $postId );
+		$data      = Fields::sanitize( $fields, $item['data'] ?? null );
+		$updated   = [];
+		foreach ( $ids as $attachmentId ) {
+			if ( empty( $described[ $attachmentId ]['attached_here'] ) ) {
+				continue;
+			}
+
+			$done = $method->update( $attachmentId, $postId, $data );
+			if ( is_wp_error( $done ) ) {
+				$result['message'] = $done->get_error_message();
+
+				return $result;
+			}
+
+			$updated[] = $attachmentId;
+			do_action( 'wp_media_helper_attachment_updated', $attachmentId, $postId, $method->id(), $data );
+		}
+
+		if ( [] === $updated ) {
+			$result['message'] = __( 'This media is not attached to the current post.', 'wp-media-helper' );
+
+			return $result;
+		}
+
+		$after                        = $method->describe( $updated, $postId );
+		$result['success']            = true;
+		$result['is_imported']        = true;
+		$result['is_attached_to_current_post'] = true;
+		$result['attachment_data']    = $after[ $updated[0] ]['data'] ?? $data;
+		$result['operation']          = 'updated';
+
+		return $result;
+	}
+
+	/**
 	 * The message of what blocks an action on a file (one of its attachments is protected for this post), or null.
 	 *
 	 * @param array<int, array{id:int, parent:int, owned:bool}> $rows
