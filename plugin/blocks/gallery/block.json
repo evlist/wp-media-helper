@@ -7,9 +7,15 @@
 	"category": "media",
 	"icon": "format-gallery",
 	"description": "The standard WordPress gallery of the images attached to the post, for the mode of the page when there is one.",
-	"keywords": [ "gallery", "images", "attached" ],
+	"keywords": [
+		"gallery",
+		"images",
+		"attached"
+	],
 	"textdomain": "wp-media-helper",
-	"usesContext": [ "postId" ],
+	"usesContext": [
+		"postId"
+	],
 	"supports": {
 		"html": false
 	},
@@ -25,6 +31,15 @@
 		"link": {
 			"type": "string",
 			"default": "file"
+		},
+		"orderby": {
+			"type": "string",
+			"default": "title",
+			"enum": [
+				"title",
+				"menu_order ID",
+				"date"
+			]
 		}
 	},
 	"editorScript": "file:./editor.js",

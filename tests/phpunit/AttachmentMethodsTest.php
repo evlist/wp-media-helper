@@ -402,7 +402,7 @@ namespace {
 			} );
 
 			$this->assertSame( '<div class="wp-block-wp-media-helper-gallery"><figure>gallery</figure></div>', $html );
-			$this->assertSame( [ 'id' => 7, 'ids' => '31,30', 'orderby' => 'menu_order ID', 'order' => 'ASC', 'columns' => 2, 'size' => 'gallery', 'link' => 'file' ], $seen, 'The attributes of today\'s gallery, and the order it gives: not the order of the ids (31 then 30 here).' );
+			$this->assertSame( [ 'id' => 7, 'ids' => '31,30', 'orderby' => 'title', 'order' => 'ASC', 'columns' => 2, 'size' => 'gallery', 'link' => 'file' ], $seen, 'The attributes of the old block (it forced the order by title), whatever the order of the ids (31 then 30 here).' );
 		}
 
 		public function test_the_gallery_block_takes_the_post_of_the_loop_and_cleans_its_attributes(): void {
@@ -449,6 +449,25 @@ namespace {
 			$GLOBALS['wpmh_test_filters']['modes_active_mode'] = [];
 			$render();
 			$this->assertSame( '', $seen, 'Without Otherguise: no context.' );
+		}
+
+		public function test_the_order_of_the_gallery_is_an_attribute_of_the_block(): void {
+			$orderby = static function ( array $attributes ): string {
+				$seen = '';
+				\WP_Media_Helper\Blocks\GalleryBlock::render( $attributes, 7, static function ( array $asked ) use ( &$seen ): string {
+					$seen = $asked['orderby'];
+
+					return '<i/>';
+				} );
+
+				return $seen;
+			};
+
+			$this->assertSame( 'title', $orderby( [] ) );
+			$this->assertSame( 'menu_order ID', $orderby( [ 'orderby' => 'menu_order ID' ] ) );
+			$this->assertSame( 'date', $orderby( [ 'orderby' => 'date' ] ) );
+			$this->assertSame( 'title', $orderby( [ 'orderby' => 'RAND' ] ), 'Anything else is the default.' );
+			$this->assertSame( 'title', $orderby( [ 'orderby' => [ 'x' ] ] ) );
 		}
 	}
 }
