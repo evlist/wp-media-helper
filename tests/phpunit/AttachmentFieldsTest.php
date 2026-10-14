@@ -136,7 +136,7 @@ class AttachmentFieldsTest extends TestCase {
 		$this->assertSame( [], \WP_Media_Helper\Admin\EditorMediaController::normalizeLinkFilters( Fields::normalize( [ [ 'key' => 'p', 'type' => 'integer' ] ] ), null, $none ) );
 	}
 
-	public function test_the_filter_only_concerns_the_files_attached_to_this_post(): void {
+	public function test_the_files_that_are_not_attached_to_this_post_answer_none(): void {
 		$fields = $this->modes();
 		$items  = [
 			[ 'path' => 'web', 'is_attached_to_current_post' => true, 'attachment_data' => [ 'modes' => [ 'web' ] ] ],
@@ -149,10 +149,11 @@ class AttachmentFieldsTest extends TestCase {
 		];
 		$paths = static fn ( array $selection ): array => array_column( \WP_Media_Helper\Admin\MediaPanelState::filterByLinkFields( $items, $fields, [ 'modes' => $selection ] ), 'path' );
 
-		$this->assertSame( [ 'web', 'both', 'free', 'elsewhere' ], $paths( [ 'web' ] ) );
-		$this->assertSame( [ 'print', 'both', 'free', 'elsewhere' ], $paths( [ 'print' ] ) );
-		$this->assertSame( [ 'nomode', 'nodata', 'free', 'elsewhere' ], $paths( [ '_none' ] ), 'The links with no mode have their own value.' );
-		$this->assertSame( [ 'free', 'elsewhere' ], $paths( [] ), 'Nothing selected hides the attached files only.' );
+		$this->assertSame( [ 'web', 'both' ], $paths( [ 'web' ] ), 'Only what is shown in the mode: the files that are not attached are hidden.' );
+		$this->assertSame( [ 'print', 'both' ], $paths( [ 'print' ] ) );
+		$this->assertSame( [ 'nomode', 'nodata', 'free', 'elsewhere' ], $paths( [ '_none' ] ), 'No mode, and not attached: to be attached or corrected.' );
+		$this->assertSame( [ 'web', 'both', 'nomode', 'nodata', 'free', 'elsewhere' ], $paths( [ 'web', '_none' ] ) );
+		$this->assertSame( [], $paths( [] ), 'Nothing selected hides everything.' );
 		$this->assertSame( array_column( $items, 'path' ), $paths( [ 'web', 'print', '_none' ] ), 'Everything selected filters nothing.' );
 	}
 
@@ -177,10 +178,10 @@ class AttachmentFieldsTest extends TestCase {
 		];
 		$paths = static fn ( array $selection ): array => array_column( \WP_Media_Helper\Admin\MediaPanelState::filterByLinkFields( $items, $fields, [ 'modes' => $selection ], true ), 'path' );
 
-		$this->assertSame( [ 'native', 'free' ], $paths( [ '_native' ] ) );
-		$this->assertSame( [ 'web', 'free' ], $paths( [ 'web' ] ) );
-		$this->assertSame( [ 'native', 'web', 'free' ], $paths( [ 'web', '_native' ] ) );
+		$this->assertSame( [ 'native' ], $paths( [ '_native' ] ) );
+		$this->assertSame( [ 'web' ], $paths( [ 'web' ] ) );
+		$this->assertSame( [ 'native', 'web', 'free' ], $paths( [ 'web', '_native', '_none' ] ) );
 		$this->assertSame( array_column( $items, 'path' ), $paths( [ 'web', 'print', '_none', '_native' ] ) );
-		$this->assertSame( [ 'free' ], $paths( [] ) );
+		$this->assertSame( [], $paths( [] ) );
 	}
 }

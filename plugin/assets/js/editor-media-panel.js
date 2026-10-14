@@ -1893,7 +1893,7 @@
 							return wp.element.createElement( FilterCheckboxGroup, {
 								key: 'link-' + field.key,
 								label: withNative ? __( 'Attached through', 'wp-media-helper' ) : field.label,
-								options: ( withNative ? [ { value: '_native', label: __( 'WordPress', 'wp-media-helper' ), icon: 'wordpress' } ] : [] ).concat( field.options ).concat( [ { value: '_none', label: __( 'None', 'wp-media-helper' ) } ] ),
+								options: ( withNative ? [ { value: '_native', label: __( 'WordPress', 'wp-media-helper' ), icon: 'wordpress' } ] : [] ).concat( field.options ).concat( [ { value: '_none', label: __( 'None or not attached', 'wp-media-helper' ) } ] ),
 								selectedValues: selected,
 								disabled: loading,
 								onChange: function ( values ) { changeLinkFilter( field.key, values ); }

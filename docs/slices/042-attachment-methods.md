@@ -224,9 +224,12 @@ Asked by Eric: choosing the mode when attaching, and filtering the panel by mode
 - **Pictograms**: each option may carry `icon` (the name of a Dashicon, for example `admin-site` for a globe) or `icon_svg`
   (the data `d` of an SVG path drawn in a 24 x 24 box, for example a printer); only these two forms are accepted, no markup. They
   are drawn in the group and in the collapsed summary.
-- **What it filters**: only the files attached to the current post, by the values of their link; files that are not attached, or
-  attached elsewhere, are not concerned (so new files can still be chosen for a mode). All values selected filters nothing;
-  nothing selected hides the attached files only. Used with the filter *Attachment: this post* it shows what a mode will show.
+- **What it filters** (changed after the first tests on the testing site): every file, by the values of its link. A file that is not attached
+  to the current post has no link, so no value, and **answers `_none`** like a link with no value: selecting only *Web* shows only what
+  is shown in the web mode (the unattached files are hidden, even when the filter *Attachment* includes them); selecting *None or not
+  attached* shows the files to attach and the links to correct; all values selected filters nothing; nothing selected hides everything.
+  (The first version left the unattached files visible whatever the selection, so that new files could be chosen for a mode; it made the
+  filter look broken. Choose *None or not attached* with one mode to attach for that mode, or *All*.)
 - **What it attaches**: when exactly one real value is selected in such a filter, *Attach* (item or bulk) uses it as the value
   of the field instead of the default (a notification says "Attached for: Print"); with several values, or *All*, the defaults
   of the fields apply.

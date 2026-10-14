@@ -183,9 +183,9 @@ class MediaPanelState {
 	}
 
 	/**
-	 * Applies the filters on the fields of the link (slice 042) to the files attached to the current post: such a file stays
-	 * when, for each filtered field, one of its values is selected (a file with no value matches `_none`). Files that are not
-	 * attached to this post are not concerned by these filters.
+	 * Applies the filters on the fields of the link (slice 042): a file stays when, for each filtered field, one of its values
+	 * is selected. A link with no value in the field, and a file that is not attached to the current post (it has no link), match
+	 * `_none`. Files attached the WordPress way (both mechanisms in use) match `_native`.
 	 *
 	 * @param array<int, array<string, mixed>> $items
 	 * @param array<int, array<string, mixed>> $fields    As returned by `Fields::normalize()`.
@@ -215,7 +215,19 @@ class MediaPanelState {
 		}
 
 		return array_values( array_filter( $items, static function ( $item ) use ( $filtered, $nativeKey ): bool {
-			if ( ! is_array( $item ) || empty( $item['is_attached_to_current_post'] ) ) {
+			if ( ! is_array( $item ) ) {
+				return false;
+			}
+
+			// A file that is not attached to this post has no link, so no value: it answers `_none`, like a link with no value. Selecting
+			// only some values of a field therefore hides it; selecting `_none` (or everything) shows it, to attach it.
+			if ( empty( $item['is_attached_to_current_post'] ) ) {
+				foreach ( $filtered as $selected ) {
+					if ( ! in_array( \WP_Media_Helper\Attachment\Fields::NONE, $selected, true ) ) {
+						return false;
+					}
+				}
+
 				return true;
 			}
 
