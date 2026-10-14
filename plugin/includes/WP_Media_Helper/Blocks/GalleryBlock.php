@@ -9,7 +9,8 @@ namespace WP_Media_Helper\Blocks;
  *
  * It does not draw a gallery of its own. The images come from `wp_media_helper_get_attached_media()`, for the post of the
  * page and a context (the mode of the page when the plugin Otherguise is there, else none), and are handed to
- * `gallery_shortcode()` as `ids`, which sorts them by `menu_order` then ID as it always does.
+ * `gallery_shortcode()` as `ids`, with `orderby` = `menu_order ID` asked for explicitly (given `ids` alone, WordPress would keep the order
+ * of the `ids`, which is the order of the method).
  */
 final class GalleryBlock {
 
@@ -49,6 +50,10 @@ final class GalleryBlock {
 		$html      = (string) $gallery( [
 			'id'      => $postId,
 			'ids'     => implode( ',', $ids ),
+			// With `ids` and no `orderby`, WordPress orders the gallery as the `ids` are (`post__in`). Without `ids` it orders by
+			// `menu_order ID`, which is what the old block gave: the order is asked for, so it does not depend on the method.
+			'orderby' => 'menu_order ID',
+			'order'   => 'ASC',
 			'columns' => $columns,
 			'size'    => $size,
 			'link'    => $link,

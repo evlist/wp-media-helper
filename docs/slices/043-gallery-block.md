@@ -18,7 +18,9 @@ gallery (`gallery_shortcode()`) with the images of the post:
   filter `modes_active_mode` that Otherguise answers (`apply_filters( 'modes_active_mode', '' )`; the PHP function of the same name
   returns an object, not a slug, and is not used); the filter `wp_media_helper_gallery_context( $context, $postId )` can set it;
 - the post is the one of the block context (`postId`), else the one of the loop (`get_the_ID()`);
-- the order is the one of the standard gallery given `ids`: `menu_order`, then ID. **Unchanged on purpose**; ordering by date taken is a
+- the order is `menu_order`, then ID, **asked for explicitly** (`orderby` = `menu_order ID`, `order` = `ASC`): given `ids` and no
+  `orderby`, `gallery_shortcode()` keeps the order of the `ids` (`post__in`), which is the order of the method, and the first version of the
+  block showed the images in that order (found on the testing site; fixed in the commit that follows `ae9ec4a`). **Unchanged on purpose**; ordering by date taken is a
   later, visible change (it is part of the sorting of slice 038, which also has to say what a gallery order means for a post);
 - the output is the one of the old block: `gallery_shortcode()` with `columns` 2, `size` `gallery`, `link` `file`, wrapped in
   `<div class="wp-block-wp-media-helper-gallery …">` made by `get_block_wrapper_attributes()`. The three values are attributes of

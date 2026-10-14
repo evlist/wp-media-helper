@@ -402,7 +402,7 @@ namespace {
 			} );
 
 			$this->assertSame( '<div class="wp-block-wp-media-helper-gallery"><figure>gallery</figure></div>', $html );
-			$this->assertSame( [ 'id' => 7, 'ids' => '31,30', 'columns' => 2, 'size' => 'gallery', 'link' => 'file' ], $seen, 'The attributes of today\'s gallery.' );
+			$this->assertSame( [ 'id' => 7, 'ids' => '31,30', 'orderby' => 'menu_order ID', 'order' => 'ASC', 'columns' => 2, 'size' => 'gallery', 'link' => 'file' ], $seen, 'The attributes of today\'s gallery, and the order it gives: not the order of the ids (31 then 30 here).' );
 		}
 
 		public function test_the_gallery_block_takes_the_post_of_the_loop_and_cleans_its_attributes(): void {
