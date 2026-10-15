@@ -233,5 +233,29 @@ namespace {
 			$this->assertSame( 'photos/2026/eric/10/08/a.jpg', $store->sampleRows( 'eric-2026', 5 )[0]['path'] );
 			$this->assertSame( [], $store->sampleRows( 'nobody', 5 ) );
 		}
+
+		public function test_the_contents_can_be_left_unexamined_and_the_lines_are_still_given(): void {
+			$report = $this->remapper()->run( $this->map(), false, true, false );
+
+			$this->assertFalse( $report['urls']['counted'] );
+			$this->assertSame( 0, $report['urls']['posts'] );
+			$this->assertSame( 1, count( $report['urls']['search_replace'] ) );
+			$this->assertSame( 1, $report['attachments']['moved'] );
+		}
+
+		public function test_the_progress_is_told_and_the_old_and_new_paths_are_found_by_one_read_each(): void {
+			$told = [];
+			$remapper = $this->remapper();
+			$remapper->onProgress( static function ( string $message ) use ( &$told ): void {
+				$told[] = $message;
+			} );
+			$before = $this->db->queries;
+
+			$remapper->run( $this->map(), false, true, false );
+
+			$this->assertTrue( in_array( 'attachments: 3 checked, done', $told, true ), implode( '|', $told ) );
+			// No query by attachment: the work does not grow with the number of attachments squared.
+			$this->assertTrue( $this->db->queries - $before < 25, (string) ( $this->db->queries - $before ) );
+		}
 	}
 }

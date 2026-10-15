@@ -122,3 +122,13 @@ All are rerunnable and say so when there is nothing to do; `--dry-run` changes n
 - `wp media-helper source exclude <id|root|name>` / `source include <...>` / `source remove <...>`: `remove` refuses while attachments are registered through the source.
 - `wp media-helper paths remap ... --format=json`: one object with `applied`, `undo`, `run`, `attachments`, `index`, `cache`, `urls`, `problems`; the exit code is 1 when `problems` is not 0 (attachments missing or in collision, index rows in collision).
 - `wp media-helper index dates [<path>...] [--attachment=<ids>] [--source=<id> --limit=<n>] [--format=table|json|csv]`: the dates the index holds (effective date and its origin, date of the name, embedded date, date set by hand, trashed). By attachment ID the path follows the remap, so the dates can be compared before and after.
+
+## Speed of `paths remap` (fix after the first rehearsal)
+
+The first dry run on a large site was slow. Causes found by reading the code, not measured: a query by path for **each** attachment to
+detect a collision (the value of `_wp_attached_file` has no index, so each query read every such row of the site: the time grew with
+the square of the number of attachments), one query by attachment for the provenance meta, and six scans of the posts and meta tables to
+count old addresses (one per prefix). Now: the paths already taken below each new prefix are read once and kept in memory, the provenance
+flag comes in the same query as the attachments, and the old addresses are counted in one pass per table. `--no-urls` skips that count
+(the `wp search-replace` lines are still printed; the json has `urls.counted: false`). The progress of the long steps is written to the
+error output (attachments checked every 5,000, index rows every 10,000), so the answer on the standard output stays alone.

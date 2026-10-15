@@ -27,6 +27,13 @@ final class PathRemapper {
 	private WpdbIndexStore $store;
 
 	/**
+	 * Told of the progress of the long steps (a line of text).
+	 *
+	 * @var callable|null
+	 */
+	private $progress = null;
+
+	/**
 	 * @param string $cacheDir The thumbnail cache directory (inside the uploads directory), or '' for none.
 	 */
 	public function __construct( string $baseDir, string $baseUrl, string $cacheDir, ?WpdbIndexStore $store = null ) {
@@ -36,20 +43,30 @@ final class PathRemapper {
 		$this->store    = $store ?? new WpdbIndexStore();
 	}
 
+	public function onProgress( callable $progress ): void {
+		$this->progress = $progress;
+	}
+
+	private function tell( string $message ): void {
+		if ( null !== $this->progress ) {
+			( $this->progress )( $message );
+		}
+	}
+
 	/**
 	 * @return array{
 	 *   attachments:array{moved:int, not_ours:int, missing:int[], collisions:int[]},
 	 *   index:array{directories:int, files:int, joined:int, collisions:int},
 	 *   cache:array{moved:int},
-	 *   urls:array{posts:int, meta:int, search_replace:string[]}
+	 *   urls:array{counted:bool, posts:int, meta:int, search_replace:string[]}
 	 * }
 	 */
-	public function run( PathMap $map, bool $apply, bool $moveCache = true ): array {
+	public function run( PathMap $map, bool $apply, bool $moveCache = true, bool $countUrls = true ): array {
 		return [
 			'attachments' => $this->attachments( $map, $apply ),
 			'index'       => $this->index( $map, $apply ),
 			'cache'       => [ 'moved' => $moveCache ? $this->cache( $map, $apply ) : 0 ],
-			'urls'        => $this->urls( $map ),
+			'urls'        => $countUrls ? $this->urls( $map ) : [ 'counted' => false, 'posts' => 0, 'meta' => 0, 'search_replace' => $this->searchReplaceLines( $map ) ],
 		];
 	}
 
@@ -59,15 +76,22 @@ final class PathRemapper {
 	private function attachments( PathMap $map, bool $apply ): array {
 		global $wpdb;
 
-		$report = [ 'moved' => 0, 'not_ours' => 0, 'missing' => [], 'collisions' => [] ];
+		$report  = [ 'moved' => 0, 'not_ours' => 0, 'missing' => [], 'collisions' => [] ];
+		$checked = 0;
 		foreach ( $map->entries() as $entry ) {
-			$last = 0;
+			// The paths already taken below the new prefix, read once: a query by path would read every
+			// `_wp_attached_file` of the site again for each attachment (the value has no index).
+			$taken = $this->pathsUnder( $entry['to'] );
+			$last  = 0;
+			[ $low, $high ] = self::range( $entry['from'] );
 			while ( true ) {
-				[ $low, $high ] = self::range( $entry['from'] );
 				$rows = $wpdb->get_results( $wpdb->prepare(
-					"SELECT meta_id, post_id, meta_value FROM {$wpdb->postmeta}
-					WHERE meta_key = '_wp_attached_file' AND meta_id > %d AND ( meta_value = %s OR ( meta_value >= %s AND meta_value < %s ) )
-					ORDER BY meta_id ASC LIMIT %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					"SELECT pm.meta_id, pm.post_id, pm.meta_value,
+						EXISTS( SELECT 1 FROM {$wpdb->postmeta} o WHERE o.post_id = pm.post_id AND o.meta_key = %s ) AS owned
+					FROM {$wpdb->postmeta} pm
+					WHERE pm.meta_key = '_wp_attached_file' AND pm.meta_id > %d AND ( pm.meta_value = %s OR ( pm.meta_value >= %s AND pm.meta_value < %s ) )
+					ORDER BY pm.meta_id ASC LIMIT %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					AttachmentRegistry::SOURCE_ID_META,
 					$last,
 					$entry['from'],
 					$low,
@@ -86,19 +110,42 @@ final class PathRemapper {
 					if ( null === $target || $target['entry']['from'] !== $entry['from'] ) {
 						continue;
 					}
-					$this->moveAttachment( (int) $row['post_id'], $old, $target['path'], $target['entry'], $apply, $report );
+					$this->moveAttachment( (int) $row['post_id'], $old, $target['path'], $target['entry'], '1' === (string) $row['owned'] || 1 === $row['owned'], $taken, $apply, $report );
+					if ( 0 === ++$checked % 5000 ) {
+						$this->tell( sprintf( 'attachments: %d checked', $checked ) );
+					}
 				}
 			}
 		}
+		$this->tell( sprintf( 'attachments: %d checked, done', $checked ) );
 
 		return $report;
 	}
 
 	/**
+	 * The attachments whose `_wp_attached_file` is below a prefix, as path => post ID.
+	 *
+	 * @return array<string, int>
+	 */
+	private function pathsUnder( string $prefix ): array {
+		global $wpdb;
+
+		[ $low, $high ] = self::range( $prefix );
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = '_wp_attached_file' AND meta_value >= %s AND meta_value < %s", $low, $high ), ARRAY_A ); // phpcs:ignore WordPress.DB
+		$paths = [];
+		foreach ( is_array( $rows ) ? $rows : [] as $row ) {
+			$paths[ (string) $row['meta_value'] ] = (int) $row['post_id'];
+		}
+
+		return $paths;
+	}
+
+	/**
 	 * @param array{from:string, to:string, source:string, from_source:string, root:string} $entry
+	 * @param array<string, int>                                                            $taken
 	 * @param array{moved:int, not_ours:int, missing:int[], collisions:int[]}               $report
 	 */
-	private function moveAttachment( int $id, string $old, string $new, array $entry, bool $apply, array &$report ): void {
+	private function moveAttachment( int $id, string $old, string $new, array $entry, bool $ours, array &$taken, bool $apply, array &$report ): void {
 		global $wpdb;
 
 		if ( ! is_file( $this->baseDir . '/' . $new ) ) {
@@ -106,14 +153,13 @@ final class PathRemapper {
 
 			return;
 		}
-		$taken = $wpdb->get_var( $wpdb->prepare( "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_wp_attached_file' AND meta_value = %s AND post_id <> %d LIMIT 1", $new, $id ) ); // phpcs:ignore WordPress.DB
-		if ( null !== $taken && false !== $taken && '' !== (string) $taken ) {
+		if ( isset( $taken[ $new ] ) && $taken[ $new ] !== $id ) {
 			$report['collisions'][] = $id;
 
 			return;
 		}
+		$taken[ $new ] = $id;
 
-		$ours = '' !== (string) get_post_meta( $id, AttachmentRegistry::SOURCE_ID_META, true );
 		if ( ! $ours ) {
 			++$report['not_ours'];
 		}
@@ -200,6 +246,9 @@ final class PathRemapper {
 				}
 
 				++$report[ $kind ];
+				if ( 0 === $report[ $kind ] % 10000 ) {
+					$this->tell( sprintf( 'index: %d %s checked', $report[ $kind ], $kind ) );
+				}
 				$data = [ 'source_id' => $sourceId, 'path_hash' => sha1( $target['path'] ), 'path' => $target['path'] ];
 				if ( 'directories' === $kind && $old === $entry['from'] ) {
 					$data['parent_id'] = $this->joinParent( $entry, $sourceId, $apply, $report );
@@ -302,24 +351,38 @@ final class PathRemapper {
 
 	/**
 	 * Counts the contents that still carry an old address, and gives the `wp search-replace` lines
-	 * to run on purpose. The contents are not edited here.
+	 * to run on purpose. The contents are not edited here. One pass over each table, whatever the
+	 * number of prefixes (these tables can hold millions of rows and the match cannot use an index).
 	 *
-	 * @return array{posts:int, meta:int, search_replace:string[]}
+	 * @return array{counted:bool, posts:int, meta:int, search_replace:string[]}
 	 */
 	private function urls( PathMap $map ): array {
 		global $wpdb;
 
-		$report = [ 'posts' => 0, 'meta' => 0, 'search_replace' => [] ];
+		$likes = [];
 		foreach ( $map->entries() as $entry ) {
-			$like = '%/uploads/' . $wpdb->esc_like( $entry['from'] ) . '/%';
-			$posts = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type <> 'attachment' AND post_content LIKE %s", $like ) ); // phpcs:ignore WordPress.DB
-			$meta  = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key <> '_wp_attached_file' AND meta_value LIKE %s", $like ) ); // phpcs:ignore WordPress.DB
-			$report['posts'] += $posts;
-			$report['meta']  += $meta;
-			$report['search_replace'][] = sprintf( "wp search-replace '/uploads/%s/' '/uploads/%s/' --all-tables --dry-run", $entry['from'], $entry['to'] );
+			$likes[] = '%/uploads/' . $wpdb->esc_like( $entry['from'] ) . '/%';
+		}
+		$conditions = static fn ( string $column ): string => '( ' . implode( ' OR ', array_fill( 0, count( $likes ), $column . ' LIKE %s' ) ) . ' )';
+
+		$this->tell( 'contents: looking for old addresses in the posts' );
+		$posts = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type <> 'attachment' AND " . $conditions( 'post_content' ), $likes ) ); // phpcs:ignore WordPress.DB
+		$this->tell( 'contents: looking for old addresses in the meta values' );
+		$meta = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key <> '_wp_attached_file' AND " . $conditions( 'meta_value' ), $likes ) ); // phpcs:ignore WordPress.DB
+
+		return [ 'counted' => true, 'posts' => $posts, 'meta' => $meta, 'search_replace' => $this->searchReplaceLines( $map ) ];
+	}
+
+	/**
+	 * @return string[]
+	 */
+	private function searchReplaceLines( PathMap $map ): array {
+		$lines = [];
+		foreach ( $map->entries() as $entry ) {
+			$lines[] = sprintf( "wp search-replace '/uploads/%s/' '/uploads/%s/' --all-tables --dry-run", $entry['from'], $entry['to'] );
 		}
 
-		return $report;
+		return $lines;
 	}
 
 	/**

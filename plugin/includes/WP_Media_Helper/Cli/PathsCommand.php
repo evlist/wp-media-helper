@@ -59,11 +59,14 @@ class PathsCommand {
 	 * [--no-cache]
 	 * : Leave the thumbnail cache where it is (the thumbnails are made again when needed).
 	 *
+	 * [--no-urls]
+	 * : Do not look for old addresses in the contents (two scans of the posts and meta tables, slow on a large site). The `wp search-replace` lines are printed anyway.
+	 *
 	 * [--yes]
 	 * : Apply. Without it the command only reports what it would do.
 	 *
 	 * [--format=<format>]
-	 * : text or json. With json the only output is one object: {"applied", "undo", "run", "attachments":{"moved","not_ours","missing","collisions"}, "index":{"directories","files","joined","collisions"}, "cache":{"moved"}, "urls":{"posts","meta","search_replace"}, "problems"}. Default: text.
+	 * : text or json. With json the only output is one object: {"applied", "undo", "run", "attachments":{"moved","not_ours","missing","collisions"}, "index":{"directories","files","joined","collisions"}, "cache":{"moved"}, "urls":{"counted","posts","meta","search_replace"}, "problems"}. Default: text.
 	 *
 	 * [--undo=<run>]
 	 * : Put back the paths of an earlier run, given its identifier.
@@ -99,7 +102,11 @@ class PathsCommand {
 
 		$cache    = ThumbnailCache::directory();
 		$remapper = new PathRemapper( $baseDir, $baseUrl, null === $cache ? '' : $cache );
-		$report   = $remapper->run( $map, $apply, ! isset( $assoc['no-cache'] ) );
+		$remapper->onProgress( static function ( string $message ): void {
+			// On the error output, so that the answer (text or json) stays alone on the standard output.
+			fwrite( STDERR, $message . "\n" ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		} );
+		$report   = $remapper->run( $map, $apply, ! isset( $assoc['no-cache'] ), ! isset( $assoc['no-urls'] ) );
 
 		$json     = 'json' === ( $assoc['format'] ?? 'text' );
 		$problems = count( $report['attachments']['missing'] ) + count( $report['attachments']['collisions'] ) + $report['index']['collisions'];
@@ -225,13 +232,17 @@ class PathsCommand {
 		}
 
 		$u = $report['urls'];
-		if ( $u['posts'] + $u['meta'] > 0 ) {
+		if ( ! $u['counted'] ) {
+			\WP_CLI::line( 'Contents not examined (--no-urls). To replace the old addresses (check the dry run first):' );
+		} elseif ( $u['posts'] + $u['meta'] > 0 ) {
 			\WP_CLI::line( sprintf( 'Contents with an old address: %d posts, %d meta values. To replace them (check the dry run first):', $u['posts'], $u['meta'] ) );
-			foreach ( $u['search_replace'] as $line ) {
-				\WP_CLI::line( '  ' . $line );
-			}
 		} else {
 			\WP_CLI::line( 'No content carries an old address.' );
+
+			return;
+		}
+		foreach ( $u['search_replace'] as $line ) {
+			\WP_CLI::line( '  ' . $line );
 		}
 	}
 }
