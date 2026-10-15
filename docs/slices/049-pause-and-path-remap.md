@@ -28,13 +28,10 @@ IDs and change only the paths in the database, with the plugin held still while 
 
 1. A **global pause**, stored in an option and shown on the settings page (a notice at the top while it is on), with
    `wp media-helper pause` / `resume` / `status`. A constant `WP_MEDIA_HELPER_PAUSED` forces it for code-controlled sites.
-2. While paused:
-   - the cron hooks (`wp_media_helper_index_run`, maintenance) do nothing and do not reschedule; the *Re-scan now* buttons are
-     disabled with the reason; a pass in progress ends at the next batch;
-   - the editor panel keeps **listing** from the index as it is, with a banner, but refuses the actions that write (import,
-     attach, detach, trash, restore) with a message; reading, attaching natively through WordPress and the gallery block keep
-     working, because they do not depend on the index being current;
-   - thumbnails already in the cache are served; new ones are not made by the background job, only on demand for a visitor.
+2. While paused, **only the indexing stops**: the cron hooks (`wp_media_helper_index_run`, maintenance) do nothing and do not
+   reschedule, the *Re-scan now* buttons are disabled with the reason, a pass in progress ends at the next batch, and a banner says
+   so. The panel, the imports, the trash, the gallery block and the thumbnails keep working on the index as it is (they update
+   their own rows). The command of part 2 additionally holds a short lock that makes the panel refuse writes while it runs.
 3. Resuming asks for a pass of every source (`requestDuePasses`), so the index catches up.
 4. The pause survives restarts, and is **not** cleared by *Reset* (a reset while paused stays paused).
 
@@ -51,17 +48,24 @@ once per mapping, or `--map=<file>` (lines `old new source`).
 3. **Rewrite** `_wp_attached_file`, `file` in `_wp_attachment_metadata` (through the WordPress functions, never SQL on serialized
    data), `_wp_media_helper_source_path`, `_wp_media_helper_source_id` (the new source) and the guid, in one pass per attachment with
    the old values kept for the undo.
-4. **Index**: carry the trashed flag and the date override of each old index row to the row of the new path (the new rows exist after
-   a scan of the new sources, so the command scans them first, then copies, then lets the old rows be forgotten with their source).
+4. **Index, rewritten in place** (not rescanned): the rows of `files` and `directories` of the old sources get their new
+   `source_id`, `path` and `path_hash` (same key function as the scanner, `KeyMapper`), so their ids, trashed flag
+   (`hidden*`), `date_override`, computed dates and `first_seen` stay as they are, and the index agrees with the posts table as soon
+   as the command ends, **before any scan**. When several old sources fold into one new source, the tree is joined: a row for the
+   new root and for each intermediate directory (`2024`, `2025`, …) is created with no stored `mtime`, so the first scan reads their
+   listing and finds what is new (other folders of the new mount), while the rewritten directories keep their `mtime` and are
+   not read again. Rows without a mapping are left alone. A consistency check at the end (every rewritten attachment has an index
+   row under its new path, and the reverse for registered files) is part of the report.
 5. **Thumbnail cache**: move `uploads/thumbnails/<old dir>` to `<new dir>` (a rename inside the cache, confined to it, no links), or
    skip it with `--no-cache` and let the files be made again on demand.
 6. **Content URLs**: the command does not edit posts. It **reports** how many posts contain the old URL (`post_content`,
    `meta_value`), and prints the matching `wp search-replace` line (serialization-safe), to be run on purpose.
 7. **Report and undo**: a table (attachments moved, missing at the new path, collisions, flags carried, cache moved, posts with old
    URLs) and a run identifier; `wp media-helper paths remap --undo=<run>` restores the old values.
-8. **Procedure with no downtime** (in the documentation): back up; mount the new directories **in addition** to the old ones; add the new
-   sources before *Uploads*; pause; dry run; apply; resume and scan; check there are no attachments without file and no registered
-   file shown as importable; remove the old mounts and sources.
+8. **Procedure with no downtime** (in the documentation): back up and count the old URLs in the contents; pause the indexing; add the
+   new sources before *Uploads*; mount the new directories **in addition** to the old ones; dry run; apply; set the old sources to
+   *Excluded*; **test on the stable index** (nothing is scanned meanwhile); resume the indexing; remove the old mounts, then the old
+   sources.
 
 ## Open questions
 
@@ -78,9 +82,9 @@ once per mapping, or `--map=<file>` (lines `old new source`).
 
 ## Acceptance criteria
 
-1. While paused, no cron pass runs and the panel does not write; resuming catches the index up.
+1. While paused, no cron pass runs and no re-scan can be asked; the panel works on the index as it is; resuming catches the index up.
 2. A dry run changes nothing and lists, per mapping, the attachments, the missing files and the collisions.
-3. After a remap the attachments keep their IDs, metadata, parents and methods, and are shown as already registered under the new sources.
+3. After a remap, **before any scan**, the attachments keep their IDs, metadata, parents and methods, and the panel shows them as already registered under the new sources.
 4. An attachment whose file is absent at the new path is not modified.
 5. Trashed files and dates set by hand survive the remap.
 6. Undo restores the paths, the metas and the guid.
