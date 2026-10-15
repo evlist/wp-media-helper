@@ -292,6 +292,14 @@ The panel, the imports, the trash and the gallery block keep working on the inde
 and `wp media-helper status` tells which state it is in. The pause survives restarts and a reset. The constant
 `WP_MEDIA_HELPER_PAUSED` (in `wp-config.php`) forces it for sites controlled by code. See [slice 049](docs/slices/049-pause-and-path-remap.md).
 
+### Moving the files to other directories
+
+After the files are mounted elsewhere (new mount next to the old one, new source configured), `wp media-helper paths remap --from=<old prefix>
+--to=<new prefix> --source=<new source id>` (or `--map=<file>` with lines `old new source`) rewrites the paths of the attachments and of
+the index, keeping the attachment IDs, the trash and the dates set by hand, and moves the thumbnails of the cache. It reports and changes
+nothing without `--yes`, which needs the indexing to be paused. `--undo=<run>` puts the paths back. The contents that carry an old address
+are counted and the `wp search-replace` lines to run are printed. Back up the database first.
+
 ## Reset
 
 The bottom of the settings page has a **Reset** section to start again from nothing

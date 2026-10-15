@@ -15,6 +15,8 @@ class FakeWpdb {
 	public string $prefix = 'wp_';
 	public int $insert_id = 0;
 	public int $queries = 0;
+	public string $postmeta = 'wp_postmeta';
+	public string $posts = 'wp_posts';
 
 	private PDO $pdo;
 
@@ -39,6 +41,8 @@ class FakeWpdb {
 		$this->pdo->exec( 'CREATE UNIQUE INDEX files_source_path ON wp_media_helper_files (source_id, path_hash)' );
 		$this->pdo->exec( 'CREATE INDEX files_day ON wp_media_helper_files (effective_day, hidden)' );
 		$this->pdo->exec( 'CREATE INDEX files_dir ON wp_media_helper_files (dir_id)' );
+		$this->pdo->exec( 'CREATE TABLE wp_postmeta (meta_id INTEGER PRIMARY KEY AUTOINCREMENT, post_id INTEGER NOT NULL, meta_key TEXT, meta_value TEXT)' );
+		$this->pdo->exec( "CREATE TABLE wp_posts (ID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT NOT NULL DEFAULT '', post_type TEXT NOT NULL DEFAULT 'post', post_content TEXT NOT NULL DEFAULT '')" );
 	}
 
 	/**
@@ -47,6 +51,10 @@ class FakeWpdb {
 	 */
 	public function columns( string $table ): array {
 		return array_column( $this->pdo->query( "PRAGMA table_info({$table})" )->fetchAll( PDO::FETCH_ASSOC ), 'name' );
+	}
+
+	public function esc_like( string $text ): string {
+		return addcslashes( $text, '_%\\' );
 	}
 
 	public function prepare( string $query, ...$args ): string {

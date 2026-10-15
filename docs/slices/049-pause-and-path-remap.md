@@ -3,7 +3,7 @@
 
 # Slice 049: Pause the background work, and remap paths
 
-Status: **part 1 (pause) implemented**, part 2 (remap) to do. Related: [036](036-source-lifecycle-and-missing-files.md) (sources that disappear), [037](037-eligibility-reconciliation.md),
+Status: **implemented** (parts 1 and 2; tried only with stubs of WordPress and an in-memory database, never on a real site). Related: [036](036-source-lifecycle-and-missing-files.md) (sources that disappear), [037](037-eligibility-reconciliation.md),
 [023](023-thumbnails-in-cache.md) (cache layout), [044](044-image-sizes.md) (orphan cleanup).
 
 ## Goal
@@ -88,3 +88,26 @@ once per mapping, or `--map=<file>` (lines `old new source`).
 4. An attachment whose file is absent at the new path is not modified.
 5. Trashed files and dates set by hand survive the remap.
 6. Undo restores the paths, the metas and the guid.
+
+## Implemented
+
+- **Pause**: `Index\Pause` (option `wp_media_helper_index_paused`, constant `WP_MEDIA_HELPER_PAUSED`), honored by the cron hooks, `IndexManager`
+  (background run, due passes, requested passes, quick scans for the panel) and the settings page (banner, *Paused* state, disabled
+  buttons). `DayIndex::forDay()` answers with the reason `index-paused` and does not ask the panel to wait. `wp media-helper
+  pause | resume | status`. A request made during the pause is kept and served after it. The pause is not cleared by a reset.
+- **Remap**: `wp media-helper paths remap` (`Cli\PathsCommand`), on `Maintenance\PathMap` (prefix mapping, longest first, whole
+  directories only, no `..`, no absolute path) and `Maintenance\PathRemapper`:
+  - attachments found by `_wp_attached_file`: rewrites it, `file` in the metadata, the provenance metas (`source_path`, and `source_id`
+    for those registered by this plugin) and the guid (only when it is the address of the old path). An attachment whose file is not at
+    the new path is left alone and reported; so is one in collision with another attachment already on the new path;
+  - the index rows rewritten in place (new `source_id`, `path`, `path_hash`; ids, trash, dates by hand and stored `mtime` kept); the
+    top directory of an old source is hung under a chain of joining directories created with no `mtime` when several old sources
+    become one; a row already at the new path is reported and left alone;
+  - the thumbnails of the old directories moved inside the cache (`--no-cache` to skip);
+  - the contents with an old address are counted and the `wp search-replace` lines printed, nothing edited.
+- **Differences from the proposal above**: the command **requires** the indexing to be paused (it does not pause by itself) before `--yes`;
+  there is **no lock on the panel writes** while it runs (run it when nobody edits); the **undo** is the same command with the inverse
+  mapping recorded for each run (`--undo=<run>`, the ten last runs are kept in the option `wp_media_helper_remap_runs`), so the old mount
+  must still be there and the old source id is the one found in the index under the old prefix (or `--from-source`).
+- The first scan after the pause is a full pass of the new source (it has no scan state): it reads every directory again and
+  recomputes the dates of the index with the patterns of the **new** source.
