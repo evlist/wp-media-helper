@@ -9,6 +9,7 @@ use WP_Media_Helper\MediaSource\FileDates;
 use WP_Media_Helper\MediaSource\NamePattern;
 use WP_Media_Helper\MediaSource\PathConfinement;
 use WP_Media_Helper\Index\DayIndex;
+use WP_Media_Helper\Index\Pause;
 use WP_Media_Helper\Maintenance\Reset;
 use WP_Media_Helper\Settings\AllowedBase;
 use WP_Media_Helper\Settings\ExternalSourceSettings;
@@ -140,6 +141,20 @@ class ExternalSourceSettingsPage {
 			<?php elseif ( isset( $_GET['updated'] ) ) : ?>
 				<div class="notice notice-success is-dismissible">
 					<p><?php esc_html_e( 'External media sources saved.', 'wp-media-helper' ); ?></p>
+				</div>
+			<?php endif; ?>
+
+			<?php if ( Pause::isPaused() ) : ?>
+				<div class="notice notice-warning">
+					<p><strong><?php esc_html_e( 'The indexing is paused.', 'wp-media-helper' ); ?></strong>
+						<?php
+						echo esc_html(
+							Pause::isForcedByConstant()
+								? __( 'The constant WP_MEDIA_HELPER_PAUSED is set in the configuration of the site. The panel works on the index as it is; nothing is scanned.', 'wp-media-helper' )
+								: __( 'The panel works on the index as it is; nothing is scanned until it is resumed with "wp media-helper resume".', 'wp-media-helper' )
+						);
+						?>
+					</p>
 				</div>
 			<?php endif; ?>
 
@@ -310,7 +325,13 @@ class ExternalSourceSettingsPage {
 								<td><?php echo esc_html( number_format_i18n( $row['directories'] ) ); ?></td>
 								<td><?php echo '' === $row['last'] ? '&mdash;' : esc_html( $row['last'] ); ?></td>
 								<td><?php echo esc_html( $row['state'] ); ?></td>
-								<td><a class="button button-small" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=wp_media_helper_rescan&source=' . rawurlencode( $row['id'] ) ), 'wp_media_helper_rescan_' . $row['id'] ) ); ?>"><?php esc_html_e( 'Re-scan now', 'wp-media-helper' ); ?></a></td>
+								<td>
+									<?php if ( Pause::isPaused() ) : ?>
+										<span class="button button-small disabled" aria-disabled="true"><?php esc_html_e( 'Re-scan now', 'wp-media-helper' ); ?></span>
+									<?php else : ?>
+										<a class="button button-small" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=wp_media_helper_rescan&source=' . rawurlencode( $row['id'] ) ), 'wp_media_helper_rescan_' . $row['id'] ) ); ?>"><?php esc_html_e( 'Re-scan now', 'wp-media-helper' ); ?></a>
+									<?php endif; ?>
+								</td>
 							</tr>
 						<?php endforeach; ?>
 					</tbody>
@@ -806,7 +827,9 @@ class ExternalSourceSettingsPage {
 			}
 
 			$status = $manager->status( $source );
-			if ( $status['in_progress'] ) {
+			if ( Pause::isPaused() ) {
+				$state = __( 'Paused', 'wp-media-helper' );
+			} elseif ( $status['in_progress'] ) {
 				$state = __( 'Scanning…', 'wp-media-helper' );
 			} elseif ( '' !== $status['pending'] || ! $status['indexed'] ) {
 				$state = __( 'Waiting for the next background run', 'wp-media-helper' );
@@ -1002,6 +1025,11 @@ class ExternalSourceSettingsPage {
 		}
 
 		check_admin_referer( 'wp_media_helper_rescan_' . $sourceId );
+
+		if ( Pause::isPaused() ) {
+			wp_safe_redirect( $this->pageUrl() );
+			exit;
+		}
 
 		foreach ( $this->loadSources() as $source ) {
 			if ( is_array( $source ) && (string) ( $source['id'] ?? '' ) === $sourceId ) {

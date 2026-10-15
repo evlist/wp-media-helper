@@ -98,6 +98,10 @@
 			return __( 'The files are still being indexed: the list may be incomplete.', 'wp-media-helper' );
 		}
 
+		if ( 'index-paused' === reason ) {
+			return __( 'The indexing is paused: the list shows the index as it is.', 'wp-media-helper' );
+		}
+
 		return reason ? __( 'Refresh required: ', 'wp-media-helper' ) + reason : __( 'Refresh required.', 'wp-media-helper' );
 	};
 

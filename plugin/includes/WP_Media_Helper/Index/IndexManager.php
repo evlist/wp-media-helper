@@ -40,12 +40,24 @@ class IndexManager {
 	 */
 	private $clock;
 
-	public function __construct( IndexStore $store, IndexScanner $scanner, ScanState $state, callable $schedule, ?callable $clock = null ) {
+	/**
+	 * Whether the indexing is paused (see `Pause`).
+	 *
+	 * @var callable
+	 */
+	private $paused;
+
+	public function __construct( IndexStore $store, IndexScanner $scanner, ScanState $state, callable $schedule, ?callable $clock = null, ?callable $paused = null ) {
 		$this->store    = $store;
 		$this->scanner  = $scanner;
 		$this->state    = $state;
 		$this->schedule = $schedule;
 		$this->clock    = $clock ?? 'time';
+		$this->paused   = $paused ?? static fn(): bool => false;
+	}
+
+	public function isPaused(): bool {
+		return (bool) ( $this->paused )();
 	}
 
 	/**
@@ -89,7 +101,7 @@ class IndexManager {
 		}
 
 		// Work is waiting: make sure a background run is scheduled (cheap when it is).
-		if ( '' !== $state['pending'] || $state['in_progress'] ) {
+		if ( ! $this->isPaused() && ( '' !== $state['pending'] || $state['in_progress'] ) ) {
 			( $this->schedule )( 0 );
 		}
 
@@ -118,7 +130,9 @@ class IndexManager {
 			$state['pending'] = $full ? self::PASS_FULL : self::PASS_INCREMENTAL;
 		}
 		$this->state->save( $id, $state );
-		( $this->schedule )( 0 );
+		if ( ! $this->isPaused() ) {
+			( $this->schedule )( 0 );
+		}
 	}
 
 	/**
@@ -128,6 +142,10 @@ class IndexManager {
 	 * @param string[]             $directories Canonical directories below the root.
 	 */
 	public function scanHints( array $source, array $directories, ScanBudget $budget, bool $full = false ): ScanResult {
+		if ( $this->isPaused() ) {
+			return new ScanResult( false, 0 );
+		}
+
 		// A distinct run for each call: hints must not mix with the run of a pass.
 		$run = (int) ( microtime( true ) * 1000 );
 
@@ -141,11 +159,19 @@ class IndexManager {
 	 * @return bool Whether more work remains.
 	 */
 	public function runBackground( array $sources, ScanBudget $budget ): bool {
+		if ( $this->isPaused() ) {
+			return false;
+		}
+
 		$more = false;
 
 		foreach ( $sources as $source ) {
 			if ( $budget->exhausted() ) {
 				return true;
+			}
+			// A pause asked for during the run ends it at the next source.
+			if ( $this->isPaused() ) {
+				return false;
 			}
 
 			$id    = (string) ( $source['id'] ?? '' );
@@ -205,6 +231,10 @@ class IndexManager {
 	 * @param array<int, array<string, mixed>> $sources
 	 */
 	public function requestDuePasses( array $sources ): void {
+		if ( $this->isPaused() ) {
+			return;
+		}
+
 		$now = $this->now();
 		foreach ( $sources as $source ) {
 			$state = $this->prepare( $source );

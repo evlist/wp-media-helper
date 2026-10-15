@@ -39,7 +39,7 @@ class Cron {
 	 * Asks for a background run soon, unless one is already scheduled.
 	 */
 	public static function schedule( int $delay = 0 ): void {
-		if ( wp_next_scheduled( self::RUN_HOOK ) ) {
+		if ( Pause::isPaused() || wp_next_scheduled( self::RUN_HOOK ) ) {
 			return;
 		}
 
@@ -51,7 +51,7 @@ class Cron {
 	}
 
 	public static function run(): void {
-		if ( ! self::lock() ) {
+		if ( Pause::isPaused() || ! self::lock() ) {
 			return;
 		}
 
@@ -67,6 +67,10 @@ class Cron {
 	}
 
 	public static function maintain(): void {
+		if ( Pause::isPaused() ) {
+			return;
+		}
+
 		$manager = DayIndex::forWordPress()->manager();
 		$manager->forgetUnknownSources( ActiveSources::configuredIds() );
 		$manager->requestDuePasses( ActiveSources::all() );

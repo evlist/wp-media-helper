@@ -285,6 +285,13 @@ filters `wp_media_helper_can_trash_files` and `wp_media_helper_can_see_trash` (t
 `wp_media_helper_can_hide_files` and `wp_media_helper_can_see_hidden_files` still work). Trashing also needs the
 permission to delete the attachments of the file. A renamed or moved file loses its trash flag.
 
+## Pausing the indexing
+
+`wp media-helper pause` stops the background indexing: the cron passes, the *Re-scan now* buttons and the quick scan of the panel.
+The panel, the imports, the trash and the gallery block keep working on the index as it is. `wp media-helper resume` starts it again
+and `wp media-helper status` tells which state it is in. The pause survives restarts and a reset. The constant
+`WP_MEDIA_HELPER_PAUSED` (in `wp-config.php`) forces it for sites controlled by code. See [slice 049](docs/slices/049-pause-and-path-remap.md).
+
 ## Reset
 
 The bottom of the settings page has a **Reset** section to start again from nothing

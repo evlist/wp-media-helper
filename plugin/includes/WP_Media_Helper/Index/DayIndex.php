@@ -24,6 +24,7 @@ class DayIndex {
 
 	public const REASON_INCOMPLETE = 'index-incomplete';
 	public const REASON_FORCED     = 'forced-refresh';
+	public const REASON_PAUSED     = 'index-paused';
 
 	private const HINT_SECONDS = 1.0;
 
@@ -52,7 +53,7 @@ class DayIndex {
 				update_option( ScanState::OPTION, $value, false );
 			}
 		);
-		$manager = new IndexManager( $store, $scanner, $state, [ Cron::class, 'schedule' ] );
+		$manager = new IndexManager( $store, $scanner, $state, [ Cron::class, 'schedule' ], null, [ Pause::class, 'isPaused' ] );
 
 		return new self( $store, $manager, $keys );
 	}
@@ -101,6 +102,7 @@ class DayIndex {
 		$id = (string) ( $source['id'] ?? '' );
 		$this->manager->prepare( $source );
 		$indexed = $this->manager->isIndexed( $source );
+		$paused  = $this->manager->isPaused();
 
 		$directories = $this->hintDirectories( $source, $date, $indexed );
 		if ( [] !== $directories ) {
@@ -135,9 +137,10 @@ class DayIndex {
 			'hidden'           => $hidden,
 			'dimensions'       => $dimensions,
 			'details'          => $details,
-			'refresh_required' => ! $indexed,
+			// While paused nothing will complete the index: do not ask the panel to wait for it.
+			'refresh_required' => ! $indexed && ! $paused,
 			'stale'            => false,
-			'reason'           => $indexed ? ( $force ? self::REASON_FORCED : null ) : self::REASON_INCOMPLETE,
+			'reason'           => $paused ? self::REASON_PAUSED : ( $indexed ? ( $force ? self::REASON_FORCED : null ) : self::REASON_INCOMPLETE ),
 		];
 	}
 

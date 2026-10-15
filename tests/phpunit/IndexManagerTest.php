@@ -22,6 +22,7 @@ class IndexManagerTest extends TestCase {
 	private array $option = [];
 	private int $now = 2000000000;
 	private int $scheduled = 0;
+	private bool $paused = false;
 
 	protected function setUp(): void {
 		$this->base = realpath( sys_get_temp_dir() ) . '/wpmh_mgr_' . uniqid();
@@ -47,7 +48,7 @@ class IndexManagerTest extends TestCase {
 		);
 		$this->manager = new IndexManager( $this->store, $scanner, $state, function ( int $delay ): void {
 			++$this->scheduled;
-		}, fn(): int => $this->now );
+		}, fn(): int => $this->now, fn(): bool => $this->paused );
 		$this->index = new DayIndex( $this->store, $this->manager, $keys );
 	}
 
@@ -271,5 +272,42 @@ class IndexManagerTest extends TestCase {
 		$source = $this->source( [ 'path_pattern' => '{date:Y}/{nope}' ] );
 
 		$this->assertSame( [], $this->names( $source, '2026-10-02' ) );
+	}
+
+	public function test_a_paused_index_runs_no_background_pass_and_schedules_nothing(): void {
+		$source = $this->source();
+		$this->index->forDay( $source, new DateTimeImmutable( '2026-10-02' ) );
+		$this->paused    = true;
+		$this->scheduled = 0;
+
+		$more = $this->manager->runBackground( [ $source ], new ScanBudget( 30 ) );
+		$this->manager->requestPass( $source, true );
+		$this->manager->requestDuePasses( [ $source ] );
+
+		$this->assertFalse( $more );
+		$this->assertFalse( $this->manager->isIndexed( $source ) );
+		$this->assertSame( 0, $this->scheduled );
+	}
+
+	public function test_a_paused_index_does_not_scan_for_the_panel_and_does_not_ask_it_to_wait(): void {
+		$this->paused = true;
+
+		$result = $this->index->forDay( $this->source(), new DateTimeImmutable( '2026-10-02' ) );
+
+		$this->assertSame( [], $result['files'] );
+		$this->assertFalse( $result['refresh_required'] );
+		$this->assertSame( DayIndex::REASON_PAUSED, $result['reason'] );
+	}
+
+	public function test_a_request_made_during_the_pause_is_kept_and_served_after_it(): void {
+		$source = $this->source();
+		$this->paused = true;
+		$this->manager->requestPass( $source, true );
+
+		$this->paused = false;
+		$this->finishBackground( $source );
+
+		$this->assertTrue( $this->manager->isIndexed( $source ) );
+		$this->assertSame( [ '20261002_121549.jpg' ], $this->names( $source, '2026-10-02' ) );
 	}
 }

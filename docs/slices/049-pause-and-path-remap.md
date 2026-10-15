@@ -3,7 +3,7 @@
 
 # Slice 049: Pause the background work, and remap paths
 
-Status: **proposal**. Related: [036](036-source-lifecycle-and-missing-files.md) (sources that disappear), [037](037-eligibility-reconciliation.md),
+Status: **part 1 (pause) implemented**, part 2 (remap) to do. Related: [036](036-source-lifecycle-and-missing-files.md) (sources that disappear), [037](037-eligibility-reconciliation.md),
 [023](023-thumbnails-in-cache.md) (cache layout), [044](044-image-sizes.md) (orphan cleanup).
 
 ## Goal

@@ -4,6 +4,7 @@
 
 namespace WP_Media_Helper\Admin;
 
+use WP_Media_Helper\Cli\MediaHelperCommand;
 use WP_Media_Helper\Index\Cron;
 use WP_Media_Helper\Index\Schema;
 use WP_Media_Helper\MediaSource\AdditionalTypes;
@@ -14,6 +15,7 @@ class Bootstrap {
 	public static function init(): void {
 		Schema::maybeUpgrade();
 		Cron::register();
+		MediaHelperCommand::register();
 		AdditionalTypes::register();
 		new ExternalSourceSettingsPage();
 		new EditorPanel();
