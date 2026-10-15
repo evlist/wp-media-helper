@@ -300,6 +300,10 @@ the index, keeping the attachment IDs, the trash and the dates set by hand, and 
 nothing without `--yes`, which needs the indexing to be paused. `--undo=<run>` puts the paths back. The contents that carry an old address
 are counted and the `wp search-replace` lines to run are printed. Back up the database first.
 
+For scripts, `wp media-helper source list|add|exclude|include|remove` manage the sources with the same checks as the settings page,
+`wp media-helper status --format=json` and `paths remap --format=json` give machine-readable answers, and
+`wp media-helper index dates` shows the dates held by the index. See the end of slice 049.
+
 ## Reset
 
 The bottom of the settings page has a **Reset** section to start again from nothing

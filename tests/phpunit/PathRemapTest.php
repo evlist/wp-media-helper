@@ -223,5 +223,15 @@ namespace {
 			$this->assertSame( 1, $report['index']['collisions'] );
 			$this->assertSame( 'photos/2026/eric/10/08/a.jpg', $this->db->get_var( 'SELECT path FROM wp_media_helper_files WHERE id = 1' ) );
 		}
+
+		public function test_the_dates_of_the_index_can_be_read_by_path_and_by_source(): void {
+			$store = new WP_Media_Helper\Index\WpdbIndexStore();
+
+			$rows = $store->rowsByKeys( [ 'photos/2026/eric/10/08/a.jpg', 'unknown.jpg' ] );
+			$this->assertSame( 1, count( $rows ) );
+			$this->assertSame( '2026-10-08 10:00:00', $rows[0]['date_override'] );
+			$this->assertSame( 'photos/2026/eric/10/08/a.jpg', $store->sampleRows( 'eric-2026', 5 )[0]['path'] );
+			$this->assertSame( [], $store->sampleRows( 'nobody', 5 ) );
+		}
 	}
 }

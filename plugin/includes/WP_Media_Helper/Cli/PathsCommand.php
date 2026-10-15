@@ -62,6 +62,9 @@ class PathsCommand {
 	 * [--yes]
 	 * : Apply. Without it the command only reports what it would do.
 	 *
+	 * [--format=<format>]
+	 * : text or json. With json the only output is one object: {"applied", "undo", "run", "attachments":{"moved","not_ours","missing","collisions"}, "index":{"directories","files","joined","collisions"}, "cache":{"moved"}, "urls":{"posts","meta","search_replace"}, "problems"}. Default: text.
+	 *
 	 * [--undo=<run>]
 	 * : Put back the paths of an earlier run, given its identifier.
 	 *
@@ -98,16 +101,23 @@ class PathsCommand {
 		$remapper = new PathRemapper( $baseDir, $baseUrl, null === $cache ? '' : $cache );
 		$report   = $remapper->run( $map, $apply, ! isset( $assoc['no-cache'] ) );
 
-		$this->print( $report, $apply );
-
+		$json     = 'json' === ( $assoc['format'] ?? 'text' );
 		$problems = count( $report['attachments']['missing'] ) + count( $report['attachments']['collisions'] ) + $report['index']['collisions'];
+		$run      = null;
 		if ( $apply && ! isset( $assoc['undo'] ) && $report['attachments']['moved'] + $report['index']['files'] > 0 ) {
 			$run = $this->remember( $map );
-			\WP_CLI::line( sprintf( 'Run %s. Undo with: wp media-helper paths remap --undo=%s --yes', $run, $run ) );
 		}
 
-		if ( ! $apply ) {
-			\WP_CLI::warning( 'Nothing was changed. Add --yes to apply.' );
+		if ( $json ) {
+			\WP_CLI::line( (string) wp_json_encode( array_merge( [ 'applied' => $apply, 'undo' => isset( $assoc['undo'] ), 'run' => $run ], $report, [ 'problems' => $problems ] ) ) );
+		} else {
+			$this->print( $report, $apply );
+			if ( null !== $run ) {
+				\WP_CLI::line( sprintf( 'Run %s. Undo with: wp media-helper paths remap --undo=%s --yes', $run, $run ) );
+			}
+			if ( ! $apply ) {
+				\WP_CLI::warning( 'Nothing was changed. Add --yes to apply.' );
+			}
 		}
 		if ( $problems > 0 ) {
 			\WP_CLI::halt( 1 );

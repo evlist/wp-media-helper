@@ -50,19 +50,28 @@ class MediaHelperCommand {
 	}
 
 	/**
-	 * Tells whether the indexing is paused.
+	 * Tells whether the indexing is paused: prints "paused" or "running".
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--format=<format>]
+	 * : text or json ({"state":"paused","by_constant":false}). Default: text.
 	 *
 	 * ## EXAMPLES
 	 *
 	 *     wp media-helper status
+	 *     wp media-helper status --format=json
+	 *
+	 * @param string[]             $args
+	 * @param array<string, mixed> $assoc
 	 */
-	public function status(): void {
-		if ( Pause::isForcedByConstant() ) {
-			\WP_CLI::line( 'paused (constant WP_MEDIA_HELPER_PAUSED)' );
-		} elseif ( Pause::isSetByOption() ) {
-			\WP_CLI::line( 'paused' );
-		} else {
-			\WP_CLI::line( 'running' );
+	public function status( array $args = [], array $assoc = [] ): void {
+		$state = Pause::isPaused() ? 'paused' : 'running';
+		if ( 'json' === ( $assoc['format'] ?? 'text' ) ) {
+			\WP_CLI::line( (string) wp_json_encode( [ 'state' => $state, 'by_constant' => Pause::isForcedByConstant() ] ) );
+
+			return;
 		}
+		\WP_CLI::line( $state );
 	}
 }

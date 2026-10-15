@@ -326,6 +326,54 @@ class WpdbIndexStore implements IndexStore {
 		return is_array( $found ) ? array_values( array_map( 'strval', $found ) ) : [];
 	}
 
+	/**
+	 * The rows of the files with these keys (paths relative to uploads), with what the dates depend on.
+	 *
+	 * @param string[] $keys
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function rowsByKeys( array $keys ): array {
+		global $wpdb;
+
+		$keys = array_values( array_unique( array_map( 'strval', $keys ) ) );
+		if ( [] === $keys ) {
+			return [];
+		}
+
+		$table        = Schema::filesTable();
+		$placeholders = implode( ', ', array_fill( 0, count( $keys ), '%s' ) );
+		$rows         = $wpdb->get_results( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				"SELECT source_id, path, effective_date, date_source, name_date, embedded_date, date_override, hidden, missing_since FROM {$table} WHERE path_hash IN ({$placeholders}) ORDER BY path ASC",
+				array_map( 'sha1', $keys )
+			),
+			ARRAY_A
+		);
+
+		return is_array( $rows ) ? $rows : [];
+	}
+
+	/**
+	 * The first files of a source, in a stable order.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function sampleRows( string $sourceId, int $limit ): array {
+		global $wpdb;
+
+		$table = Schema::filesTable();
+		$rows  = $wpdb->get_results( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				"SELECT source_id, path, effective_date, date_source, name_date, embedded_date, date_override, hidden, missing_since FROM {$table} WHERE source_id = %s ORDER BY id ASC LIMIT %d",
+				$sourceId,
+				max( 1, $limit )
+			),
+			ARRAY_A
+		);
+
+		return is_array( $rows ) ? $rows : [];
+	}
+
 	public function countFiles( string $sourceId ): int {
 		global $wpdb;
 

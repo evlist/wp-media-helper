@@ -111,3 +111,14 @@ once per mapping, or `--map=<file>` (lines `old new source`).
   must still be there and the old source id is the one found in the index under the old prefix (or `--from-source`).
 - The first scan after the pause is a full pass of the new source (it has no scan state): it reads every directory again and
   recomputes the dates of the index with the patterns of the **new** source.
+
+## Commands for scripts (added for the rollout)
+
+All are rerunnable and say so when there is nothing to do; `--dry-run` changes nothing.
+
+- `wp media-helper status [--format=json]`: `paused` or `running` (json: `{"state":"paused","by_constant":false}`).
+- `wp media-helper source list [--format=table|json|csv|yaml]`: rank, id, name, root (relative to uploads), state, path pattern, name patterns, mtime fallback, and the number of attachments registered through each source.
+- `wp media-helper source add --root=<root> [--name] [--before=<id|root|name>] [--path-pattern] [--name-patterns='a|b'] [--no-mtime-fallback] [--dry-run] [--porcelain]`: same checks as the settings page (root inside the allowed base, patterns, unique names, overlaps). A source that already has this root is not added again. `--porcelain` prints only the id (added or already there).
+- `wp media-helper source exclude <id|root|name>` / `source include <...>` / `source remove <...>`: `remove` refuses while attachments are registered through the source.
+- `wp media-helper paths remap ... --format=json`: one object with `applied`, `undo`, `run`, `attachments`, `index`, `cache`, `urls`, `problems`; the exit code is 1 when `problems` is not 0 (attachments missing or in collision, index rows in collision).
+- `wp media-helper index dates [<path>...] [--attachment=<ids>] [--source=<id> --limit=<n>] [--format=table|json|csv]`: the dates the index holds (effective date and its origin, date of the name, embedded date, date set by hand, trashed). By attachment ID the path follows the remap, so the dates can be compared before and after.
