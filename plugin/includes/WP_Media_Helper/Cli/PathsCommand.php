@@ -56,11 +56,11 @@ class PathsCommand {
 	 * [--map=<file>]
 	 * : A file of lines "old new source [old_source]" instead of --from, --to and --source.
 	 *
-	 * [--no-cache]
-	 * : Leave the thumbnail cache where it is (the thumbnails are made again when needed).
+	 * [--cache]
+	 * : Move the thumbnails of the old directories inside the cache. On by default; --no-cache leaves them where they are (they are made again when needed).
 	 *
-	 * [--no-urls]
-	 * : Do not look for old addresses in the contents (two scans of the posts and meta tables, slow on a large site). The `wp search-replace` lines are printed anyway.
+	 * [--urls]
+	 * : Look for old addresses in the contents (two scans of the posts and meta tables, slow on a large site). On by default; --no-urls skips it. The `wp search-replace` lines are printed anyway.
 	 *
 	 * [--yes]
 	 * : Apply. Without it the command only reports what it would do.
@@ -106,7 +106,7 @@ class PathsCommand {
 			// On the error output, so that the answer (text or json) stays alone on the standard output.
 			fwrite( STDERR, $message . "\n" ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 		} );
-		$report   = $remapper->run( $map, $apply, ! isset( $assoc['no-cache'] ), ! isset( $assoc['no-urls'] ) );
+		$report   = $remapper->run( $map, $apply, (bool) \WP_CLI\Utils\get_flag_value( $assoc, 'cache', true ), (bool) \WP_CLI\Utils\get_flag_value( $assoc, 'urls', true ) );
 
 		$json     = 'json' === ( $assoc['format'] ?? 'text' );
 		$problems = count( $report['attachments']['missing'] ) + count( $report['attachments']['collisions'] ) + $report['index']['collisions'];

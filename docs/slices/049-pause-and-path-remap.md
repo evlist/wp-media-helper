@@ -132,3 +132,12 @@ count old addresses (one per prefix). Now: the paths already taken below each ne
 flag comes in the same query as the attachments, and the old addresses are counted in one pass per table. `--no-urls` skips that count
 (the `wp search-replace` lines are still printed; the json has `urls.counted: false`). The progress of the long steps is written to the
 error output (attachments checked every 5,000, index rows every 10,000), so the answer on the standard output stays alone.
+
+## WP-CLI and the `--no-xxx` options (fix after the second rehearsal)
+
+WP-CLI reads `--no-xxx` as the negation of a flag `xxx` (`$assoc['xxx'] = false`). The first versions declared `[--no-urls]`, `[--no-cache]` and
+`[--no-mtime-fallback]` and read `$assoc['no-urls']`: WP-CLI refused `--no-urls` as an unknown parameter before the command ran, and the
+flags could never have been seen. They are now declared in the positive (`[--urls]`, `[--cache]`, `[--mtime-fallback]`, on by default) and
+read with `\WP_CLI\Utils\get_flag_value( $assoc, 'urls', true )`; the user still writes `--no-urls`. `CliOptionsTest` checks on the source
+that no command declares or reads a `no-xxx` option and that every option read is declared; it does not load WP-CLI, so the first run on
+a real site remains the real test of the parsing.

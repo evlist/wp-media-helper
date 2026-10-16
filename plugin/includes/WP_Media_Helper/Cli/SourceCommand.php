@@ -74,8 +74,8 @@ class SourceCommand {
 	 * [--name-patterns=<patterns>]
 	 * : Patterns of dates in file names, separated by |.
 	 *
-	 * [--no-mtime-fallback]
-	 * : A file whose name has no date is not placed on any day.
+	 * [--mtime-fallback]
+	 * : A file whose name has no date is placed on the day of its modification time. On by default; --no-mtime-fallback leaves such a file out of every day.
 	 *
 	 * [--dry-run]
 	 * : Say what would be done and change nothing.
@@ -99,7 +99,7 @@ class SourceCommand {
 					'name'           => (string) ( $assoc['name'] ?? '' ),
 					'path_pattern'   => (string) ( $assoc['path-pattern'] ?? '' ),
 					'name_patterns'  => isset( $assoc['name-patterns'] ) ? array_values( array_filter( array_map( 'trim', explode( '|', (string) $assoc['name-patterns'] ) ), 'strlen' ) ) : [],
-					'mtime_fallback' => ! isset( $assoc['no-mtime-fallback'] ),
+					'mtime_fallback' => (bool) \WP_CLI\Utils\get_flag_value( $assoc, 'mtime-fallback', true ),
 				],
 				isset( $assoc['before'] ) ? (string) $assoc['before'] : null
 			);
