@@ -215,7 +215,8 @@ Media Library like any other media and works with other plugins:
   already in the library;
 - *Remove from library* (advanced mode) deletes the attachments of the file whichever
   tool created them, with their metadata, and never a file. Thumbnails of that attachment
-  are deleted from the cache. The simple mode does not offer it: it only *attaches* and
+  are deleted from the cache. It is shown in red and asks for a confirmation that says what is lost, and a
+  refusal (a method that protects the media, a missing right) is reported with its reason. The simple mode does not offer it: it only *attaches* and
   *detaches* a file, and a detached file keeps its attachment and its metadata;
 
 Only files inside the uploads directory can be registered.

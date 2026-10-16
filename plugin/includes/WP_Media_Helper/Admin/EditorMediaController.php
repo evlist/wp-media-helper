@@ -656,12 +656,21 @@ class EditorMediaController {
 
 			// Removing an attachment never deletes a file, so it applies to the
 			// attachments of the file whichever tool created them.
-			$removed = $this->removeRows( $method, $rows );
-			$result['success'] = true;
+			$refused = [];
+			$removed = $this->removeRows( $method, $rows, 'remove', $cohabit ? $native : null, $refused );
+			$result['success'] = [] !== $removed || [] === $refused;
 			$result['is_imported'] = [] !== $registry->findByPath( $item['path'] );
 			$result['detached_ids'] = $detached;
 			$result['removed_ids'] = $removed;
 			$result['operation'] = [] !== $detached ? ( [] === $removed ? 'detached' : 'detached_and_removed' ) : ( [] === $removed ? 'no_change' : 'removed_from_library' );
+			if ( [] !== $refused ) {
+				// Nothing is silently ignored: say why the record stays.
+				$result['message'] = sprintf(
+					/* translators: %s: the reason a method gives. */
+					__( 'Not removed from the library: %s', 'wp-media-helper' ),
+					implode( ' ', array_unique( array_values( $refused ) ) )
+				);
+			}
 			$results[] = $result;
 		}
 
@@ -681,9 +690,11 @@ class EditorMediaController {
 	 *
 	 * @param array<int, array{id:int, parent:int, owned:bool}> $rows
 	 * @param string $context `remove` (*Remove from library*) or `trash` (the file goes to the trash).
+	 * @param ?Method $also  Another method that must allow it too (the native one when both mechanisms are in use).
+	 * @param array<int, string> $refused Receives, by attachment ID, why a removal was refused.
 	 * @return int[]
 	 */
-	private function removeRows( Method $method, array $rows, string $context = 'remove' ): array {
+	private function removeRows( Method $method, array $rows, string $context = 'remove', ?Method $also = null, array &$refused = [] ): array {
 		$removed = [];
 		$refuse = static fn (): string => '';
 		add_filter( 'wp_delete_file', $refuse, PHP_INT_MAX );
@@ -691,10 +702,16 @@ class EditorMediaController {
 		try {
 			foreach ( $rows as $row ) {
 				$attachmentId = (int) $row['id'];
-				if ( is_wp_error( $method->may_remove( $attachmentId, $context ) ) ) {
+				$guard = $method->may_remove( $attachmentId, $context );
+				if ( ! is_wp_error( $guard ) && null !== $also ) {
+					$guard = $also->may_remove( $attachmentId, $context );
+				}
+				if ( is_wp_error( $guard ) ) {
+					$refused[ $attachmentId ] = $guard->get_error_message();
 					continue;
 				}
 				if ( ! current_user_can( 'delete_post', $attachmentId ) ) {
+					$refused[ $attachmentId ] = __( 'You are not allowed to delete this media.', 'wp-media-helper' );
 					continue;
 				}
 

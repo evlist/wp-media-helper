@@ -270,7 +270,7 @@ method, a bulk action, and a filter on the mechanism and the mode (*WordPress, w
 - **Actions** (menu, sheet, bulk, in simple and advanced modes; *Remove from library* only in the advanced mode, simple mode only detaches: see [014](014-simple-and-advanced-media-panel-modes.md)): *Attach (WordPress)* (`attach_native`), *Attach with the
   method…* (`attach_method`, a dialog asks for the values of the fields: the modes), *Switch to the method…* (`to_method`, same
   dialog), *Switch to WordPress* (`to_native`: the method detaches, then the attachment is attached natively; refused when it is
-  attached natively to another post), *Detach* (detaches through whichever mechanism holds the file), *Edit link…* (method links
+  attached natively to another post), *Detach* (detaches through whichever mechanism holds the file), *Edit modes…* (the label is *Edit* followed by the name of the first field the method declares, lower case; *Edit link…* when it declares none; method links
   only). The dialog is prefilled with the selection of the field filter when it holds one value, else the defaults of the fields.
   The former bulk action *Convert* is replaced by *Switch to the method…* in cohabitation. Events: `wp_media_helper_attached` and
   `wp_media_helper_detached` with the identifier of the mechanism (`native` or the method).

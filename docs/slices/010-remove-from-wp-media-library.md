@@ -74,3 +74,10 @@ This slice does not include:
 ## Notes
 
 This slice complements the import flow and keeps the lifecycle honest: the WordPress media library is a local management layer on top of the external source. The external source is still the place where files are discovered, while the WordPress library is the place where they may be imported and later removed.
+
+## Follow-up: confirmation and refusals
+
+*Remove from library* (advanced mode only, see [014](014-simple-and-advanced-media-panel-modes.md)) is in red, in the menus and in the bulk actions, and asks for a confirmation that lists what the record
+holds and what is lost; *To keep the record, only detach the file from the post*. The removal asks the method in use, and the native method too when both mechanisms are in use (cohabitation),
+with `Method::may_remove( $id, 'remove' )`, and the right `delete_post`; a refusal is returned with its reason (`message`, and the item is a failure when nothing was removed) and the panel shows it.
+Before, a refused removal returned a success with nothing removed and the panel showed nothing.

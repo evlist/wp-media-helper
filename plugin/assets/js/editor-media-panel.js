@@ -31,11 +31,20 @@
 	const defaultPanelMode = 'advanced' === wpMediaHelperEditorPanel.panelMode ? 'advanced' : 'simple';
 	const dateMetaKey = 'wp_media_helper_date';
 
+	// What the data of a link is called: the name of the first field the method declares ("Modes"), else "link".
+	const editLabel = function () {
+		const first = attachmentMethod.fields.length > 0 ? attachmentMethod.fields[ 0 ] : null;
+
+		return first && first.label
+			? sprintf( __( 'Edit %s…', 'wp-media-helper' ), String( first.label ).toLowerCase() )
+			: __( 'Edit link…', 'wp-media-helper' );
+	};
+
 	// Background poll interval; the manual Refresh button always forces an immediate check.
 	const AUTO_REFRESH_INTERVAL_MS = 30000;
 	const BULK_ACTIONS = [
 		{ value: 'import', label: __( 'Import', 'wp-media-helper' ) },
-		{ value: 'remove', label: __( 'Remove', 'wp-media-helper' ) },
+		{ value: 'remove', label: __( 'Remove from library', 'wp-media-helper' ) },
 		{ value: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) },
 		{ value: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) },
 		// With both mechanisms in use (cohabitation): the labels are completed with the name of the method.
@@ -685,6 +694,7 @@
 
 		// The files waiting for the confirmation of their move to the trash.
 		const [ trashRequest, setTrashRequest ] = useState( null );
+		const [ removeRequest, setRemoveRequest ] = useState( null );
 		const [ menu, setMenu ] = useState( null );
 		const [ sheetKey, setSheetKey ] = useState( null );
 		const [ operationNotice, setOperationNotice ] = useState( null );
@@ -1184,8 +1194,10 @@
 				setSelectedIds( [] );
 			}
 			const failures = results.filter( function ( result ) { return ! result.success; } );
-			if ( failures.length > 0 ) {
-				setOperationNotice( __( 'Some selected items could not be processed.', 'wp-media-helper' ) );
+			// What a refusal says (a method that protects the media, a missing right) is shown, not only that something failed.
+			const reasons = results.map( function ( result ) { return result.message; } ).filter( function ( message, index, all ) { return message && all.indexOf( message ) === index; } );
+			if ( failures.length > 0 || reasons.length > 0 ) {
+				setOperationNotice( ( failures.length > 0 ? __( 'Some selected items could not be processed.', 'wp-media-helper' ) : '' ) + ( reasons.length > 0 ? ' ' + reasons.slice( 0, 3 ).join( ' ' ) : '' ) );
 			}
 		};
 
@@ -1243,6 +1255,11 @@
 				return;
 			}
 
+			if ( 'remove' === bulkAction ) {
+				setRemoveRequest( { items: selectedItems } );
+				return;
+			}
+
 			runBulk( bulkAction, [ 'attach', 'attach_method', 'to_method' ].includes( bulkAction ) ? withLinkContext( selectedItems ) : selectedItems, postId );
 		};
 
@@ -1287,6 +1304,10 @@
 			}
 			if ( 'trash' === action ) {
 				setTrashRequest( { items: [ item ], bulk: false } );
+				return;
+			}
+			if ( 'remove' === action ) {
+				setRemoveRequest( { items: [ item ] } );
 				return;
 			}
 
@@ -1377,7 +1398,7 @@
 					}
 				}
 				if ( importable && item.is_imported && ! item.is_attached_to_current_post && 'simple' !== panelMode ) {
-					actions.push( { action: 'remove', label: __( 'Remove from library', 'wp-media-helper' ) } );
+					actions.push( { action: 'remove', label: __( 'Remove from library', 'wp-media-helper' ), destructive: true } );
 				}
 			} else if ( ( ! blockedElsewhere( item ) ) && importable ) {
 				if ( 'simple' === panelMode ) {
@@ -1387,7 +1408,7 @@
 						: { action: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) } );
 				} else {
 					actions.push( item.is_imported
-						? { action: 'remove', label: __( 'Remove from library', 'wp-media-helper' ) }
+						? { action: 'remove', label: __( 'Remove from library', 'wp-media-helper' ), destructive: true }
 						: { action: 'import', label: __( 'Import', 'wp-media-helper' ) } );
 					actions.push( item.is_attached_to_current_post
 						? { action: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) }
@@ -1396,7 +1417,7 @@
 			}
 			// The data of the link (modes, position...) that the method declares.
 			if ( attachmentMethod.fields.length > 0 && item.is_attached_to_current_post && ! item.attached_natively_only && importable ) {
-				actions.push( { action: 'edit', label: __( 'Edit link…', 'wp-media-helper' ) } );
+				actions.push( { action: 'edit', label: editLabel() } );
 			}
 			if ( canTrash ) {
 				actions.push( { action: 'trash', label: __( 'Move to trash', 'wp-media-helper' ), destructive: true } );
@@ -1628,6 +1649,49 @@
 			);
 		};
 
+		// Removing the record from the library loses what it holds: it is asked for, like the trash.
+		const renderRemoveDialog = function () {
+			if ( ! removeRequest ) {
+				return null;
+			}
+
+			const items = removeRequest.items;
+			const elsewhere = items.filter( function ( item ) { return item.is_attached_to_other_post; } );
+			const featured = items.filter( isFeatured ).length;
+			const close = function () { setRemoveRequest( null ); };
+			const danger = { color: '#b32d2e', fontWeight: 600 };
+			const run = function () {
+				setRemoveRequest( null );
+				runBulk( 'remove', items, getCurrentPostId() );
+			};
+
+			return wp.element.createElement( Modal, {
+				title: 1 === items.length ? sprintf( __( 'Remove %s from the media library?', 'wp-media-helper' ), items[ 0 ].name ) : sprintf( _n( 'Remove %d file from the media library?', 'Remove %d files from the media library?', items.length, 'wp-media-helper' ), items.length ),
+				onRequestClose: close,
+				className: 'wpmh-remove-dialog'
+			},
+				wp.element.createElement( 'p', null, _n( 'The file stays on the disk, untouched, and stays in the gallery of this panel.', 'The files stay on the disk, untouched, and stay in the gallery of this panel.', items.length, 'wp-media-helper' ) ),
+				wp.element.createElement( 'p', { style: danger, role: 'alert' },
+					_n( 'Its record in the WordPress media library is deleted with what it holds: its title, caption, description and alternative text, and its links to posts (the modes, the positions). It leaves every post it is attached to and is no longer a featured image. Importing the file again makes a new record without any of this.', 'Their records in the WordPress media library are deleted with what they hold: titles, captions, descriptions and alternative texts, and their links to posts (the modes, the positions). They leave every post they are attached to and are no longer featured images. Importing the files again makes new records without any of this.', items.length, 'wp-media-helper' )
+				),
+				elsewhere.length > 0
+					? wp.element.createElement( 'p', { style: danger },
+						__( 'Attached to other posts: ', 'wp-media-helper' ) + elsewhere.map( function ( item ) {
+							return item.other_posts.length > 0 ? item.other_posts.map( function ( post ) { return post.title || ( '#' + post.id ); } ).join( ', ' ) : ( item.other_post_title || ( '#' + item.other_post_id ) );
+						} ).join( ', ' )
+					)
+					: null,
+				featured > 0
+					? wp.element.createElement( 'p', { style: danger }, __( 'It is the featured image of this post: the featured image will be removed.', 'wp-media-helper' ) )
+					: null,
+				wp.element.createElement( 'p', { style: { color: '#50575e', fontSize: '12px' } }, __( 'To keep the record, only detach the file from the post.', 'wp-media-helper' ) ),
+				wp.element.createElement( 'div', { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end' } },
+					wp.element.createElement( Button, { isSecondary: true, onClick: close, text: __( 'Cancel', 'wp-media-helper' ) } ),
+					wp.element.createElement( Button, { isDestructive: true, isPrimary: true, onClick: run, text: __( 'Remove from library', 'wp-media-helper' ) } )
+				)
+			);
+		};
+
 		// The values of the fields of a link to ask for: those of the link when it is edited, else the selection of the field
 		// filters when it holds one value, else the defaults.
 		const askLinkValues = function ( action, items ) {
@@ -1655,7 +1719,9 @@
 			const methodName = attachmentMethod.label || __( 'the method', 'wp-media-helper' );
 			const single = 1 === linkEdit.items.length ? linkEdit.items[ 0 ].name : '';
 			const titles = {
-				edit: sprintf( __( 'Link of %s with this post', 'wp-media-helper' ), single ),
+				edit: attachmentMethod.fields.length > 0 && attachmentMethod.fields[ 0 ].label
+					? sprintf( __( '%1$s of %2$s', 'wp-media-helper' ), attachmentMethod.fields[ 0 ].label, single )
+					: sprintf( __( 'Link of %s with this post', 'wp-media-helper' ), single ),
 				attach: single ? sprintf( __( 'Attach %1$s with %2$s', 'wp-media-helper' ), single, methodName ) : sprintf( _n( 'Attach %1$d file with %2$s', 'Attach %1$d files with %2$s', linkEdit.items.length, 'wp-media-helper' ), linkEdit.items.length, methodName ),
 				attach_method: single ? sprintf( __( 'Attach %1$s with %2$s', 'wp-media-helper' ), single, methodName ) : sprintf( _n( 'Attach %1$d file with %2$s', 'Attach %1$d files with %2$s', linkEdit.items.length, 'wp-media-helper' ), linkEdit.items.length, methodName ),
 				to_method: single ? sprintf( __( 'Switch %1$s to %2$s', 'wp-media-helper' ), single, methodName ) : sprintf( _n( 'Switch %1$d file to %2$s', 'Switch %1$d files to %2$s', linkEdit.items.length, 'wp-media-helper' ), linkEdit.items.length, methodName ),
@@ -2018,6 +2084,8 @@
 										return visibleBulkActions.map( function ( action ) {
 											return wp.element.createElement( MenuItem, {
 												key: action.value,
+												isDestructive: [ 'remove', 'trash' ].includes( action.value ),
+												style: [ 'remove', 'trash' ].includes( action.value ) ? { color: '#b32d2e' } : undefined,
 												onClick: function () {
 													setBulkAction( action.value );
 													onClose();
@@ -2079,6 +2147,7 @@
 						renderContextMenu(),
 						renderSheet(),
 						renderTrashDialog(),
+						renderRemoveDialog(),
 						renderLinkDialog()
 					)
 				)
