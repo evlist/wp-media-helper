@@ -234,18 +234,61 @@ namespace {
 			$this->assertSame( 1, (int) $this->db->get_var( 'SELECT COUNT(*) FROM wp_media_helper_files' ) );
 		}
 
-		public function test_two_rows_that_both_hold_data_of_a_person_are_a_collision_and_a_real_run_then_changes_nothing(): void {
-			$this->db->insert( 'wp_media_helper_files', [ 'source_id' => 'cumulus-eric', 'dir_id' => 9, 'path_hash' => sha1( 'cumulus/eric/2026/10/08/a.jpg' ), 'path' => 'cumulus/eric/2026/10/08/a.jpg', 'name' => 'a.jpg', 'hidden' => 1 ] );
+		public function test_two_rows_that_set_different_dates_by_hand_are_a_collision_that_is_listed_and_a_real_run_then_changes_nothing(): void {
+			$this->db->insert( 'wp_media_helper_files', [ 'source_id' => 'cumulus-eric', 'dir_id' => 9, 'path_hash' => sha1( 'cumulus/eric/2026/10/08/a.jpg' ), 'path' => 'cumulus/eric/2026/10/08/a.jpg', 'name' => 'a.jpg', 'date_override' => '2025-01-01 00:00:00' ] );
 
 			$dry  = $this->remapper()->run( $this->map(), false, true, false );
 			$real = $this->remapper()->run( $this->map(), true, true, false );
 
 			$this->assertSame( 1, $dry['index']['collisions'] );
+			$this->assertSame( 'cumulus/eric/2026/10/08/a.jpg', $dry['index']['collision_details'][0]['path'] );
+			$this->assertSame( 'photos/2026/eric/10/08/a.jpg', $dry['index']['collision_details'][0]['was'] );
+			$this->assertSame( [ '2025-01-01 00:00:00', '2026-10-08 10:00:00' ], array_column( $dry['index']['collision_details'][0]['rows'], 'date_override' ) );
 			$this->assertTrue( $real['refused'] );
-			$this->assertSame( 1, $real['index']['collisions'] );
 			$this->assertSame( 'photos/2026/eric/10/08/a.jpg', $GLOBALS['wpmh_test_metadata'][7]['file'], 'The attachments are not moved either.' );
 			$this->assertSame( 'photos/2026/eric/10/08/a.jpg', $this->db->get_var( 'SELECT path FROM wp_media_helper_files WHERE id = 1' ) );
 			$this->assertTrue( is_dir( $this->base . '/thumbnails/photos/2026/eric' ), 'Nor the cache.' );
+		}
+
+		public function test_prefer_live_resolves_two_different_dates_by_keeping_the_row_that_is_not_missing(): void {
+			$this->db->query( "UPDATE wp_media_helper_files SET missing_since = 5 WHERE id = 1" );
+			$this->db->insert( 'wp_media_helper_files', [ 'source_id' => 'uploads', 'dir_id' => 2, 'path_hash' => sha1( 'photos/2026/eric/10/08/a.jpg' ), 'path' => 'photos/2026/eric/10/08/a.jpg', 'name' => 'a.jpg', 'date_override' => '2025-01-01 00:00:00' ] );
+
+			$without = $this->remapper()->run( $this->map(), false, true, false );
+			$with    = $this->remapper()->run( $this->map(), true, true, false, true );
+
+			$this->assertSame( 1, $without['index']['collisions'] );
+			$this->assertSame( 0, $with['index']['collisions'] );
+			$rows = $this->db->get_results( "SELECT date_override FROM wp_media_helper_files WHERE path = 'cumulus/eric/2026/10/08/a.jpg'" );
+			$this->assertSame( [ [ 'date_override' => '2025-01-01 00:00:00' ] ], $rows, 'The live row and its date.' );
+		}
+
+		public function test_the_trash_is_on_every_row_of_a_path_so_two_trashed_rows_merge_without_collision(): void {
+			$this->db->query( "UPDATE wp_media_helper_files SET missing_since = 5, date_override = NULL WHERE id = 1" );
+			$this->db->insert( 'wp_media_helper_files', [ 'source_id' => 'uploads', 'dir_id' => 2, 'path_hash' => sha1( 'photos/2026/eric/10/08/a.jpg' ), 'path' => 'photos/2026/eric/10/08/a.jpg', 'name' => 'a.jpg', 'hidden' => 1, 'hidden_by' => 3 ] );
+
+			$dry  = $this->remapper()->run( $this->map(), false, true, false );
+			$real = $this->remapper()->run( $this->map(), true, true, false );
+
+			$this->assertSame( 0, $dry['index']['collisions'] );
+			$this->assertSame( 0, $real['index']['collisions'] );
+			$this->assertSame( $dry['index']['merged'], $real['index']['merged'] );
+			$row = $this->db->get_row( "SELECT * FROM wp_media_helper_files WHERE path = 'cumulus/eric/2026/10/08/a.jpg'" );
+			$this->assertSame( '1', (string) $row['hidden'] );
+			$this->assertSame( 1, (int) $this->db->get_var( 'SELECT COUNT(*) FROM wp_media_helper_files' ) );
+		}
+
+		public function test_a_stale_row_that_holds_the_trash_gives_it_to_the_live_row_that_lacks_it(): void {
+			$this->db->query( "UPDATE wp_media_helper_files SET hidden = 1, hidden_by = 7, hidden_at = 99, date_override = NULL, missing_since = 5 WHERE id = 1" );
+			$this->db->insert( 'wp_media_helper_files', [ 'source_id' => 'uploads', 'dir_id' => 2, 'path_hash' => sha1( 'photos/2026/eric/10/08/a.jpg' ), 'path' => 'photos/2026/eric/10/08/a.jpg', 'name' => 'a.jpg' ] );
+
+			$this->remapper()->run( $this->map(), true, true, false );
+
+			$row = $this->db->get_row( "SELECT * FROM wp_media_helper_files WHERE path = 'cumulus/eric/2026/10/08/a.jpg'" );
+			$this->assertSame( '1', (string) $row['hidden'], 'The trash of the stale row is not lost.' );
+			$this->assertSame( '7', (string) $row['hidden_by'] );
+			$this->assertSame( '2', (string) $row['id'], 'The live row stays.' );
+			$this->assertSame( 1, (int) $this->db->get_var( 'SELECT COUNT(*) FROM wp_media_helper_files' ) );
 		}
 
 		public function test_stale_duplicates_of_the_same_path_under_other_sources_are_merged_the_same_way_in_a_dry_and_a_real_run(): void {

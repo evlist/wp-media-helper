@@ -62,11 +62,14 @@ class PathsCommand {
 	 * [--urls]
 	 * : Look for old addresses in the contents (two scans of the posts and meta tables, slow on a large site). On by default; --no-urls skips it. The `wp search-replace` lines are printed anyway.
 	 *
+	 * [--prefer-live]
+	 * : When two rows of the index (the same file held by two sources) disagree on a date set by hand, keep the one that is not marked missing. Without it such rows are a collision and a real run is refused. Two rows that both have the trash flag, or only one a date, are merged without losing anything.
+	 *
 	 * [--yes]
 	 * : Apply. Without it the command only reports what it would do.
 	 *
 	 * [--format=<format>]
-	 * : text or json. With json the only output is one object: {"applied", "undo", "refused", "run", "ignored":{post type: count}, "attachments":{"moved","not_ours","missing","collisions"}, "index":{"directories","files","joined","collisions","merged","sources":{prefix: {source: rows}}}, "cache":{"moved"}, "urls":{"counted","posts","meta","search_replace"}, "problems"}. `refused` is true when --yes was given but the index has collisions: nothing was changed. Default: text.
+	 * : text or json. With json the only output is one object: {"applied", "undo", "refused", "run", "ignored":{post type: count}, "attachments":{"moved","not_ours","missing","collisions"}, "index":{"directories","files","joined","collisions","collision_details":[{"path","was","rows":[{"id","source","missing","hidden","date_override"}]}],"merged","sources":{prefix: {source: rows}}}, "cache":{"moved"}, "urls":{"counted","posts","meta","search_replace"}, "problems"}. `refused` is true when --yes was given but the index has collisions: nothing was changed. Default: text.
 	 *
 	 * [--undo=<run>]
 	 * : Put back the paths of an earlier run, given its identifier.
@@ -106,7 +109,7 @@ class PathsCommand {
 			// On the error output, so that the answer (text or json) stays alone on the standard output.
 			fwrite( STDERR, $message . "\n" ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 		} );
-		$report   = $remapper->run( $map, $apply, (bool) \WP_CLI\Utils\get_flag_value( $assoc, 'cache', true ), (bool) \WP_CLI\Utils\get_flag_value( $assoc, 'urls', true ) );
+		$report   = $remapper->run( $map, $apply, (bool) \WP_CLI\Utils\get_flag_value( $assoc, 'cache', true ), (bool) \WP_CLI\Utils\get_flag_value( $assoc, 'urls', true ), (bool) \WP_CLI\Utils\get_flag_value( $assoc, 'prefer-live', false ) );
 
 		$json     = 'json' === ( $assoc['format'] ?? 'text' );
 		$problems = count( $report['attachments']['missing'] ) + count( $report['attachments']['collisions'] ) + $report['index']['collisions'];
@@ -244,7 +247,14 @@ class PathsCommand {
 			\WP_CLI::warning( sprintf( '%d attachments left alone, another attachment already has the new path: %s', count( $a['collisions'] ), implode( ', ', array_slice( $a['collisions'], 0, 20 ) ) ) );
 		}
 		if ( $i['collisions'] > 0 ) {
-			\WP_CLI::warning( sprintf( '%d index rows would collide: two rows that both hold data of a person (trashed, a date set by hand) go to the same new path.', $i['collisions'] ) );
+			\WP_CLI::warning( sprintf( '%d index rows would collide: two rows hold different dates set by hand for the same new path (use --prefer-live to keep the one that is not marked missing).', $i['collisions'] ) );
+			foreach ( array_slice( $i['collision_details'], 0, 20 ) as $detail ) {
+				$rows = [];
+				foreach ( $detail['rows'] as $row ) {
+					$rows[] = sprintf( '#%d %s%s date=%s%s', $row['id'], $row['source'], $row['missing'] ? ' (missing)' : '', (string) $row['date_override'], $row['hidden'] ? ' trashed' : '' );
+				}
+				\WP_CLI::line( sprintf( '  %s: %s', $detail['path'], implode( ' | ', $rows ) ) );
+			}
 		}
 
 		$u = $report['urls'];

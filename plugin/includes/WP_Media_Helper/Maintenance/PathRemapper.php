@@ -30,9 +30,12 @@ final class PathRemapper {
 	 * The rows that a pass has already sent to a path, by `source|hash`: the dry run and the real run both follow it, so that they
 	 * find the same collisions and duplicates (a row moved earlier in the pass is not in the database in a dry run).
 	 *
-	 * @var array<string, array{id:int, user:bool, missing:bool}>
+	 * @var array<string, array<string, mixed>>
 	 */
 	private array $claimed = [];
+
+	/** @var bool Whether the live row wins when two rows disagree on a date set by hand. */
+	private bool $preferLive = false;
 
 	/** @var array<string, bool> The joining directories already counted or created in this pass. */
 	private array $joined = [];
@@ -72,12 +75,13 @@ final class PathRemapper {
 	 *   refused:bool,
 	 *   ignored:array<string, int>,
 	 *   attachments:array{moved:int, not_ours:int, missing:int[], collisions:int[]},
-	 *   index:array{directories:int, files:int, joined:int, collisions:int, merged:int, sources:array<string, array<string, int>>},
+	 *   index:array{directories:int, files:int, joined:int, collisions:int, merged:int, sources:array<string, array<string, int>>, collision_details:array<int, array<string, mixed>>},
 	 *   cache:array{moved:int},
 	 *   urls:array{counted:bool, posts:int, meta:int, search_replace:string[]}
 	 * }
 	 */
-	public function run( PathMap $map, bool $apply, bool $moveCache = true, bool $countUrls = true ): array {
+	public function run( PathMap $map, bool $apply, bool $moveCache = true, bool $countUrls = true, bool $preferLive = false ): array {
+		$this->preferLive = $preferLive;
 		$ignored = $this->ignored( $map );
 		$urls    = $countUrls ? $this->urls( $map ) : [ 'counted' => false, 'posts' => 0, 'meta' => 0, 'search_replace' => $this->searchReplaceLines( $map ) ];
 
@@ -254,10 +258,10 @@ final class PathRemapper {
 	}
 
 	/**
-	 * @return array{directories:int, files:int, joined:int, collisions:int, merged:int, sources:array<string, array<string, int>>}
+	 * @return array{directories:int, files:int, joined:int, collisions:int, merged:int, sources:array<string, array<string, int>>, collision_details:array<int, array<string, mixed>>}
 	 */
 	private function index( PathMap $map, bool $apply ): array {
-		$report = [ 'directories' => 0, 'files' => 0, 'joined' => 0, 'collisions' => 0, 'merged' => 0, 'sources' => [] ];
+		$report = [ 'directories' => 0, 'files' => 0, 'joined' => 0, 'collisions' => 0, 'merged' => 0, 'sources' => [], 'collision_details' => [] ];
 		$this->claimed = [];
 		$this->joined  = [];
 		// Directories first, shortest path first: a joining row exists before the row below it.
@@ -276,7 +280,10 @@ final class PathRemapper {
 	 * Rewrites the rows of the index under an old prefix. Several rows can have the same path under different sources (a source that was
 	 * reordered or removed leaves stale rows, marked missing, for thirty days): they all go to the same new path, where only one may be.
 	 * The one with data a person set (trashed, a date by hand) stays, else the one that is not missing, else the first; the others
-	 * are stale duplicates and are dropped (`merged`). Two rows that both carry data of a person are a real collision (`collisions`).
+	 * are stale duplicates and are dropped (`merged`). When both rows carry data of a person the data is **merged** (a file is trashed if
+	 * either is, a date set by hand is kept from whichever has one): the trash flag is set on every row of a path, so both rows
+	 * usually hold the same. Only two different dates set by hand are a real collision (`collisions`, listed in `collision_details`),
+	 * unless `$preferLive` says that the row not marked missing wins.
 	 *
 	 * @param array{from:string, to:string, source:string, from_source:string, root:string} $entry
 	 * @param array<string, mixed>                                                          $report
@@ -289,7 +296,7 @@ final class PathRemapper {
 		$last = 0;
 		while ( true ) {
 			$rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT id, source_id, path, missing_since" . ( $files ? ', hidden, date_override' : '' ) . " FROM {$table} WHERE id > %d AND ( path = %s OR ( path >= %s AND path < %s ) ) ORDER BY id ASC LIMIT %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT id, source_id, path, missing_since" . ( $files ? ', hidden, hidden_by, hidden_at, date_override' : '' ) . " FROM {$table} WHERE id > %d AND ( path = %s OR ( path >= %s AND path < %s ) ) ORDER BY id ASC LIMIT %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				$last,
 				$entry['from'],
 				$low,
@@ -312,26 +319,50 @@ final class PathRemapper {
 				$sourceId = '' !== $entry['source'] ? $entry['source'] : (string) $row['source_id'];
 				$hash     = sha1( $target['path'] );
 				$key      = $sourceId . '|' . $hash;
-				$mine     = [ 'id' => $last, 'user' => $files && ( ! empty( $row['hidden'] ) || null !== $row['date_override'] ), 'missing' => null !== $row['missing_since'] ];
+				$mine     = $this->describeRow( $row, $files );
 
 				$other = $this->claimed[ $key ] ?? $this->rowAt( $table, $files, $sourceId, $hash, $last );
 				if ( null !== $other ) {
-					if ( $other['user'] && $mine['user'] ) {
+					$conflict = $mine['user'] && $other['user'] && null !== $mine['date_override'] && null !== $other['date_override'] && $mine['date_override'] !== $other['date_override'];
+					if ( $conflict && ! $this->preferLive ) {
 						++$report['collisions'];
+						$report['collision_details'][] = [
+							'path' => $target['path'],
+							'was'  => $old,
+							'rows' => [ $this->detail( $other, $sourceId ), $this->detail( $mine, (string) $row['source_id'] ) ],
+						];
 						continue;
 					}
 					++$report['merged'];
-					$mineWins = $mine['user'] || ( ! $other['user'] && $other['missing'] && ! $mine['missing'] );
-					if ( ! $mineWins ) {
-						// This row is a stale duplicate of the one that is at the new path.
-						if ( $apply ) {
-							$this->dropRow( $table, $files, $last, $other['id'] );
+					// The live row wins over a stale one; then the one with data of a person; then the one already there.
+					$mineWins = $mine['missing'] !== $other['missing'] ? ! $mine['missing'] : ( $mine['user'] && ! $other['user'] );
+					$winner = $mineWins ? $mine : $other;
+					$loser  = $mineWins ? $other : $mine;
+					// Nothing a person set is lost: the winner takes what it lacks (a date set by hand, the trash) from the loser.
+					$union = [];
+					if ( $files ) {
+						if ( ! $winner['hidden'] && $loser['hidden'] ) {
+							$union = [ 'hidden' => 1, 'hidden_by' => $loser['hidden_by'], 'hidden_at' => $loser['hidden_at'] ];
+							$winner['hidden'] = true;
 						}
-						continue;
+						if ( null === $winner['date_override'] && null !== $loser['date_override'] ) {
+							$union['date_override'] = $loser['date_override'];
+							$winner['date_override'] = $loser['date_override'];
+						}
+						$winner['user'] = $winner['hidden'] || null !== $winner['date_override'];
 					}
 					if ( $apply ) {
-						$this->dropRow( $table, $files, $other['id'], $last );
+						$this->dropRow( $table, $files, $loser['id'], $winner['id'] );
+						if ( [] !== $union ) {
+							$wpdb->update( $table, $union, [ 'id' => $winner['id'] ] ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+						}
 					}
+					$this->claimed[ $key ] = $winner;
+					if ( $winner['id'] !== $last ) {
+						// The row that was there stays where it is (it is already at, or on its way to, the new path).
+						continue;
+					}
+					$mine = $winner;
 				}
 
 				$this->claimed[ $key ] = $mine;
@@ -351,19 +382,50 @@ final class PathRemapper {
 	}
 
 	/**
+	 * What a row of the index holds that matters for a merge.
+	 *
+	 * @param array<string, mixed> $row
+	 * @return array{id:int, user:bool, missing:bool, hidden:bool, hidden_by:mixed, hidden_at:mixed, date_override:?string}
+	 */
+	private function describeRow( array $row, bool $files ): array {
+		$hidden = $files && ! empty( $row['hidden'] );
+		$date   = $files && null !== ( $row['date_override'] ?? null ) ? (string) $row['date_override'] : null;
+
+		return [
+			'id'            => (int) $row['id'],
+			'user'          => $hidden || null !== $date,
+			'missing'       => null !== ( $row['missing_since'] ?? null ),
+			'hidden'        => $hidden,
+			'hidden_by'     => $row['hidden_by'] ?? null,
+			'hidden_at'     => $row['hidden_at'] ?? null,
+			'date_override' => $date,
+		];
+	}
+
+	/**
+	 * A row as the report shows it.
+	 *
+	 * @param array<string, mixed> $described
+	 * @return array<string, mixed>
+	 */
+	private function detail( array $described, string $source ): array {
+		return [ 'id' => $described['id'], 'source' => $source, 'missing' => $described['missing'], 'hidden' => $described['hidden'], 'date_override' => $described['date_override'] ];
+	}
+
+	/**
 	 * The row of the database at a path of a source, other than `$exceptId`.
 	 *
-	 * @return array{id:int, user:bool, missing:bool}|null
+	 * @return array<string, mixed>|null
 	 */
 	private function rowAt( string $table, bool $files, string $sourceId, string $hash, int $exceptId ): ?array {
 		global $wpdb;
 
-		$row = $wpdb->get_row( $wpdb->prepare( "SELECT id, missing_since" . ( $files ? ', hidden, date_override' : '' ) . " FROM {$table} WHERE source_id = %s AND path_hash = %s AND id <> %d LIMIT 1", $sourceId, $hash, $exceptId ), ARRAY_A ); // phpcs:ignore WordPress.DB
+		$row = $wpdb->get_row( $wpdb->prepare( "SELECT id, missing_since" . ( $files ? ', hidden, hidden_by, hidden_at, date_override' : '' ) . " FROM {$table} WHERE source_id = %s AND path_hash = %s AND id <> %d LIMIT 1", $sourceId, $hash, $exceptId ), ARRAY_A ); // phpcs:ignore WordPress.DB
 		if ( ! is_array( $row ) ) {
 			return null;
 		}
 
-		return [ 'id' => (int) $row['id'], 'user' => $files && ( ! empty( $row['hidden'] ) || null !== ( $row['date_override'] ?? null ) ), 'missing' => null !== $row['missing_since'] ];
+		return $this->describeRow( $row, $files );
 	}
 
 	/**

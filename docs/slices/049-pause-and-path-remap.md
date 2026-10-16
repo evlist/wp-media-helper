@@ -169,3 +169,23 @@ After a run of the fixed version, an undo restores the attachments exactly and t
 `SELECT source_id, COUNT(*) AS n, SUM(missing_since IS NOT NULL) AS missing FROM wp_media_helper_files WHERE path >= 'photos/' AND path < 'photos0' GROUP BY source_id;` (rows by source under the old roots),
 `SELECT COUNT(*) FROM (SELECT path_hash FROM wp_media_helper_files WHERE path >= 'photos/' AND path < 'photos0' GROUP BY path_hash HAVING COUNT(*) > 1) d;` (paths held more than once),
 `SELECT source_id, COUNT(*) FROM wp_media_helper_files WHERE path >= 'cumulus/' AND path < 'cumulus0' GROUP BY source_id;` (rows already under the new roots).
+
+## Second fix after the rehearsal on staging: two rows that both "hold data of a person"
+
+With the merge of stale duplicates, a dry run on a fresh copy of production gave `merged: 30865` and `collisions: 2`. Why two rows of the same path can both hold data of a person: **the trash flag is set on every row of a path, whichever
+source holds it** (`UPDATE ... WHERE path_hash IN (...)`), so a trashed file that is also held by a stale row of another source has the flag on both. They hold the same thing, and refusing was too strict.
+The rule is now a **merge without loss**: the live row (not marked missing) stays, else the one with data, else the one already there; it **takes from the other** what it lacks (the trash flag with its user and time, a date set by hand).
+Only two **different dates set by hand** are a collision, and the report lists them: `index.collision_details`: `[ { "path": new path, "was": old path, "rows": [ { "id", "source", "missing", "hidden", "date_override" } ] } ]` (`index.collisions` stays the number).
+The option `--prefer-live` resolves them: the row not marked missing keeps its date, the other row's date is dropped (said in the report by the rows listed). A run that is refused changes nothing.
+
+To see them before a run, by SQL (read only; files only, directories hold no data of a person):
+
+```sql
+SELECT f.id, f.source_id, f.path, f.missing_since IS NOT NULL AS missing, f.hidden, f.hidden_by, f.hidden_at, f.date_override
+FROM wp_media_helper_files f
+JOIN ( SELECT path_hash FROM wp_media_helper_files WHERE path >= 'photos/' AND path < 'photos0'
+       GROUP BY path_hash HAVING COUNT(*) > 1 AND SUM( hidden = 1 OR date_override IS NOT NULL ) > 1 ) d ON d.path_hash = f.path_hash
+ORDER BY f.path, f.id;
+```
+
+What deleting a stale row by hand would lose: only what it alone holds (its trash flag or date), and the live row keeps its own; with the merge above nothing needs to be deleted by hand.
