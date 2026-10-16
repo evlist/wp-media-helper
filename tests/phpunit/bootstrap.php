@@ -14,6 +14,12 @@ if ( ! function_exists( 'esc_html__' ) ) {
 	}
 }
 
+if ( ! function_exists( '_n' ) ) {
+	function _n( string $single, string $plural, int $number, string $domain = 'default' ): string {
+		return 1 === $number ? $single : $plural;
+	}
+}
+
 spl_autoload_register( function ( string $class ): void {
 	$prefix = 'WP_Media_Helper\\';
 	$base   = __DIR__ . '/../../plugin/includes/WP_Media_Helper/';

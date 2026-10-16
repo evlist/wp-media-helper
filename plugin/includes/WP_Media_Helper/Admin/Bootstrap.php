@@ -10,6 +10,7 @@ use WP_Media_Helper\Cli\MediaHelperCommand;
 use WP_Media_Helper\Cli\PathsCommand;
 use WP_Media_Helper\Cli\SourceCommand;
 use WP_Media_Helper\Index\Cron;
+use WP_Media_Helper\Maintenance\OrphanCheck;
 use WP_Media_Helper\Index\Schema;
 use WP_Media_Helper\MediaSource\AdditionalTypes;
 use WP_Media_Helper\Thumbnails\Thumbnails;
@@ -25,6 +26,9 @@ class Bootstrap {
 		IndexCommand::register();
 		AttachmentsCommand::register();
 		AdditionalTypes::register();
+		OrphanCheck::register();
+		new OrphanNotices();
+		new OrphansPage();
 		new ExternalSourceSettingsPage();
 		new EditorPanel();
 		new EditorMediaController();

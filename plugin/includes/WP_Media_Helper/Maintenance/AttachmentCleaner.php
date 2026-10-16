@@ -136,6 +136,49 @@ final class AttachmentCleaner {
 	}
 
 	/**
+	 * The attachments of a group of paths whose file is not there, without refusing: a group that cannot be trusted
+	 * (the directory is absent, unreadable or empty, or not one attachment has its file) is reported as unavailable
+	 * and gives no orphan, because an unmounted directory would make everything look orphan.
+	 *
+	 * @param string[] $prefixes Paths below uploads; an empty list is the whole uploads directory.
+	 * @param string[] $exclude  Paths below uploads whose attachments are left out (they belong to another group).
+	 * @return array{items:array<int, array{id:int, path:string, parent:int, mime:string, date:string, title:string, author:int}>, unavailable:array<string, string>, scanned:int}
+	 */
+	public function findMissing( array $prefixes, array $exclude = [] ): array {
+		$label = [] === $prefixes ? '.' : implode( ',', $prefixes );
+		try {
+			$this->assertReadable( $prefixes );
+		} catch ( RuntimeException $exception ) {
+			return [ 'items' => [], 'unavailable' => [ $label => 'not readable or empty' ], 'scanned' => 0 ];
+		}
+
+		$rows = array_values( array_filter(
+			$this->attachments( $prefixes ),
+			static function ( array $row ) use ( $exclude ): bool {
+				foreach ( $exclude as $other ) {
+					if ( str_starts_with( $row['path'], $other . '/' ) ) {
+						return false;
+					}
+				}
+
+				return true;
+			}
+		) );
+
+		$missing = [];
+		foreach ( $rows as $row ) {
+			if ( ! is_file( $this->baseDir . '/' . $row['path'] ) ) {
+				$missing[] = $row;
+			}
+		}
+		if ( count( $missing ) === count( $rows ) && count( $rows ) > 1 ) {
+			return [ 'items' => [], 'unavailable' => [ $label => 'no attachment has its file' ], 'scanned' => count( $rows ) ];
+		}
+
+		return [ 'items' => $missing, 'unavailable' => [], 'scanned' => count( $rows ) ];
+	}
+
+	/**
 	 * Removes what a plan lists: the featured images that pointed to a duplicate point to the twin that stays, then
 	 * the records are removed.
 	 *
@@ -319,7 +362,7 @@ final class AttachmentCleaner {
 	 * @param int[] $ids
 	 * @return array<int, array{featured:int[], content:int[]}>
 	 */
-	private function usedBy( array $ids ): array {
+	public function usedBy( array $ids ): array {
 		global $wpdb;
 
 		$used = [];
@@ -359,7 +402,7 @@ final class AttachmentCleaner {
 	 * @param string[] $names
 	 * @return array<string, string[]>
 	 */
-	private function sameNameElsewhere( array $names ): array {
+	public function sameNameElsewhere( array $names ): array {
 		global $wpdb;
 
 		$table = Schema::filesTable();

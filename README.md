@@ -307,6 +307,13 @@ For scripts, `wp media-helper source list|add|exclude|include|remove` manage the
 `wp media-helper attachments clean` finds, and with `--yes` removes (records only, never a file), the duplicate attachments and those whose file is missing,
 with guards on the numbers and a saved list. See [slice 050](docs/slices/050-attachments-clean.md).
 
+## Attachments whose file is gone
+
+When a file of the library disappears (renamed, moved, deleted from the share), the indexing forgets it, but its attachment stays and its image is broken.
+A check runs every day, and soon after an indexing pass saw files gone, and keeps the list: a test in *Tools > Site Health*, a notice on the dashboard, the media
+library and the settings page, and *Tools > Media orphans* to list them and clean up (ignore, or remove the records, never a file; export as CSV). A directory that is not
+mounted is reported as unavailable instead of making every attachment look orphan. See [slice 036](docs/slices/036-source-lifecycle-and-missing-files.md).
+
 ## Reset
 
 The bottom of the settings page has a **Reset** section to start again from nothing

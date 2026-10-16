@@ -3,7 +3,7 @@
 
 # Slice 036: Changing a source, and files that went missing
 
-Status: **proposed** (design and open questions only, not scheduled). Answers the open question
+Status: **point 1 implemented** (the check, the Site Health test, the notice and the tool for the attachments without a file: see the end); the rest (relinking, rename detection, the effects of changing a source) is still **proposed**. Answers the open question
 "Editing a source with existing media" of the [open questions](../IA/media-source-open-questions.md).
 Builds on [022](022-wordpress-native-registration.md), [024](024-source-priority-and-ownership.md) and
 [025](025-database-file-index.md).
@@ -68,3 +68,26 @@ else manages.
 3. Removing or re-rooting a source tells the administrator what stays imported.
 4. Nothing is changed without a click, except the optional automatic relinking of exact matches, which is off
    by default.
+
+## Implemented: attachments whose file is missing (point 1)
+
+What the indexing does when a file disappears is unchanged: the row of the index gets `missing_since`, the file is no longer listed, and the row is
+forgotten after 30 days. The attachment in the library is not touched, which is why it needs its own check.
+
+- **The check** (`Maintenance\OrphanCheck`, `AttachmentCleaner::findMissing`): every day, and about ten minutes after an indexing pass found files gone
+  (action `wp_media_helper_files_went_missing`), a background event checks the `_wp_attached_file` of every attachment against the disk, one group of paths at a time
+  (the root of each source, the nested ones on their own, then everything else), within a budget of 20 seconds; what is left goes on in a next event. The result replaces the
+  previous one only when the check is complete; an orphan seen before keeps the date it was first seen. The check does not run while the indexing is paused.
+- **A group that cannot be trusted** (directory absent, unreadable or empty, or not one attachment of it has its file: a directory that is not mounted) is reported as
+  *unavailable* and gives no orphan; the orphans known before in that group are kept.
+- **State** (`Maintenance\OrphanRegistry`, option `wp_media_helper_orphans`): the IDs with the date first seen and their group, the IDs ignored, the unavailable groups, the number checked.
+- **Site Health** (`Admin\OrphanNotices`): a direct test *Files of the media library*: good, or recommended with the count and a link to the tool, or recommended when a
+  directory could not be checked.
+- **Notice**: for administrators, on the dashboard, the media library and the settings page of the plugin only (not on every screen).
+- **The tool**, *Tools > Media orphans* (`Admin\OrphansPage`): the attachments without a file, 50 a page, with the registered path, the parent post, where it is used (featured image, `wp-image-<id>` in a
+  content), the paths of the index with the same file name, and since when it was seen missing. Bulk actions: *Ignore* / *Stop ignoring* and *Remove the records from the library*
+  (confirmation; records only, never a file, by `RecordRemover`; each id is checked again against the disk, and skipped when its directory is unavailable or the file is back). *Check now*
+  and *Export as CSV* (cells that a spreadsheet could take for a formula are prefixed with an apostrophe).
+- **WP-CLI** keeps `attachments clean --missing` ([050](050-attachments-clean.md)) for scripts.
+
+Not done: relinking to a candidate, rename detection, the effects of changing or removing a source (points 2 to 5 above).

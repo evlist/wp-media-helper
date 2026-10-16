@@ -53,7 +53,15 @@ class DayIndex {
 				update_option( ScanState::OPTION, $value, false );
 			}
 		);
-		$manager = new IndexManager( $store, $scanner, $state, [ Cron::class, 'schedule' ], null, [ Pause::class, 'isPaused' ] );
+		$manager = new IndexManager( $store, $scanner, $state, [ Cron::class, 'schedule' ], null, [ Pause::class, 'isPaused' ], static function ( string $sourceId, int $count ): void {
+			/**
+			 * Fires when an indexing pass found files that are gone. The check of the attachments without a file listens to it.
+			 *
+			 * @param string $sourceId Source of the files.
+			 * @param int    $count    Number of files gone.
+			 */
+			do_action( 'wp_media_helper_files_went_missing', $sourceId, $count );
+		} );
 
 		return new self( $store, $manager, $keys );
 	}

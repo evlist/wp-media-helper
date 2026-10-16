@@ -47,13 +47,21 @@ class IndexManager {
 	 */
 	private $paused;
 
-	public function __construct( IndexStore $store, IndexScanner $scanner, ScanState $state, callable $schedule, ?callable $clock = null, ?callable $paused = null ) {
+	/**
+	 * Told, with the source id and a count, when a pass found files that are gone.
+	 *
+	 * @var callable
+	 */
+	private $onMissing;
+
+	public function __construct( IndexStore $store, IndexScanner $scanner, ScanState $state, callable $schedule, ?callable $clock = null, ?callable $paused = null, ?callable $onMissing = null ) {
 		$this->store    = $store;
 		$this->scanner  = $scanner;
 		$this->state    = $state;
 		$this->schedule = $schedule;
 		$this->clock    = $clock ?? 'time';
 		$this->paused   = $paused ?? static fn(): bool => false;
+		$this->onMissing = $onMissing ?? static function (): void {};
 	}
 
 	public function isPaused(): bool {
@@ -194,6 +202,9 @@ class IndexManager {
 			}
 
 			$result = $this->scanner->scan( $source, $state['run'], $budget, $state['full'] );
+			if ( $result->filesMissing > 0 ) {
+				( $this->onMissing )( $id, $result->filesMissing );
+			}
 
 			if ( $result->complete ) {
 				$state = array_merge( $state, [ 'in_progress' => false, 'finished_at' => $this->now() ] );
