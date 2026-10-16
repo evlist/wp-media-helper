@@ -27,6 +27,17 @@ final class PathRemapper {
 	private WpdbIndexStore $store;
 
 	/**
+	 * The rows that a pass has already sent to a path, by `source|hash`: the dry run and the real run both follow it, so that they
+	 * find the same collisions and duplicates (a row moved earlier in the pass is not in the database in a dry run).
+	 *
+	 * @var array<string, array{id:int, user:bool, missing:bool}>
+	 */
+	private array $claimed = [];
+
+	/** @var array<string, bool> The joining directories already counted or created in this pass. */
+	private array $joined = [];
+
+	/**
 	 * Told of the progress of the long steps (a line of text).
 	 *
 	 * @var callable|null
@@ -58,20 +69,38 @@ final class PathRemapper {
 	 * (for example the folder records of a media library plugin): they are left alone.
 	 *
 	 * @return array{
+	 *   refused:bool,
 	 *   ignored:array<string, int>,
 	 *   attachments:array{moved:int, not_ours:int, missing:int[], collisions:int[]},
-	 *   index:array{directories:int, files:int, joined:int, collisions:int},
+	 *   index:array{directories:int, files:int, joined:int, collisions:int, merged:int, sources:array<string, array<string, int>>},
 	 *   cache:array{moved:int},
 	 *   urls:array{counted:bool, posts:int, meta:int, search_replace:string[]}
 	 * }
 	 */
 	public function run( PathMap $map, bool $apply, bool $moveCache = true, bool $countUrls = true ): array {
+		$ignored = $this->ignored( $map );
+		$urls    = $countUrls ? $this->urls( $map ) : [ 'counted' => false, 'posts' => 0, 'meta' => 0, 'search_replace' => $this->searchReplaceLines( $map ) ];
+
+		// The whole index is planned first, without writing: the same pass as a dry run. A real run goes on only when no row of the
+		// index would collide, so that it never leaves the attachments moved and the index half rewritten.
+		$index   = $this->index( $map, false );
+		$refused = $apply && $index['collisions'] > 0;
+		if ( $apply && ! $refused ) {
+			$attachments = $this->attachments( $map, true );
+			$index       = $this->index( $map, true );
+			$cache       = [ 'moved' => $moveCache ? $this->cache( $map, true ) : 0 ];
+		} else {
+			$attachments = $this->attachments( $map, false );
+			$cache       = [ 'moved' => $moveCache ? $this->cache( $map, false ) : 0 ];
+		}
+
 		return [
-			'ignored'     => $this->ignored( $map ),
-			'attachments' => $this->attachments( $map, $apply ),
-			'index'       => $this->index( $map, $apply ),
-			'cache'       => [ 'moved' => $moveCache ? $this->cache( $map, $apply ) : 0 ],
-			'urls'        => $countUrls ? $this->urls( $map ) : [ 'counted' => false, 'posts' => 0, 'meta' => 0, 'search_replace' => $this->searchReplaceLines( $map ) ],
+			'refused'     => $refused,
+			'ignored'     => $ignored,
+			'attachments' => $attachments,
+			'index'       => $index,
+			'cache'       => $cache,
+			'urls'        => $urls,
 		];
 	}
 
@@ -225,10 +254,12 @@ final class PathRemapper {
 	}
 
 	/**
-	 * @return array{directories:int, files:int, joined:int, collisions:int}
+	 * @return array{directories:int, files:int, joined:int, collisions:int, merged:int, sources:array<string, array<string, int>>}
 	 */
 	private function index( PathMap $map, bool $apply ): array {
-		$report = [ 'directories' => 0, 'files' => 0, 'joined' => 0, 'collisions' => 0 ];
+		$report = [ 'directories' => 0, 'files' => 0, 'joined' => 0, 'collisions' => 0, 'merged' => 0, 'sources' => [] ];
+		$this->claimed = [];
+		$this->joined  = [];
 		// Directories first, shortest path first: a joining row exists before the row below it.
 		foreach ( $map->entries() as $entry ) {
 			$this->rewriteRows( Schema::directoriesTable(), $entry, $map, $apply, $report, 'directories' );
@@ -236,22 +267,29 @@ final class PathRemapper {
 		foreach ( $map->entries() as $entry ) {
 			$this->rewriteRows( Schema::filesTable(), $entry, $map, $apply, $report, 'files' );
 		}
+		$this->claimed = [];
 
 		return $report;
 	}
 
 	/**
+	 * Rewrites the rows of the index under an old prefix. Several rows can have the same path under different sources (a source that was
+	 * reordered or removed leaves stale rows, marked missing, for thirty days): they all go to the same new path, where only one may be.
+	 * The one with data a person set (trashed, a date by hand) stays, else the one that is not missing, else the first; the others
+	 * are stale duplicates and are dropped (`merged`). Two rows that both carry data of a person are a real collision (`collisions`).
+	 *
 	 * @param array{from:string, to:string, source:string, from_source:string, root:string} $entry
-	 * @param array{directories:int, files:int, joined:int, collisions:int}                 $report
+	 * @param array<string, mixed>                                                          $report
 	 */
 	private function rewriteRows( string $table, array $entry, PathMap $map, bool $apply, array &$report, string $kind ): void {
 		global $wpdb;
 
+		$files = 'files' === $kind;
 		[ $low, $high ] = self::range( $entry['from'] );
 		$last = 0;
 		while ( true ) {
 			$rows = $wpdb->get_results( $wpdb->prepare(
-				"SELECT id, source_id, path FROM {$table} WHERE id > %d AND ( path = %s OR ( path >= %s AND path < %s ) ) ORDER BY id ASC LIMIT %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT id, source_id, path, missing_since" . ( $files ? ', hidden, date_override' : '' ) . " FROM {$table} WHERE id > %d AND ( path = %s OR ( path >= %s AND path < %s ) ) ORDER BY id ASC LIMIT %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				$last,
 				$entry['from'],
 				$low,
@@ -270,19 +308,39 @@ final class PathRemapper {
 					continue;
 				}
 
+				$report['sources'][ $entry['from'] ][ (string) $row['source_id'] ] = ( $report['sources'][ $entry['from'] ][ (string) $row['source_id'] ] ?? 0 ) + 1;
 				$sourceId = '' !== $entry['source'] ? $entry['source'] : (string) $row['source_id'];
-				$taken    = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE source_id = %s AND path_hash = %s AND id <> %d", $sourceId, sha1( $target['path'] ), $last ) ); // phpcs:ignore WordPress.DB
-				if ( null !== $taken && false !== $taken && '' !== (string) $taken ) {
-					++$report['collisions'];
-					continue;
+				$hash     = sha1( $target['path'] );
+				$key      = $sourceId . '|' . $hash;
+				$mine     = [ 'id' => $last, 'user' => $files && ( ! empty( $row['hidden'] ) || null !== $row['date_override'] ), 'missing' => null !== $row['missing_since'] ];
+
+				$other = $this->claimed[ $key ] ?? $this->rowAt( $table, $files, $sourceId, $hash, $last );
+				if ( null !== $other ) {
+					if ( $other['user'] && $mine['user'] ) {
+						++$report['collisions'];
+						continue;
+					}
+					++$report['merged'];
+					$mineWins = $mine['user'] || ( ! $other['user'] && $other['missing'] && ! $mine['missing'] );
+					if ( ! $mineWins ) {
+						// This row is a stale duplicate of the one that is at the new path.
+						if ( $apply ) {
+							$this->dropRow( $table, $files, $last, $other['id'] );
+						}
+						continue;
+					}
+					if ( $apply ) {
+						$this->dropRow( $table, $files, $other['id'], $last );
+					}
 				}
 
+				$this->claimed[ $key ] = $mine;
 				++$report[ $kind ];
 				if ( 0 === $report[ $kind ] % 10000 ) {
 					$this->tell( sprintf( 'index: %d %s checked', $report[ $kind ], $kind ) );
 				}
-				$data = [ 'source_id' => $sourceId, 'path_hash' => sha1( $target['path'] ), 'path' => $target['path'] ];
-				if ( 'directories' === $kind && $old === $entry['from'] ) {
+				$data = [ 'source_id' => $sourceId, 'path_hash' => $hash, 'path' => $target['path'] ];
+				if ( ! $files && $old === $entry['from'] ) {
 					$data['parent_id'] = $this->joinParent( $entry, $sourceId, $apply, $report );
 				}
 				if ( $apply ) {
@@ -290,6 +348,35 @@ final class PathRemapper {
 				}
 			}
 		}
+	}
+
+	/**
+	 * The row of the database at a path of a source, other than `$exceptId`.
+	 *
+	 * @return array{id:int, user:bool, missing:bool}|null
+	 */
+	private function rowAt( string $table, bool $files, string $sourceId, string $hash, int $exceptId ): ?array {
+		global $wpdb;
+
+		$row = $wpdb->get_row( $wpdb->prepare( "SELECT id, missing_since" . ( $files ? ', hidden, date_override' : '' ) . " FROM {$table} WHERE source_id = %s AND path_hash = %s AND id <> %d LIMIT 1", $sourceId, $hash, $exceptId ), ARRAY_A ); // phpcs:ignore WordPress.DB
+		if ( ! is_array( $row ) ) {
+			return null;
+		}
+
+		return [ 'id' => (int) $row['id'], 'user' => $files && ( ! empty( $row['hidden'] ) || null !== ( $row['date_override'] ?? null ) ), 'missing' => null !== $row['missing_since'] ];
+	}
+
+	/**
+	 * Deletes a stale duplicate row. The rows below a directory that goes are given to the one that stays.
+	 */
+	private function dropRow( string $table, bool $files, int $id, int $keepId ): void {
+		global $wpdb;
+
+		if ( ! $files ) {
+			$wpdb->update( Schema::filesTable(), [ 'dir_id' => $keepId ], [ 'dir_id' => $id ] ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->update( Schema::directoriesTable(), [ 'parent_id' => $keepId ], [ 'parent_id' => $id ] ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		}
+		$wpdb->query( $wpdb->prepare( "DELETE FROM {$table} WHERE id = %d", $id ) ); // phpcs:ignore WordPress.DB
 	}
 
 	/**
@@ -320,10 +407,15 @@ final class PathRemapper {
 				$parentId = (int) $existing['id'];
 				continue;
 			}
-			++$report['joined'];
 			if ( ! $apply ) {
+				// Not created in a dry run: counted once, however many entries share the root.
+				if ( ! isset( $this->joined[ $sourceId . '|' . $key ] ) ) {
+					$this->joined[ $sourceId . '|' . $key ] = true;
+					++$report['joined'];
+				}
 				continue;
 			}
+			++$report['joined'];
 			$parentId = $this->store->saveDirectory( $sourceId, $key, $parentId, time() );
 		}
 

@@ -66,7 +66,7 @@ class PathsCommand {
 	 * : Apply. Without it the command only reports what it would do.
 	 *
 	 * [--format=<format>]
-	 * : text or json. With json the only output is one object: {"applied", "undo", "run", "ignored":{post type: count}, "attachments":{"moved","not_ours","missing","collisions"}, "index":{"directories","files","joined","collisions"}, "cache":{"moved"}, "urls":{"counted","posts","meta","search_replace"}, "problems"}. Default: text.
+	 * : text or json. With json the only output is one object: {"applied", "undo", "refused", "run", "ignored":{post type: count}, "attachments":{"moved","not_ours","missing","collisions"}, "index":{"directories","files","joined","collisions","merged","sources":{prefix: {source: rows}}}, "cache":{"moved"}, "urls":{"counted","posts","meta","search_replace"}, "problems"}. `refused` is true when --yes was given but the index has collisions: nothing was changed. Default: text.
 	 *
 	 * [--undo=<run>]
 	 * : Put back the paths of an earlier run, given its identifier.
@@ -111,7 +111,7 @@ class PathsCommand {
 		$json     = 'json' === ( $assoc['format'] ?? 'text' );
 		$problems = count( $report['attachments']['missing'] ) + count( $report['attachments']['collisions'] ) + $report['index']['collisions'];
 		$run      = null;
-		if ( $apply && ! isset( $assoc['undo'] ) && $report['attachments']['moved'] + $report['index']['files'] > 0 ) {
+		if ( $apply && ! $report['refused'] && ! isset( $assoc['undo'] ) && $report['attachments']['moved'] + $report['index']['files'] > 0 ) {
 			$run = $this->remember( $map );
 		}
 
@@ -175,15 +175,16 @@ class PathsCommand {
 	}
 
 	/**
-	 * The source of the index rows under a prefix, when there is only one.
+	 * The source that holds most of the live rows of the index under a prefix: the old source of those rows, kept to put them back
+	 * on undo. Other sources may hold stale rows there (a source reordered or removed); those are merged away by the remap.
 	 */
 	private function soleSourceUnder( string $from ): string {
 		global $wpdb;
 
-		$table   = Schema::filesTable();
-		$sources = $wpdb->get_col( $wpdb->prepare( "SELECT DISTINCT source_id FROM {$table} WHERE path >= %s AND path < %s", $from . '/', $from . '0' ) ); // phpcs:ignore WordPress.DB
+		$table = Schema::filesTable();
+		$row   = $wpdb->get_row( $wpdb->prepare( "SELECT source_id, SUM( CASE WHEN missing_since IS NULL THEN 1 ELSE 0 END ) AS live, COUNT(*) AS n FROM {$table} WHERE path >= %s AND path < %s GROUP BY source_id ORDER BY live DESC, n DESC LIMIT 1", $from . '/', $from . '0' ), ARRAY_A ); // phpcs:ignore WordPress.DB
 
-		return is_array( $sources ) && 1 === count( $sources ) ? (string) $sources[0] : '';
+		return is_array( $row ) ? (string) $row['source_id'] : '';
 	}
 
 	/**
@@ -214,7 +215,7 @@ class PathsCommand {
 	 * @param array<string, mixed> $report
 	 */
 	private function print( array $report, bool $apply ): void {
-		$verb = $apply ? 'moved' : 'to move';
+		$verb = $apply && ! $report['refused'] ? 'moved' : 'to move';
 		foreach ( $report['ignored'] as $type => $count ) {
 			\WP_CLI::line( sprintf( 'Ignored, not attachments: %d posts of type %s (they have a _wp_attached_file under an old prefix).', $count, $type ) );
 		}
@@ -222,7 +223,19 @@ class PathsCommand {
 		$i    = $report['index'];
 
 		\WP_CLI::line( sprintf( 'Attachments %s: %d (%d not registered by this plugin)', $verb, $a['moved'], $a['not_ours'] ) );
-		\WP_CLI::line( sprintf( 'Index %s: %d directories, %d files; %d joining directories created', $verb, $i['directories'], $i['files'], $i['joined'] ) );
+		\WP_CLI::line( sprintf( 'Index %s: %d directories, %d files; %d joining directories created; %d stale duplicate rows dropped', $verb, $i['directories'], $i['files'], $i['joined'], $i['merged'] ) );
+		foreach ( $i['sources'] as $prefix => $sources ) {
+			if ( count( $sources ) > 1 ) {
+				$parts = [];
+				foreach ( $sources as $id => $count ) {
+					$parts[] = sprintf( '%s: %d', $id, $count );
+				}
+				\WP_CLI::line( sprintf( '  rows under %s are held by several sources (%s): the stale ones are merged', $prefix, implode( ', ', $parts ) ) );
+			}
+		}
+		if ( $report['refused'] ) {
+			\WP_CLI::warning( 'Nothing was changed: some rows of the index would collide (see below). Fix that and run again.' );
+		}
 		\WP_CLI::line( sprintf( 'Thumbnail directories %s: %d', $verb, $report['cache']['moved'] ) );
 		if ( [] !== $a['missing'] ) {
 			\WP_CLI::warning( sprintf( '%d attachments left alone, the file is not at the new path: %s', count( $a['missing'] ), implode( ', ', array_slice( $a['missing'], 0, 20 ) ) ) );
@@ -231,7 +244,7 @@ class PathsCommand {
 			\WP_CLI::warning( sprintf( '%d attachments left alone, another attachment already has the new path: %s', count( $a['collisions'] ), implode( ', ', array_slice( $a['collisions'], 0, 20 ) ) ) );
 		}
 		if ( $i['collisions'] > 0 ) {
-			\WP_CLI::warning( sprintf( '%d index rows left alone, a row already exists at the new path (the new source was scanned before the remap).', $i['collisions'] ) );
+			\WP_CLI::warning( sprintf( '%d index rows would collide: two rows that both hold data of a person (trashed, a date set by hand) go to the same new path.', $i['collisions'] ) );
 		}
 
 		$u = $report['urls'];

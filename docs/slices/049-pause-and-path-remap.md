@@ -141,3 +141,31 @@ flags could never have been seen. They are now declared in the positive (`[--url
 read with `\WP_CLI\Utils\get_flag_value( $assoc, 'urls', true )`; the user still writes `--no-urls`. `CliOptionsTest` checks on the source
 that no command declares or reads a `no-xxx` option and that every option read is declared; it does not load WP-CLI, so the first run on
 a real site remains the real test of the parsing.
+
+## Fix after the first real run on staging: collisions the dry run did not foresee
+
+Real run on a copy of production, indexing paused, nothing scanned before: the dry run said 68,978 files, 1,608 directories, 0 collisions; the real run moved 38,783 files and 936 directories and reported
+30,867 collisions (30,195 files, 672 directories: the totals add up exactly, 68,978 = 38,783 + 30,195 and 1,608 = 936 + 672) and exited with 1. The attachments had moved all the same (34,226).
+
+**Cause (deduced from the numbers, not seen in that database).** The dry run looks for a row already at the new path and found none, so no row was there before the run. Every collision was therefore between two rows
+of the **old** tree that go to the same new path in the same run: the index can hold the same path under several sources (a source that was reordered, removed or added later leaves stale rows, marked missing, for
+thirty days, so the same file is held by `eric-2026` and by `uploads`, say). The rewrite gives every row the new source, so the second row of a path collided with the first. A dry run does not write, so the first row had
+not "moved" and nothing collided: the dry run did not simulate its own moves.
+
+**Fix.**
+- The dry run and the real run now follow the same pass: the rows already sent to a path in this pass are remembered (`claimed`), so the two find the same collisions.
+- Rows of the same path are **merged**, not refused: the one with data of a person (trashed, a date set by hand) stays, else the one that is not marked missing, else the first; the others are dropped (`index.merged`), and the rows
+  below a directory that is dropped are given to the one that stays. Only two rows that **both** hold data of a person are a collision.
+- A real run (`--yes`) **plans the whole index first**, with no write, and goes on only when there is no collision (`refused: true` otherwise, nothing changed, not even the attachments): it can no longer leave the attachments
+  moved and the index half rewritten. A refused run records nothing to undo.
+- The report says which sources hold the rows under each prefix (`index.sources`): a prefix held by several sources is the sign of stale duplicates. The joining directories are counted once in a dry run (11 became 2).
+- The old source kept for an undo is now the one that holds most live rows under the prefix (before: none when two sources held rows, so an undo gave the rows back the new source).
+
+**Undo after a run that had collisions (the run before this fix).** It is not complete: the attachments, the cache and the guid come back, but the rows of the index that were moved are given back to the **new** source (the old one
+was not recorded), the rows that had collided were never moved, and the joining directories stay. It was not tried. After such a run, the clean way back is the database as it was (or a new synchronisation), then a new run.
+After a run of the fixed version, an undo restores the attachments exactly and the index approximately (the dropped duplicates are not put back: they are rebuilt by a re-scan, which an undo should be followed by).
+
+**See before a run what would collide (read-only).** The dry run now says it (`index.merged`, `index.collisions`, `index.sources`). The same by SQL, to compare:
+`SELECT source_id, COUNT(*) AS n, SUM(missing_since IS NOT NULL) AS missing FROM wp_media_helper_files WHERE path >= 'photos/' AND path < 'photos0' GROUP BY source_id;` (rows by source under the old roots),
+`SELECT COUNT(*) FROM (SELECT path_hash FROM wp_media_helper_files WHERE path >= 'photos/' AND path < 'photos0' GROUP BY path_hash HAVING COUNT(*) > 1) d;` (paths held more than once),
+`SELECT source_id, COUNT(*) FROM wp_media_helper_files WHERE path >= 'cumulus/' AND path < 'cumulus0' GROUP BY source_id;` (rows already under the new roots).
