@@ -98,15 +98,27 @@ class EditorMediaController {
 	 * Normalizes an attachment_scope filter value to a non-empty set of
 	 * `unattached`, `current`, and `other` states.
 	 *
+	 * @param string[] $default What nothing usable gives: `unattached` and `current`, or all three states when the method in
+	 *                          use links a media item to several posts (the others are then no reason to hide a file).
 	 * @return array<int, string>
 	 */
-	public static function normalizeAttachmentScope( mixed $rawScope ): array {
+	public static function normalizeAttachmentScope( mixed $rawScope, array $default = [ 'unattached', 'current' ] ): array {
 		$allowed = [ 'unattached', 'current', 'other' ];
 		$values = is_array( $rawScope ) ? array_map( 'strval', $rawScope ) : [];
 		$normalized = array_values( array_intersect( $allowed, $values ) );
 
 		// An empty list is a choice (nothing checked); anything unusable gives the default.
-		return [] === $normalized && [] !== $rawScope ? [ 'unattached', 'current' ] : $normalized;
+		return [] === $normalized && [] !== $rawScope ? $default : $normalized;
+	}
+
+	/**
+	 * The attachment states shown when the user chose nothing: all of them with a method that links a media item to several
+	 * posts, else those that are not about another post.
+	 *
+	 * @return string[]
+	 */
+	public static function defaultAttachmentScope( bool $multiplePosts ): array {
+		return $multiplePosts ? [ 'unattached', 'current', 'other' ] : [ 'unattached', 'current' ];
 	}
 
 	/**
@@ -265,7 +277,7 @@ class EditorMediaController {
 	 *
 	 * @return array{date:string, source:array<int, string>, attachment_scope:array<int, string>, media_type:array<int, string>, filename:string}
 	 */
-	public static function normalizeFilters( mixed $rawFilters, string $legacyDate, mixed $legacySource, array $activeSourceIds = [], ?callable $resolveStoredAttachmentScope = null, ?callable $resolveStoredSource = null, ?callable $resolveStoredMediaType = null, ?callable $resolveStoredFilename = null ): array {
+	public static function normalizeFilters( mixed $rawFilters, string $legacyDate, mixed $legacySource, array $activeSourceIds = [], ?callable $resolveStoredAttachmentScope = null, ?callable $resolveStoredSource = null, ?callable $resolveStoredMediaType = null, ?callable $resolveStoredFilename = null, array $defaultAttachmentScope = [ 'unattached', 'current' ] ): array {
 		$decoded = is_string( $rawFilters ) ? json_decode( $rawFilters, true ) : null;
 		$decoded = is_array( $decoded ) ? $decoded : [];
 
@@ -282,10 +294,10 @@ class EditorMediaController {
 		$source = self::normalizeSourceFilter( $rawSource, $activeSourceIds );
 
 		if ( isset( $decoded['attachment_scope'] ) ) {
-			$attachmentScope = self::normalizeAttachmentScope( $decoded['attachment_scope'] );
+			$attachmentScope = self::normalizeAttachmentScope( $decoded['attachment_scope'], $defaultAttachmentScope );
 		} else {
 			$stored = null === $resolveStoredAttachmentScope ? null : $resolveStoredAttachmentScope();
-			$attachmentScope = self::normalizeAttachmentScope( $stored );
+			$attachmentScope = self::normalizeAttachmentScope( $stored, $defaultAttachmentScope );
 		}
 
 		if ( isset( $decoded['media_type'] ) ) {
@@ -972,7 +984,8 @@ class EditorMediaController {
 			fn () => $this->makeMediaFilters()->resolveUserPost( $postId, 'attachment_scope', null ),
 			fn () => $this->makeMediaFilters()->resolveUserPost( $postId, 'source', [ 'all' ] ),
 			fn () => $this->makeMediaFilters()->resolveUserPost( $postId, 'media_type', FileTypes::categories() ),
-			fn () => $this->makeMediaFilters()->resolveUserPost( $postId, 'filename', '' )
+			fn () => $this->makeMediaFilters()->resolveUserPost( $postId, 'filename', '' ),
+			self::defaultAttachmentScope( ! empty( Methods::active( $postId )->capabilities()['multiple_posts'] ) )
 		);
 		$filters['date'] = MediaPanelState::normalizeDate( (string) $filters['date'], $legacyDate );
 		$dateValue = $filters['date'];

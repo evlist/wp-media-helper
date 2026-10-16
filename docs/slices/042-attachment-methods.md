@@ -297,3 +297,7 @@ method, a bulk action, and a filter on the mechanism and the mode (*WordPress, w
 method's `attach()` is idempotent). With the method alone (no cohabitation) it was redundant and is **removed** (menu, sheet, bulk action and the server action
 `convert`); a file attached the WordPress way only is shown as "not counted" and *Attach* (which asks for the values) makes it count. With the cohabitation,
 *Switch to the method…* (`to_method`) stays, since there the file counts as attached and the choice is between the two mechanisms.
+
+## Follow-up: filter *Attachment* with `multiple_posts`
+
+With a method that declares `multiple_posts`, the default of the filter *Attachment* (states unattached, attached to this post, attached to another post) is all three states: see [016](016-other-post-attachment-filter.md).

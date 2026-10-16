@@ -227,3 +227,10 @@ WordPress makes an **auto-draft** each time the screen of a new post is opened a
 Now the auto-drafts do not count as other posts, whichever method holds the link (`Attachment\AutoDrafts`): the native method reads a parent that is an auto-draft, or gone, as no parent, the panel
 leaves them out of *Also in*, the registry of the attachments does the same for the parent it reports, and when a media item is removed from the library (the action of the panel, and the cleaning of the
 orphans) the links to auto-drafts are first released with `Method::detach()`, so that they do not block the removal.
+
+## Follow-up: the default with a method that links a file to several posts
+
+The default set is `["unattached", "current"]` only while a media item belongs to one post. With a method whose capability `multiple_posts` is true (Otherguise), being linked to another post
+is no reason to hide a file, since it may be linked to this one too: the default is then **all three states** (`["unattached", "current", "other"]`, the *All* checkbox checked).
+`EditorMediaController::defaultAttachmentScope( bool $multiplePosts )` gives it and is what an unusable or missing value falls back to; a choice of the user, including the empty one, is kept as it was,
+and what a user stored for a post is not touched. The panel (`defaultAttachmentScope()` in the script) uses the same rule when the server did not send the filters.

@@ -59,7 +59,10 @@
 		{ value: 'simple', label: __( 'Simple', 'wp-media-helper' ) },
 		{ value: 'advanced', label: __( 'Advanced', 'wp-media-helper' ) },
 	];
-	const DEFAULT_ATTACHMENT_SCOPE = [ 'unattached', 'current' ];
+	// What is shown when nothing was chosen: all the states with a method that links a file to several posts.
+	const defaultAttachmentScope = function () {
+		return attachmentMethod.multiple_posts ? [ 'unattached', 'current', 'other' ] : [ 'unattached', 'current' ];
+	};
 	// The categories of files (images, videos, audio, documents, ...) come from the server.
 	const FILE_TYPES = Array.isArray( wpMediaHelperEditorPanel.fileTypes ) && wpMediaHelperEditorPanel.fileTypes.length
 		? wpMediaHelperEditorPanel.fileTypes
@@ -1878,7 +1881,7 @@
 			return normalizeMediaItem( file );
 		} );
 		const rows = galleryWidth > 0 ? layoutRows( visibleItems, galleryWidth, density ) : [];
-		const currentAttachmentScope = filters.attachment_scope || DEFAULT_ATTACHMENT_SCOPE;
+		const currentAttachmentScope = filters.attachment_scope || defaultAttachmentScope();
 		const currentMediaType = filters.media_type || DEFAULT_MEDIA_TYPE;
 		const currentSourceFilter = filters.source || DEFAULT_SOURCE_FILTER;
 		const checkedSourceIds = currentSourceFilter.includes( 'all' )

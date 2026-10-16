@@ -396,6 +396,14 @@ class MediaPanelStateTest extends TestCase {
 	public function test_normalize_attachment_scope_defaults_when_empty_or_invalid(): void {
 		$this->assertSame( [ 'unattached', 'current' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeAttachmentScope( null ) );
 		$this->assertSame( [ 'unattached', 'current' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeAttachmentScope( [ 'bogus' ] ) );
+		$all = \WP_Media_Helper\Admin\EditorMediaController::defaultAttachmentScope( true );
+		$this->assertSame( [ 'unattached', 'current', 'other' ], $all );
+		$this->assertSame( [ 'unattached', 'current' ], \WP_Media_Helper\Admin\EditorMediaController::defaultAttachmentScope( false ) );
+		$this->assertSame( $all, \WP_Media_Helper\Admin\EditorMediaController::normalizeAttachmentScope( null, $all ) );
+		$this->assertSame( [ 'current' ], \WP_Media_Helper\Admin\EditorMediaController::normalizeAttachmentScope( [ 'current' ], $all ), 'A choice is kept.' );
+		$this->assertSame( [], \WP_Media_Helper\Admin\EditorMediaController::normalizeAttachmentScope( [], $all ), 'Nothing checked is a choice.' );
+		$filters = \WP_Media_Helper\Admin\EditorMediaController::normalizeFilters( '', '2026-01-01', '', [], null, null, null, null, $all );
+		$this->assertSame( $all, $filters['attachment_scope'] );
 	}
 
 	public function test_nothing_checked_is_a_choice_for_every_filter(): void {
