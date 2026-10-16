@@ -90,4 +90,6 @@ forgotten after 30 days. The attachment in the library is not touched, which is 
   and *Export as CSV* (cells that a spreadsheet could take for a formula are prefixed with an apostrophe).
 - **WP-CLI** keeps `attachments clean --missing` ([050](050-attachments-clean.md)) for scripts.
 
+The links of the other attachment methods (Otherguise) are shown, and removal asks them first: see [050](050-attachments-clean.md).
+
 Not done: relinking to a candidate, rename detection, the effects of changing or removing a source (points 2 to 5 above).

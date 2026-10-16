@@ -5,6 +5,8 @@
 namespace WP_Media_Helper\Maintenance;
 
 use RuntimeException;
+use WP_Media_Helper\Attachment\Methods;
+use WP_Media_Helper\Attachment\NativeMethod;
 use WP_Media_Helper\Index\Schema;
 use WP_Media_Helper\MediaSource\RecordRemover;
 use WP_Media_Helper\MediaSource\UploadsPath;
@@ -35,11 +37,63 @@ final class AttachmentCleaner {
 	private $progress = null;
 
 	/**
-	 * @param ?callable(int[]): int[] $remover Removes attachments (records only) and returns the IDs removed.
+	 * Gives the attachment methods (id => Method).
+	 *
+	 * @var callable(): array<string, \WP_Media_Helper\Attachment\Method>
 	 */
-	public function __construct( string $baseDir, ?callable $remover = null ) {
+	private $methods;
+
+	/** @var array<int, string> */
+	private array $refused = [];
+
+	/**
+	 * @param ?callable(int[]): int[] $remover Removes attachments (records only) and returns the IDs removed. By default: the records
+	 *                                         of those that every attachment method allows to remove.
+	 * @param ?callable              $methods  Gives the attachment methods; by default the registered ones.
+	 */
+	public function __construct( string $baseDir, ?callable $remover = null, ?callable $methods = null ) {
 		$this->baseDir = rtrim( UploadsPath::normalize( $baseDir ), '/' );
-		$this->remover = $remover ?? [ RecordRemover::class, 'remove' ];
+		$this->methods = $methods ?? [ Methods::class, 'all' ];
+		$this->remover = $remover ?? function ( array $ids ): array {
+			$done = RecordRemover::removeGuarded( $ids, ( $this->methods )() );
+			$this->refused += $done['refused'];
+
+			return $done['removed'];
+		};
+	}
+
+	/**
+	 * The attachments that a method refused to remove in `apply()`, with the reason, by ID.
+	 *
+	 * @return array<int, string>
+	 */
+	public function refused(): array {
+		return $this->refused;
+	}
+
+	/**
+	 * Where attachments are linked to posts by methods other than the native one (the native link is the parent post).
+	 *
+	 * @param int[] $ids
+	 * @return array<int, array<string, int[]>> Attachment ID => method ID => post IDs (only the links that exist).
+	 */
+	public function linksOf( array $ids ): array {
+		$links = [];
+		foreach ( ( $this->methods )() as $method ) {
+			if ( NativeMethod::ID === $method->id() ) {
+				continue;
+			}
+			foreach ( array_chunk( array_values( array_unique( array_map( 'intval', $ids ) ) ), self::CHUNK ) as $chunk ) {
+				foreach ( $method->posts_of( $chunk ) as $attachmentId => $posts ) {
+					$posts = array_values( array_unique( array_map( 'intval', (array) $posts ) ) );
+					if ( [] !== $posts ) {
+						$links[ (int) $attachmentId ][ $method->id() ] = $posts;
+					}
+				}
+			}
+		}
+
+		return $links;
 	}
 
 	public function onProgress( callable $progress ): void {
@@ -337,12 +391,14 @@ final class AttachmentCleaner {
 				$ids[] = $item['id'];
 			}
 		}
-		$used = $this->usedBy( $ids );
+		$used  = $this->usedBy( $ids );
+		$links = $this->linksOf( $ids );
 
 		foreach ( [ 'duplicates', 'missing' ] as $category ) {
 			foreach ( $plan[ $category ]['items'] as $index => $item ) {
 				$plan[ $category ]['items'][ $index ]['media'] = '' === $item['mime'] ? 'unknown' : (string) strtok( $item['mime'], '/' );
 				$plan[ $category ]['items'][ $index ]['used']  = $used[ $item['id'] ] ?? [ 'featured' => [], 'content' => [] ];
+				$plan[ $category ]['items'][ $index ]['links'] = $links[ $item['id'] ] ?? [];
 			}
 		}
 

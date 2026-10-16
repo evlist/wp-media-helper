@@ -19,6 +19,45 @@ namespace WP_Media_Helper\MediaSource;
 final class RecordRemover {
 
 	/**
+	 * Removes the records of the attachments that every attachment method allows to remove (`Method::may_remove()` with the
+	 * context `trash`: the file is gone, the user was asked, the entries of the attachment disappear from every post), and tells
+	 * the methods, with the action `wp_media_helper_attachments_removed`, so that they can drop their own links.
+	 *
+	 * @param int[]                                                     $ids
+	 * @param array<string, \WP_Media_Helper\Attachment\Method>         $methods
+	 * @param ?callable(int[]): int[]                                   $remove  Removes records and returns the IDs removed (tests).
+	 * @return array{removed:int[], refused:array<int, string>} The IDs removed, and for the others the reason, by ID.
+	 */
+	public static function removeGuarded( array $ids, array $methods, string $context = 'trash', ?callable $remove = null ): array {
+		$allowed = [];
+		$refused = [];
+		foreach ( $ids as $id ) {
+			$id = (int) $id;
+			foreach ( $methods as $method ) {
+				$answer = $method->may_remove( $id, $context );
+				if ( is_wp_error( $answer ) ) {
+					$refused[ $id ] = $method->id() . ': ' . $answer->get_error_message();
+					continue 2;
+				}
+			}
+			$allowed[] = $id;
+		}
+
+		$removed = ( $remove ?? [ self::class, 'remove' ] )( $allowed );
+		if ( [] !== $removed ) {
+			/**
+			 * Fires once the records of attachments were removed from the media library (their files are untouched).
+			 *
+			 * @param int[]  $ids    The IDs removed.
+			 * @param string $reason Why: `orphans` (the file was gone).
+			 */
+			do_action( 'wp_media_helper_attachments_removed', $removed, 'orphans' );
+		}
+
+		return [ 'removed' => $removed, 'refused' => $refused ];
+	}
+
+	/**
 	 * @param int[] $ids
 	 * @return int[] The IDs removed.
 	 */

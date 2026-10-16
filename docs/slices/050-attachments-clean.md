@@ -42,3 +42,16 @@ Dry run unless `--yes`; the flags are declared in the positive. At least one of 
 ## Correction of `paths remap` made with it
 
 `paths remap` only considers posts of type `attachment`. The others that carry a `_wp_attached_file` under an old prefix are reported in `ignored` (post type => count) and no longer as missing.
+
+## Attachment methods (Otherguise links)
+
+The attachments are also linked to posts by the attachment methods of other plugins (contract [042](042-attachment-methods.md)), not only by `post_parent`.
+
+- **Reading**: every item of the report has `links` (`{method id: [post IDs]}`, the methods other than `native`, whose link is the `parent`), got with `Method::posts_of()` in lots, never from the tables of the other plugin.
+  The orphans tool (036) shows them next to the parent post and exports them (`linked_by_methods`).
+- **Removing**: both the command and the tool ask **every** method, with `Method::may_remove( $id, 'trash' )` (the context that says the file is gone, the user was asked, and the entries of the
+  attachment disappear from every post), and keep the record of an attachment that any method refuses; the refusals are reported with the method and its message (`refused` in the json, a
+  warning in the tool) and count as a problem in the command. Methods may look at the current user: use `wp --user=<id>`.
+- **Telling the methods**: after a removal the action `wp_media_helper_attachments_removed( int[] $ids, string $reason )` fires (`$reason` is `orphans`), so that a method can drop its own links to the
+  attachments that no longer exist. Whether a method already does it on `delete_attachment` is its business and was not checked.
+- **Not possible through the contract**: finding the links of a method that point to attachments that no longer exist (no way to list them). That would need a new optional part of the contract.

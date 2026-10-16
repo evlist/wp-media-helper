@@ -37,6 +37,10 @@ class AttachmentsCommand {
 	 *   counted again). Refused, and named, when a directory of the scope is not readable or is empty, or when no attachment
 	 *   of a directory has its file: an unmounted directory would make everything look orphan.
 	 *
+	 * Removal asks every attachment method (`Method::may_remove()` with the context `trash`: the file is gone, the entries of the
+	 * attachment disappear from every post) and lists the refusals under `refused` (a refusal counts as a problem). The methods are
+	 * told with the action `wp_media_helper_attachments_removed`. Some methods look at the current user: use the WP-CLI global --user.
+	 *
 	 * The report says, for each attachment, whether it is used (featured image, `wp-image-<id>` in a content) and, for the
 	 * missing ones, in which paths of the index a file of the same name is found.
 	 *
@@ -65,6 +69,7 @@ class AttachmentsCommand {
 	 *
 	 * [--format=<format>]
 	 * : text or json (one object, the only output; the progress is on the error output). Default: text.
+
 	 *
 	 * [--yes]
 	 * : Remove. Without it the command only reports.
@@ -131,6 +136,7 @@ class AttachmentsCommand {
 
 		$run     = gmdate( 'YmdHis' ) . '-' . substr( md5( uniqid( '', true ) ), 0, 4 );
 		$removed = [];
+		$refused = [];
 		$saved   = null;
 		$applied = false;
 		if ( $apply && 0 === $problems ) {
@@ -142,6 +148,7 @@ class AttachmentsCommand {
 				if ( count( $removed ) !== $counts['duplicates'] + $counts['missing'] ) {
 					++$problems;
 				}
+				$refused = $cleaner->refused();
 			}
 		}
 
@@ -156,6 +163,7 @@ class AttachmentsCommand {
 			'missing'    => [ 'count' => $counts['missing'], 'items' => $plan['missing']['items'] ],
 			'expected'   => (object) $expected,
 			'removed'    => $removed,
+			'refused'    => (object) $refused,
 			'problems'   => $problems,
 		];
 
@@ -275,6 +283,9 @@ class AttachmentsCommand {
 			if ( $number !== $counts[ $category ] ) {
 				\WP_CLI::warning( sprintf( 'Expected %d %s, found %d: nothing was changed.', $number, $category, $counts[ $category ] ) );
 			}
+		}
+		foreach ( (array) $report['refused'] as $id => $reason ) {
+			\WP_CLI::warning( sprintf( 'Not removed, an attachment method refused: #%d (%s)', $id, $reason ) );
 		}
 		if ( null !== $report['saved'] ) {
 			\WP_CLI::line( sprintf( 'List saved in %s (run %s)', $report['saved'], $report['run'] ) );

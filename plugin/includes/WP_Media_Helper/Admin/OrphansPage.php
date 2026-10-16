@@ -4,6 +4,7 @@
 
 namespace WP_Media_Helper\Admin;
 
+use WP_Media_Helper\Attachment\Methods;
 use WP_Media_Helper\Index\Pause;
 use WP_Media_Helper\Maintenance\AttachmentCleaner;
 use WP_Media_Helper\Maintenance\OrphanCheck;
@@ -58,6 +59,8 @@ final class OrphansPage {
 		$uploads  = wp_upload_dir( null, false );
 		$cleaner  = new AttachmentCleaner( is_array( $uploads ) ? (string) $uploads['basedir'] : '' );
 		$used     = $cleaner->usedBy( $shown );
+		$links    = $cleaner->linksOf( $shown );
+		$methods  = Methods::all();
 		$elsewhere = [];
 		foreach ( $cleaner->sameNameElsewhere( array_values( array_unique( array_map( static fn ( array $row ): string => basename( $row['path'] ), $rows ) ) ) ) as $name => $paths ) {
 			$elsewhere[ $name ] = $paths;
@@ -150,7 +153,17 @@ final class OrphansPage {
 							<th class="check-column"><input type="checkbox" name="ids[]" value="<?php echo esc_attr( (string) $row['id'] ); ?>"></th>
 							<td><a href="<?php echo esc_url( (string) get_edit_post_link( $row['id'] ) ); ?>"><?php echo esc_html( '' === $row['title'] ? '#' . $row['id'] : $row['title'] ); ?></a> <span class="description">#<?php echo esc_html( (string) $row['id'] ); ?> <?php echo esc_html( $row['mime'] ); ?></span></td>
 							<td><code><?php echo esc_html( $row['path'] ); ?></code></td>
-							<td><?php if ( $row['parent'] > 0 ) : ?><a href="<?php echo esc_url( (string) get_edit_post_link( $row['parent'] ) ); ?>"><?php echo esc_html( get_the_title( $row['parent'] ) ?: '#' . $row['parent'] ); ?></a><?php else : ?>&mdash;<?php endif; ?></td>
+							<td>
+								<?php if ( $row['parent'] > 0 ) : ?><a href="<?php echo esc_url( (string) get_edit_post_link( $row['parent'] ) ); ?>"><?php echo esc_html( get_the_title( $row['parent'] ) ?: '#' . $row['parent'] ); ?></a><br><?php endif; ?>
+								<?php foreach ( $links[ $row['id'] ] ?? [] as $methodId => $postIds ) : ?>
+									<span class="description"><?php echo esc_html( isset( $methods[ $methodId ] ) ? $methods[ $methodId ]->label() : $methodId ); ?>:</span>
+									<?php foreach ( $postIds as $postId ) : ?>
+										<a href="<?php echo esc_url( (string) get_edit_post_link( $postId ) ); ?>"><?php echo esc_html( get_the_title( $postId ) ?: '#' . $postId ); ?></a>
+									<?php endforeach; ?>
+									<br>
+								<?php endforeach; ?>
+								<?php if ( $row['parent'] <= 0 && [] === ( $links[ $row['id'] ] ?? [] ) ) : ?>&mdash;<?php endif; ?>
+							</td>
 							<td>
 								<?php
 								$where = $used[ $row['id'] ] ?? [ 'featured' => [], 'content' => [] ];
@@ -202,11 +215,20 @@ final class OrphansPage {
 			echo '<div class="notice notice-success is-dismissible"><p>' . esc_html(
 				sprintf(
 					/* translators: 1: number removed, 2: number left alone. */
-					__( 'Records removed: %1$d. Left alone: %2$d (the file is back, or it could not be checked).', 'wp-media-helper' ),
+					__( 'Records removed: %1$d. Left alone: %2$d (the file is back, its directory could not be checked, or an attachment method refused: see below).', 'wp-media-helper' ),
 					(int) $_GET['removed'],
 					(int) ( $_GET['skipped'] ?? 0 )
 				)
 			) . '</p></div>';
+		}
+		$refused = get_transient( 'wp_media_helper_orphans_refused_' . get_current_user_id() );
+		if ( is_array( $refused ) && [] !== $refused ) {
+			delete_transient( 'wp_media_helper_orphans_refused_' . get_current_user_id() );
+			echo '<div class="notice notice-warning"><p>' . esc_html__( 'These attachments were not removed because an attachment method refused:', 'wp-media-helper' ) . '</p><ul class="ul-disc">';
+			foreach ( array_slice( $refused, 0, 20, true ) as $id => $reason ) {
+				echo '<li>#' . (int) $id . ': ' . esc_html( (string) $reason ) . '</li>';
+			}
+			echo '</ul></div>';
 		}
 		if ( isset( $_GET['checking'] ) ) {
 			echo '<div class="notice notice-info is-dismissible"><p>' . esc_html( 'paused' === $_GET['checking'] ? __( 'The indexing is paused: the check was not started.', 'wp-media-helper' ) : ( 'more' === $_GET['checking'] ? __( 'The check is under way; it goes on in the background. Reload this page in a moment.', 'wp-media-helper' ) : __( 'The check is done.', 'wp-media-helper' ) ) ) . '</p></div>';
@@ -243,10 +265,13 @@ final class OrphansPage {
 			$args['view'] = 'ignored';
 		} elseif ( 'remove' === $bulk && [] !== $ids ) {
 			$safe = $this->stillOrphans( $registry, $ids );
-			$gone = RecordRemover::remove( $safe );
-			$registry->forget( $gone );
-			$args['removed'] = count( $gone );
-			$args['skipped'] = count( $ids ) - count( $gone );
+			$done = RecordRemover::removeGuarded( $safe, Methods::all() );
+			$registry->forget( $done['removed'] );
+			if ( [] !== $done['refused'] ) {
+				set_transient( 'wp_media_helper_orphans_refused_' . get_current_user_id(), $done['refused'], 300 );
+			}
+			$args['removed'] = count( $done['removed'] );
+			$args['skipped'] = count( $ids ) - count( $done['removed'] );
 		}
 
 		wp_safe_redirect( self::url( $args ) );
@@ -291,13 +316,14 @@ final class OrphansPage {
 		$cleaner  = new AttachmentCleaner( is_array( $uploads ) ? (string) $uploads['basedir'] : '' );
 		$rows     = $this->rows( $ids );
 		$used     = $cleaner->usedBy( $ids );
+		$links    = $cleaner->linksOf( $ids );
 		$elsewhere = $cleaner->sameNameElsewhere( array_values( array_unique( array_map( static fn ( array $row ): string => basename( $row['path'] ), $rows ) ) ) );
 
 		nocache_headers();
 		header( 'Content-Type: text/csv; charset=utf-8' );
 		header( 'Content-Disposition: attachment; filename="media-orphans-' . gmdate( 'Ymd-His' ) . '.csv"' );
 		$out = fopen( 'php://output', 'w' ); // phpcs:ignore WordPress.WP.AlternativeFunctions
-		fputcsv( $out, [ 'id', 'title', 'path', 'mime', 'parent', 'date', 'seen_missing', 'featured_in', 'content_of', 'same_name_elsewhere' ] );
+		fputcsv( $out, [ 'id', 'title', 'path', 'mime', 'parent', 'date', 'seen_missing', 'featured_in', 'content_of', 'linked_by_methods', 'same_name_elsewhere' ] );
 		foreach ( $rows as $row ) {
 			$where = $used[ $row['id'] ] ?? [ 'featured' => [], 'content' => [] ];
 			fputcsv(
@@ -314,6 +340,7 @@ final class OrphansPage {
 						isset( $state['ids'][ $row['id'] ] ) ? gmdate( 'Y-m-d H:i:s', (int) $state['ids'][ $row['id'] ] ) : '',
 						implode( ' ', $where['featured'] ),
 						implode( ' ', $where['content'] ),
+						implode( ' ', array_map( static fn ( string $method, array $posts ): string => $method . ':' . implode( ',', $posts ), array_keys( $links[ $row['id'] ] ?? [] ), array_values( $links[ $row['id'] ] ?? [] ) ) ),
 						implode( ' ', array_diff( $elsewhere[ basename( $row['path'] ) ] ?? [], [ $row['path'] ] ) ),
 					]
 				)

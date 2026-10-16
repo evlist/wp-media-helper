@@ -160,4 +160,16 @@ class AttachmentCleanTest extends TestCase {
 
 		$this->assertSame( [], $plan['duplicates']['items'] );
 	}
+
+	public function test_links_of_other_attachment_methods_are_reported_and_a_refusal_is_listed(): void {
+		$native = new RecordRemoverFakeMethod( 'native' );
+		$other  = new RecordRemoverFakeMethod( 'otherguise', [ 5 ], [ 5 => [ 300, 301 ] ] );
+		$cleaner = new AttachmentCleaner( $this->base, null, fn(): array => [ 'native' => $native, 'otherguise' => $other ] );
+
+		$plan = $cleaner->plan( [ 'photos/eric' ], false, true );
+
+		$five = $plan['missing']['items'][0];
+		$this->assertSame( [ 'otherguise' => [ 300, 301 ] ], $five['links'] );
+		$this->assertSame( [], $plan['missing']['items'][1]['links'] );
+	}
 }
