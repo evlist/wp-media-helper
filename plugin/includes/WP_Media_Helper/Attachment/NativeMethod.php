@@ -93,7 +93,7 @@ final class NativeMethod implements Method {
 
 	public function may_remove( int $attachmentId, string $context = 'remove' ) {
 		// The trash asked the user first and removes the entries from every post.
-		if ( 'trash' !== $context && 0 !== (int) get_post_field( 'post_parent', $attachmentId ) ) {
+		if ( 'trash' !== $context && 0 !== ( $this->parents( [ $attachmentId ] )[ $attachmentId ] ?? 0 ) ) {
 			return new \WP_Error( 'attached', __( 'This media is attached to a post.', 'wp-media-helper' ) );
 		}
 
@@ -101,7 +101,10 @@ final class NativeMethod implements Method {
 	}
 
 	/**
-	 * The `post_parent` of each attachment asked for (0 when it has none, or does not exist), with a query per lot.
+	 * The `post_parent` of each attachment asked for, with a query per lot. It is 0 when the attachment has none, when its parent
+	 * does not exist any more, or when the parent is an **auto-draft**: WordPress makes an auto-draft each time the screen of a new
+	 * post is opened, and an attachment attached to one (an image inserted in a post that was never saved) is attached to nothing
+	 * a person would call a post. Without it such a file looks "attached to another post" and cannot be removed.
 	 *
 	 * @param int[] $attachmentIds
 	 * @return array<int, int>
@@ -114,10 +117,11 @@ final class NativeMethod implements Method {
 		foreach ( array_chunk( $ids, self::CHUNK_SIZE ) as $lot ) {
 			$placeholders = implode( ', ', array_fill( 0, count( $lot ), '%d' ) );
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-			$query = $wpdb->prepare( "SELECT ID, post_parent FROM {$wpdb->posts} WHERE ID IN ( {$placeholders} )", $lot );
+			$query = $wpdb->prepare( "SELECT a.ID, a.post_parent, par.ID AS parent_found, par.post_status AS parent_status FROM {$wpdb->posts} a LEFT JOIN {$wpdb->posts} par ON par.ID = a.post_parent WHERE a.ID IN ( {$placeholders} )", $lot );
 			$rows  = $wpdb->get_results( $query, ARRAY_A ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 			foreach ( is_array( $rows ) ? $rows : [] as $row ) {
-				$parents[ (int) $row['ID'] ] = (int) $row['post_parent'];
+				$gone = array_key_exists( 'parent_found', $row ) && null === $row['parent_found'];
+				$parents[ (int) $row['ID'] ] = $gone || 'auto-draft' === ( $row['parent_status'] ?? '' ) ? 0 : (int) $row['post_parent'];
 			}
 		}
 

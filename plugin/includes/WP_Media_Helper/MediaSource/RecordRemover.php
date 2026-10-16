@@ -4,6 +4,8 @@
 
 namespace WP_Media_Helper\MediaSource;
 
+use WP_Media_Helper\Attachment\AutoDrafts;
+
 /**
  * Removes attachments from the media library, the records only: no file is deleted, none of the original, none
  * of its sizes, even when another attachment keeps the same path.
@@ -29,6 +31,9 @@ final class RecordRemover {
 	 * @return array{removed:int[], refused:array<int, string>} The IDs removed, and for the others the reason, by ID.
 	 */
 	public static function removeGuarded( array $ids, array $methods, string $context = 'trash', ?callable $remove = null ): array {
+		// A link to an auto-draft is garbage and must not block the removal.
+		AutoDrafts::release( $ids, $methods );
+
 		$allowed = [];
 		$refused = [];
 		foreach ( $ids as $id ) {

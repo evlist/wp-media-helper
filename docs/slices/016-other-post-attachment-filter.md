@@ -219,3 +219,11 @@ This slice does not include:
 ## Notes
 
 Visibility does not imply ownership. Including the `other` state exists for inspection and awareness, not for cross-post media management. Reassignment, transfer, or another-post detachment would require an explicit future workflow with its own permissions and confirmation rules.
+
+## Follow-up: auto-drafts are not posts
+
+WordPress makes an **auto-draft** each time the screen of a new post is opened and drops it after a while if it is never saved. A file inserted in such a post is attached
+(`post_parent`, or a link of an attachment method) to a post nobody made: the panel showed it as *Attached to other posts · Also in: Auto draft* and *Remove from library* was refused.
+Now the auto-drafts do not count as other posts, whichever method holds the link (`Attachment\AutoDrafts`): the native method reads a parent that is an auto-draft, or gone, as no parent, the panel
+leaves them out of *Also in*, the registry of the attachments does the same for the parent it reports, and when a media item is removed from the library (the action of the panel, and the cleaning of the
+orphans) the links to auto-drafts are first released with `Method::detach()`, so that they do not block the removal.

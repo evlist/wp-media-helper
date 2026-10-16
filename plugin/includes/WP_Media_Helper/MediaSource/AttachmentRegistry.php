@@ -84,10 +84,12 @@ class AttachmentRegistry {
 			$placeholders = implode( ', ', array_fill( 0, count( $keys ), '%s' ) );
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
 			$query = $wpdb->prepare(
-				"SELECT pm.post_id, pm.meta_value, p.post_parent,
+				"SELECT pm.post_id, pm.meta_value,
+					CASE WHEN par.ID IS NULL OR par.post_status = 'auto-draft' THEN 0 ELSE p.post_parent END AS post_parent,
 					EXISTS( SELECT 1 FROM {$wpdb->postmeta} o WHERE o.post_id = pm.post_id AND o.meta_key = %s ) AS owned
 				FROM {$wpdb->postmeta} pm
 				INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+				LEFT JOIN {$wpdb->posts} par ON par.ID = p.post_parent
 				WHERE pm.meta_key = '_wp_attached_file' AND p.post_type = 'attachment' AND pm.meta_value IN ( {$placeholders} )
 				ORDER BY pm.post_id ASC",
 				array_merge( [ self::SOURCE_ID_META ], $keys )

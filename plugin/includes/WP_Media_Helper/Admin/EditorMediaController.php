@@ -7,6 +7,7 @@ namespace WP_Media_Helper\Admin;
 use WP_Media_Helper\Thumbnails\PanelThumbnail;
 use WP_Media_Helper\Thumbnails\Thumbnails;
 use DateTimeImmutable;
+use WP_Media_Helper\Attachment\AutoDrafts;
 use WP_Media_Helper\Attachment\Fields;
 use WP_Media_Helper\Attachment\Method;
 use WP_Media_Helper\Attachment\Methods;
@@ -656,6 +657,8 @@ class EditorMediaController {
 
 			// Removing an attachment never deletes a file, so it applies to the
 			// attachments of the file whichever tool created them.
+			// What links the media item to an auto-draft is released first: it would otherwise block the removal.
+			AutoDrafts::release( array_map( static fn ( array $row ): int => (int) $row['id'], $rows ), Methods::all() );
 			$refused = [];
 			$removed = $this->removeRows( $method, $rows, 'remove', $cohabit ? $native : null, $refused );
 			$result['success'] = [] !== $removed || [] === $refused;
@@ -1254,6 +1257,21 @@ class EditorMediaController {
 		// With both mechanisms in use, a file attached the WordPress way is attached to the post (the panel says how).
 		if ( $cohabit ) {
 			$attached = array_values( array_unique( array_merge( $attached, $legacy ) ) );
+		}
+
+		// The other posts that are auto-drafts do not count: they are no post a person made.
+		$everyOther = [];
+		foreach ( $elsewhere as $otherIds ) {
+			$everyOther = array_merge( $everyOther, $otherIds );
+		}
+		$drafts = [] === $everyOther ? [] : AutoDrafts::among( $everyOther );
+		if ( [] !== $drafts ) {
+			foreach ( $elsewhere as $path => $otherIds ) {
+				$elsewhere[ $path ] = array_values( array_diff( $otherIds, $drafts ) );
+				if ( [] === $elsewhere[ $path ] ) {
+					unset( $elsewhere[ $path ] );
+				}
+			}
 		}
 
 		foreach ( $elsewhere as $path => $otherIds ) {

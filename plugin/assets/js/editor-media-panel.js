@@ -1373,6 +1373,8 @@
 			}
 
 			const actions = [];
+			// *Remove from library* comes last, after the move to the trash: both lose something.
+			let removal = null;
 			// A file WordPress does not accept cannot be imported or attached; the sheet says why.
 			const importable = item.can_import || item.is_imported;
 			// One image is the featured image: no bulk action, and only a picture can be.
@@ -1398,7 +1400,7 @@
 					}
 				}
 				if ( importable && item.is_imported && ! item.is_attached_to_current_post && 'simple' !== panelMode ) {
-					actions.push( { action: 'remove', label: __( 'Remove from library', 'wp-media-helper' ), destructive: true } );
+					removal = { action: 'remove', label: __( 'Remove from library', 'wp-media-helper' ), destructive: true };
 				}
 			} else if ( ( ! blockedElsewhere( item ) ) && importable ) {
 				if ( 'simple' === panelMode ) {
@@ -1407,9 +1409,11 @@
 						? { action: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) }
 						: { action: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) } );
 				} else {
-					actions.push( item.is_imported
-						? { action: 'remove', label: __( 'Remove from library', 'wp-media-helper' ), destructive: true }
-						: { action: 'import', label: __( 'Import', 'wp-media-helper' ) } );
+					if ( item.is_imported ) {
+						removal = { action: 'remove', label: __( 'Remove from library', 'wp-media-helper' ), destructive: true };
+					} else {
+						actions.push( { action: 'import', label: __( 'Import', 'wp-media-helper' ) } );
+					}
 					actions.push( item.is_attached_to_current_post
 						? { action: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) }
 						: { action: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) } );
@@ -1421,6 +1425,9 @@
 			}
 			if ( canTrash ) {
 				actions.push( { action: 'trash', label: __( 'Move to trash', 'wp-media-helper' ), destructive: true } );
+			}
+			if ( removal ) {
+				actions.push( removal );
 			}
 
 			return actions;

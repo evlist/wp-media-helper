@@ -42,7 +42,7 @@ class FakeWpdb {
 		$this->pdo->exec( 'CREATE INDEX files_day ON wp_media_helper_files (effective_day, hidden)' );
 		$this->pdo->exec( 'CREATE INDEX files_dir ON wp_media_helper_files (dir_id)' );
 		$this->pdo->exec( 'CREATE TABLE wp_postmeta (meta_id INTEGER PRIMARY KEY AUTOINCREMENT, post_id INTEGER NOT NULL, meta_key TEXT, meta_value TEXT)' );
-		$this->pdo->exec( "CREATE TABLE wp_posts (ID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT NOT NULL DEFAULT '', post_type TEXT NOT NULL DEFAULT 'post', post_content TEXT NOT NULL DEFAULT '', post_parent INTEGER NOT NULL DEFAULT 0, post_mime_type TEXT NOT NULL DEFAULT '', post_date TEXT NOT NULL DEFAULT '', post_title TEXT NOT NULL DEFAULT '', post_author INTEGER NOT NULL DEFAULT 0)" );
+		$this->pdo->exec( "CREATE TABLE wp_posts (ID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT NOT NULL DEFAULT '', post_type TEXT NOT NULL DEFAULT 'post', post_content TEXT NOT NULL DEFAULT '', post_parent INTEGER NOT NULL DEFAULT 0, post_mime_type TEXT NOT NULL DEFAULT '', post_date TEXT NOT NULL DEFAULT '', post_title TEXT NOT NULL DEFAULT '', post_author INTEGER NOT NULL DEFAULT 0, post_status TEXT NOT NULL DEFAULT 'publish')" );
 	}
 
 	/**

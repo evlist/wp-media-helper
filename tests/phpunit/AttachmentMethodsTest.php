@@ -186,6 +186,31 @@ namespace {
 			$this->assertTrue( $native->may_remove( 11, 'trash' ) );
 		}
 
+		public function test_a_parent_that_is_an_auto_draft_or_gone_is_no_parent(): void {
+			$GLOBALS['wpdb'] = new class() {
+				public string $posts = 'wp_posts';
+
+				public function prepare( string $query, $ids = [] ): string {
+					return implode( ',', $ids );
+				}
+
+				public function get_results( string $query, $output = null ): array {
+					return [
+						[ 'ID' => 20, 'post_parent' => 7, 'parent_found' => 7, 'parent_status' => 'auto-draft' ],
+						[ 'ID' => 21, 'post_parent' => 8, 'parent_found' => null, 'parent_status' => null ],
+						[ 'ID' => 22, 'post_parent' => 9, 'parent_found' => 9, 'parent_status' => 'publish' ],
+					];
+				}
+			};
+			$native = new NativeMethod();
+
+			$this->assertSame( [ 20 => [], 21 => [], 22 => [ 9 ] ], $native->posts_of( [ 20, 21, 22 ] ) );
+			$this->assertSame( [], $native->describe( [ 20 ], 1 )[20]['elsewhere'] );
+			$this->assertTrue( $native->may_remove( 20 ) );
+			$this->assertTrue( $native->may_remove( 21 ) );
+			$this->assertTrue( $native->may_remove( 22 ) instanceof \WP_Error );
+		}
+
 		public function test_posts_of_and_attached_follow_the_parent(): void {
 			$native = new NativeMethod();
 
