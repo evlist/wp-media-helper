@@ -33,8 +33,9 @@ putting it in the text needs the WordPress media library (*Add media* in a block
    Several files dropped together give what each handler gives, in the order of the panel.
 4. **Registering**: a file that has no attachment yet is registered at the drop (the same code as *Import*), so the block has a real attachment ID, a public URL and the sizes.
    While it is being registered the block shows a loading state (a placeholder image block with the spinner), and is replaced, or removed with a notice if registering failed (the reason of the server is shown).
-5. **Attaching** is **not** implied by inserting: a block in the text and the link of the file with the post (native parent or a method link, 042) are two things. See the questions for a setting
-   that attaches too, with the default values of the fields of the method (the modes) or by asking.
+5. **Inserting never attaches** (decided): a block in the text and the link of the file with the post (native parent or a method link, 042) are two things, and a theme that shows the attached files by itself
+   (the gallery block of 043, a template) would show a file that is also inserted twice. The drop and the action *Insert in the content* do not call `attach()`; the author attaches with the panel as before, if wanted.
+   The attachment record that registering creates (when the file had none) is unattached, like after *Import*.
 6. **Alternative without dragging** (required, a drag is not accessible and does not exist on touch screens): an action *Insert in the content* in the menu of the tile, the detail sheet and the bulk actions. It inserts after
    the selected block (or at the end when none is selected), with the same blocks as the drop.
 7. **Dropping on a block**: a file can be **added to a block that is already in the content** when the handler has a rule for it: an image dropped on a gallery joins it, subtitles dropped on a video become one of its
@@ -100,7 +101,6 @@ One endpoint, in the family of the existing ones (`wp_media_helper_insert_data`,
 - Output, per file in the order sent: `{ attachment_id, mode, mime, name, ... }` with `mode` = `block` (`block`, `attributes`, `innerBlocks`), `shortcode` (`tag`, `attributes`, the text to insert), `append` (the attribute or inner
   blocks of the target and the value to add), or `{ error }` (type without handler, subtitles not in WebVTT, no target, a file WordPress does not accept...). The server expands the templates (URLs, sizes, dimensions, alt, the language
   of a subtitle), so the browser has no rule of its own about types and URLs; a site can still change the result with the filter `wp_media_helper_insert_block( array $result, int $attachmentId, int $postId )`.
-- The action *Attach when inserting* (if any) is done by the same call through the active method (`attach()`), with the values of the fields asked in the dialog or the defaults.
 
 ## Settings
 
@@ -118,6 +118,7 @@ a check that the template is valid JSON and the block registered, a **reset to t
 
 - Unit: the server mapping from a file to the block and its attributes through the handlers (image with and without sizes, a vertical photo, video, subtitles with a language in the name, GPX, a type with no handler, a file WordPress does not
   accept), the expansion of the templates and the refusal of an invalid one, the rules for drops on blocks (accepted, not accepted, required target), the refusals, the order, and that a URL or an ID sent by the browser is ignored.
+- A test that a drop and the action *Insert in the content* never send an `attach` (server: the endpoint does not touch the links; browser: the request is the insertion one).
 - Browser (the Chromium harness with a mocked server): synthetic `dragstart`/`dragover`/`drop` events with a real `DataTransfer`: the private type is set, a selection drags all its files, a file that cannot be
   inserted is not draggable, the alternative action inserts at the right place, and an error shows its reason. Nothing here proves the behavior of the editor: it needs a run in a real editor.
 - Manual, in the editor of the target version of WordPress: drop at the root, in a column, between two blocks, at the end; undo (one step per drop); a drop on the iframe after a re-render; touch device (the action
@@ -141,7 +142,7 @@ a check that the template is valid JSON and the block registered, a **reset to t
 7. Dragging a selection drops all its files in the order of the panel, each by its handler.
 8. The action *Insert in the content* does the same without a drag, from the menu, the sheet and the bulk actions.
 9. A refused file inserts nothing and says why; nothing is left half done (no block without attachment).
-10. Inserting does not attach, unless the chosen setting says so; and the attachment of a file is unchanged by dropping it.
+10. Inserting never attaches: a file that was not attached to the post is not attached after the drop (and one that was stays attached), through any attachment method; a file registered by the drop is an unattached attachment.
 11. One undo step removes what a drop inserted.
 
 ## Suggested steps
@@ -151,11 +152,10 @@ a check that the template is valid JSON and the block registered, a **reset to t
 3. Panel: draggable tiles with the private type, the selection drag, the non-draggable states, and the action *Insert in the content*.
 4. Editor: the drop handler (B) or the HTML payload (A), the loading state, the errors.
 5. The settings page of the handlers (table, check of the blocks, reset, import/export).
-6. Attach when inserting (setting or dialog), documentation, the harness tests.
+6. Documentation, the harness tests (among them: a drop calls no attach).
 
 ## Open questions
 
-- **Attach when inserting**: never, always, or asked? With a method that has fields (the modes), the values must come from somewhere: the defaults, or the dialog already used for *Attach*.
 - **Several images dropped together**: with the gallery handler, one gallery holding all of them (natural); with the `core/image` handler, one block each.
 - **A shortcode**: inserted as a `core/shortcode` block, or as text in a paragraph? And which shortcode or block the GPX track plugin of the site expects (to read in its documentation, not assumed here).
 - **Subtitles on a video that is not a core block** (a video of another plugin): only `core/video` at first.
