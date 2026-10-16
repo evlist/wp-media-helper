@@ -1193,6 +1193,10 @@
 			if ( 'none' === bulkAction || 0 === selectedIds.length ) {
 				return;
 			}
+			// An action chosen in the advanced mode and no longer offered (the mode was switched) is not run.
+			if ( 'simple' === panelMode && ! [ 'attach', 'detach', 'trash', 'restore', 'attach_native', 'attach_method', 'to_native', 'to_method' ].includes( bulkAction ) ) {
+				return;
+			}
 
 			let selectedItems = files.map( function ( file ) {
 				return normalizeMediaItem( file );
@@ -1202,7 +1206,8 @@
 			if ( 'simple' === panelMode && 'attach' === bulkAction ) {
 				selectedItems = selectedItems.filter( function ( item ) { return ! item.is_attached_to_current_post; } );
 			}
-			if ( 'simple' === panelMode && 'remove' === bulkAction ) {
+			// Simple mode never removes a file from the library (it would lose its metadata): it detaches.
+			if ( 'simple' === panelMode && 'detach' === bulkAction ) {
 				selectedItems = selectedItems.filter( function ( item ) { return item.is_attached_to_current_post; } );
 			}
 			if ( 0 === selectedItems.length ) {
@@ -1371,13 +1376,14 @@
 						actions.push( { action: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) } );
 					}
 				}
-				if ( importable && item.is_imported && ! item.is_attached_to_current_post ) {
+				if ( importable && item.is_imported && ! item.is_attached_to_current_post && 'simple' !== panelMode ) {
 					actions.push( { action: 'remove', label: __( 'Remove from library', 'wp-media-helper' ) } );
 				}
 			} else if ( ( ! blockedElsewhere( item ) ) && importable ) {
 				if ( 'simple' === panelMode ) {
+					// Detaching keeps the record in the library, and its metadata; removing it is for the advanced mode.
 					actions.push( item.is_attached_to_current_post
-						? { action: 'remove', label: __( 'Remove', 'wp-media-helper' ) }
+						? { action: 'detach', label: __( 'Detach from post', 'wp-media-helper' ) }
 						: { action: 'attach', label: __( 'Attach to post', 'wp-media-helper' ) } );
 				} else {
 					actions.push( item.is_imported
@@ -1821,7 +1827,7 @@
 				return canTrash && !! filters.show_trash;
 			}
 
-			return 'advanced' === panelMode || [ 'attach', 'remove' ].includes( action.value );
+			return 'advanced' === panelMode || [ 'attach', 'detach' ].includes( action.value );
 		} ).map( function ( action ) {
 			if ( 'attach_method' === action.value ) {
 				return Object.assign( {}, action, { label: sprintf( __( 'Attach with %s…', 'wp-media-helper' ), methodName ) } );

@@ -267,7 +267,7 @@ method, a bulk action, and a filter on the mechanism and the mode (*WordPress, w
   the two apart.
 - **State**: in cohabitation a file attached the WordPress way **counts as attached to the post** (filters, badge, state "Attached
   the WordPress way"; the other posts of the native links are added to *Also in*).
-- **Actions** (menu, sheet, bulk, in simple and advanced modes): *Attach (WordPress)* (`attach_native`), *Attach with the
+- **Actions** (menu, sheet, bulk, in simple and advanced modes; *Remove from library* only in the advanced mode, simple mode only detaches: see [014](014-simple-and-advanced-media-panel-modes.md)): *Attach (WordPress)* (`attach_native`), *Attach with the
   method…* (`attach_method`, a dialog asks for the values of the fields: the modes), *Switch to the method…* (`to_method`, same
   dialog), *Switch to WordPress* (`to_native`: the method detaches, then the attachment is attached natively; refused when it is
   attached natively to another post), *Detach* (detaches through whichever mechanism holds the file), *Edit link…* (method links

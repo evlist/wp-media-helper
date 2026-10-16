@@ -213,8 +213,10 @@ Media Library like any other media and works with other plugins:
 - a file that already has an attachment, whichever tool created it (for example
   Bulk Media Register), is recognised and reused: no duplicate, and it is shown as
   already in the library;
-- *Remove* deletes the attachments of the file whichever tool created them, and
-  never a file. Thumbnails of that attachment are deleted from the cache.
+- *Remove from library* (advanced mode) deletes the attachments of the file whichever
+  tool created them, with their metadata, and never a file. Thumbnails of that attachment
+  are deleted from the cache. The simple mode does not offer it: it only *attaches* and
+  *detaches* a file, and a detached file keeps its attachment and its metadata;
 
 Only files inside the uploads directory can be registered.
 

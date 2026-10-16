@@ -4,7 +4,7 @@
 
 This slice introduces two presentation modes for the editor media panel:
 
-- **Simple mode**, the default, focuses on the editor's post-level workflow: attach media to the current post or remove it completely.
+- **Simple mode**, the default, focuses on the editor's post-level workflow: attach media to the current post or detach it. (It used to offer *Remove*, which removed the library record: see *Revised* below.)
 - **Advanced mode** exposes the underlying WordPress media-library lifecycle for editors who also manage media through the native WordPress library.
 
 Both modes use the same external-source discovery, attachment records, AJAX endpoint, and server-side lifecycle rules. The difference is only which states and actions the panel exposes.
@@ -18,7 +18,7 @@ The existing model distinguishes two independent states for every external media
 
 These distinctions are necessary for correct WordPress integration, but they are not equally useful to every editor.
 
-An editor who works only through this plugin generally thinks in terms of the current post: a file is attached or not attached. Whether WordPress currently has a separate attachment record is an implementation detail because `Attach` creates it automatically and `Remove` removes it as part of the complete reverse operation.
+An editor who works only through this plugin generally thinks in terms of the current post: a file is attached or not attached. Whether WordPress currently has a separate attachment record is an implementation detail because `Attach` creates it automatically and it is kept when the file is detached.
 
 An editor who also uses the standard WordPress Media Library needs the detailed distinction. That editor may want to import a file without attaching it, detach it while retaining it in the library, or inspect library presence independently from current-post attachment.
 
@@ -78,16 +78,18 @@ It does not display whether the file is in the WP media library. A file that is 
 Simple mode exposes only post-oriented lifecycle actions:
 
 - `Attach` for an item not attached to the current post,
-- `Remove` for an item attached to the current post.
+- `Detach from post` for an item attached to the current post (revised: it was `Remove`).
 
 The bulk-action menu exposes the same two actions:
 
 - `Attach to post`,
-- `Remove`.
+- `Detach from post`.
 
 `Attach` registers a virtual WordPress attachment automatically when necessary, then attaches it to the current post. The editor must not see an extra import step or confirmation.
 
-`Remove` is the complete inverse of `Attach`: it detaches the item from the current post when applicable, then removes its plugin-managed WordPress media-library registration. It never deletes or alters the external source file.
+`Detach from post` removes only the link with the current post. The attachment record stays in the media library with everything it holds (title, caption, description, alternative text, the data of the links of the attachment methods, its other posts), so attaching the file again finds it as it was. It never deletes or alters the external source file.
+
+> **Revised.** Simple mode used to offer `Remove`, "the complete inverse of `Attach`": it detached the item and removed its library record. Removing the record loses its metadata, which an editor who works only in the post editor does not expect, so Simple mode now offers only `Detach from post`. Removing a record from the library is an Advanced-mode action (`Remove from library`), a deliberate one. The bulk action `Remove` that an Advanced-mode user had chosen is not run if the mode is switched to Simple before it is applied.
 
 ### Hidden actions
 
@@ -145,7 +147,7 @@ Changing modes must preserve the selected item set. The same selected items must
 
 The client may hide actions that do not belong to the current mode, but it must not change their server-side semantics.
 
-A Simple-mode `Remove` must remain safe and complete even if the selected item was previously imported through Advanced mode.
+A Simple-mode `Detach from post` must be safe even if the selected item was previously imported through Advanced mode: it never removes a record.
 
 ### 4. Current post requirements
 
@@ -178,9 +180,9 @@ This slice does not include:
 
 1. The panel opens in Simple mode for a user with no saved preference.
 2. Simple mode displays only the current-post attachment state.
-3. Simple mode exposes only `Attach` and `Remove` actions.
+3. Simple mode exposes only `Attach` and `Detach from post` actions (and *Move to trash*, which is a separate and deliberate action, for those who may use it).
 4. Simple-mode `Attach` automatically imports when necessary.
-5. Simple-mode `Remove` detaches and removes the plugin-managed library record without touching the external source file.
+5. Simple-mode `Detach from post` removes only the link with the current post: the library record and its metadata stay, and the external source file is untouched.
 6. Advanced mode displays both library presence and current-post attachment state.
 7. Advanced mode exposes `Import`, `Attach`, `Detach`, and `Remove` as applicable actions.
 8. Switching modes preserves the current source/date result set and the selected rows.
