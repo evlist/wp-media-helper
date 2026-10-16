@@ -91,6 +91,35 @@ final class ThumbnailLayout {
 	}
 
 	/**
+	 * The registered size that WordPress would pick for a size given as `[ width, height ]` when the metadata has no sizes yet (an
+	 * attachment just imported, whose sizes are made in the background): the smallest size that is cropped (its dimensions are its
+	 * own, not those of the original), is at least as large, and has the same proportions. Null when none does.
+	 *
+	 * @param array<string, array{width?:int, height?:int, crop?:mixed}> $definitions `wp_get_registered_image_subsizes()`
+	 */
+	public static function sizeNameForDimensions( array $definitions, int $width, int $height ): ?string {
+		if ( $width < 1 || $height < 1 ) {
+			return null;
+		}
+
+		$best = null;
+		$area = PHP_INT_MAX;
+		foreach ( $definitions as $name => $definition ) {
+			$w = (int) ( $definition['width'] ?? 0 );
+			$h = (int) ( $definition['height'] ?? 0 );
+			if ( $w < $width || $h < $height || empty( $definition['crop'] ) || abs( $w * $height - $h * $width ) > max( $w, $h ) ) {
+				continue;
+			}
+			if ( $w * $h < $area ) {
+				$area = $w * $h;
+				$best = (string) $name;
+			}
+		}
+
+		return $best;
+	}
+
+	/**
 	 * True when `$path` is below `$directory` with no `.` or `..` segment.
 	 */
 	public static function isSafeInside( string $directory, string $path ): bool {

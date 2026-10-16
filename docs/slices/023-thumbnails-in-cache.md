@@ -258,3 +258,11 @@ The media library list asks for an array size (`[60, 60]`). The filter used to i
 `file` of the intermediate size next to the original (`…-150x150.jpg`), a file that is not there. The filter now resolves
 the array through `image_get_intermediate_size()`, maps the chosen file back to its named size
 (`ThumbnailLayout::sizeNameForFile`) and then follows the usual path: cache file if present, made on demand otherwise.
+
+## Follow-up: the list of the media library, right after an import
+
+The list asks for `[ 60, 60 ]`. For an attachment just imported by this plugin the metadata has no sizes yet (they are made in the background, ten seconds or more
+later), so `image_get_intermediate_size()` finds nothing and WordPress showed the whole picture squeezed to the width of the column, until the sizes existed (the grid, which asks
+the REST answer, made them, which is why the list was right after a visit to the grid). Now, for an attachment registered by this plugin whose metadata has no sizes, the size is
+chosen among the registered ones the way WordPress chooses (`ThumbnailLayout::sizeNameForDimensions`: the smallest **cropped** size at least as large with the same proportions,
+`thumbnail` for 60 x 60) and made on the spot, like any named size. Other proportions, or no cropped size that fits: unchanged.

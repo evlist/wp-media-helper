@@ -68,4 +68,21 @@ class ThumbnailLayoutTest extends TestCase {
 		$this->assertNull( ThumbnailLayout::sizeNameForFile( $metadata, '' ) );
 		$this->assertNull( ThumbnailLayout::sizeNameForFile( [], 'photo-150x150.jpg' ) );
 	}
+
+	public function test_the_size_for_a_dimension_pair_is_the_smallest_cropped_one_of_the_same_proportions(): void {
+		$definitions = [
+			'thumbnail'    => [ 'width' => 150, 'height' => 150, 'crop' => true ],
+			'medium'       => [ 'width' => 300, 'height' => 300, 'crop' => false ],
+			'gallery'      => [ 'width' => 480, 'height' => 270, 'crop' => true ],
+			'large'        => [ 'width' => 1024, 'height' => 1024, 'crop' => false ],
+			'square-big'   => [ 'width' => 600, 'height' => 600, 'crop' => true ],
+		];
+
+		$this->assertSame( 'thumbnail', ThumbnailLayout::sizeNameForDimensions( $definitions, 60, 60 ) );
+		$this->assertSame( 'gallery', ThumbnailLayout::sizeNameForDimensions( $definitions, 160, 90 ) );
+		$this->assertSame( 'square-big', ThumbnailLayout::sizeNameForDimensions( $definitions, 200, 200 ) );
+		$this->assertNull( ThumbnailLayout::sizeNameForDimensions( $definitions, 700, 700 ) );
+		$this->assertNull( ThumbnailLayout::sizeNameForDimensions( $definitions, 60, 100 ) );
+		$this->assertNull( ThumbnailLayout::sizeNameForDimensions( $definitions, 0, 60 ) );
+	}
 }

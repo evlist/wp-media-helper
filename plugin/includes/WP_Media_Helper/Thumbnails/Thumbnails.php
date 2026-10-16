@@ -105,6 +105,12 @@ final class Thumbnails {
 		if ( is_array( $size ) ) {
 			$intermediate = image_get_intermediate_size( $attachmentId, $size );
 			$name         = is_array( $intermediate ) && isset( $intermediate['file'] ) ? ThumbnailLayout::sizeNameForFile( $metadata, (string) $intermediate['file'] ) : null;
+			// An attachment just imported has no sizes in its metadata yet (they are made in the background): the size is chosen
+			// among the registered ones, as WordPress would, and made now. Without it the list of the media library shows the
+			// whole picture, squeezed, until the sizes exist.
+			if ( null === $name && $this->isRegisteredByUs( $attachmentId ) && [] === (array) ( $metadata['sizes'] ?? [] ) ) {
+				$name = ThumbnailLayout::sizeNameForDimensions( wp_get_registered_image_subsizes(), (int) ( $size[0] ?? 0 ), (int) ( $size[1] ?? 0 ) );
+			}
 			if ( null === $name ) {
 				return $out;
 			}
