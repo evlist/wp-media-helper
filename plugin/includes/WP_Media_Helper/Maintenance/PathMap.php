@@ -115,7 +115,7 @@ final class PathMap {
 	/**
 	 * @throws InvalidArgumentException
 	 */
-	private static function clean( string $path ): string {
+	public static function clean( string $path ): string {
 		$path = str_replace( '\\', '/', $path );
 		if ( str_starts_with( $path, '/' ) ) {
 			throw new InvalidArgumentException( sprintf( 'The path "%s" is not a path relative to the uploads directory.', $path ) );

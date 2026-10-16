@@ -67,6 +67,9 @@ namespace {
 			$this->db->insert( 'wp_posts', [ 'ID' => 7, 'guid' => $old, 'post_type' => 'attachment' ] );
 			$this->db->insert( 'wp_posts', [ 'ID' => 8, 'guid' => 'x', 'post_type' => 'attachment' ] );
 			$this->db->insert( 'wp_posts', [ 'ID' => 9, 'guid' => 'y', 'post_type' => 'attachment' ] );
+			$this->db->insert( 'wp_posts', [ 'ID' => 10, 'guid' => 'z', 'post_type' => 'attachment' ] );
+			$this->db->insert( 'wp_posts', [ 'ID' => 11, 'guid' => 'w', 'post_type' => 'attachment' ] );
+			$this->db->insert( 'wp_posts', [ 'ID' => 60, 'guid' => 'f', 'post_type' => 'mgmlp_media_folder' ] );
 			$this->db->insert( 'wp_posts', [ 'ID' => 50, 'guid' => 'p', 'post_type' => 'post', 'post_content' => '<img src="https://e.example/wp-content/uploads/photos/2026/eric/10/08/a.jpg">' ] );
 			foreach ( [
 				[ 7, '_wp_attached_file', 'photos/2026/eric/10/08/a.jpg' ],
@@ -76,6 +79,7 @@ namespace {
 				[ 9, '_wp_attached_file', 'photos/2026/eric/10/08/c.jpg' ],
 				[ 10, '_wp_attached_file', 'cumulus/eric/2026/10/08/c.jpg' ],
 				[ 11, '_wp_attached_file', 'photos/gisele/other.jpg' ],
+				[ 60, '_wp_attached_file', 'photos/2026/eric/folder' ],
 			] as $meta ) {
 				$this->db->insert( 'wp_postmeta', [ 'post_id' => $meta[0], 'meta_key' => $meta[1], 'meta_value' => $meta[2] ] );
 			}
@@ -256,6 +260,14 @@ namespace {
 			$this->assertTrue( in_array( 'attachments: 3 checked, done', $told, true ), implode( '|', $told ) );
 			// No query by attachment: the work does not grow with the number of attachments squared.
 			$this->assertTrue( $this->db->queries - $before < 25, (string) ( $this->db->queries - $before ) );
+		}
+
+		public function test_posts_that_are_not_attachments_are_ignored_and_counted_by_type_not_reported_as_missing(): void {
+			$report = $this->remapper()->run( $this->map(), false, true, false );
+
+			$this->assertSame( [ 'mgmlp_media_folder' => 1 ], $report['ignored'] );
+			$this->assertSame( [ 8 ], $report['attachments']['missing'] );
+			$this->assertSame( 'photos/2026/eric/folder', $this->db->get_var( "SELECT meta_value FROM wp_postmeta WHERE post_id = 60 AND meta_key = '_wp_attached_file'" ) );
 		}
 	}
 }

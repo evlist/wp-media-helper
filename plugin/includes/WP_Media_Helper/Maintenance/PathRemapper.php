@@ -54,7 +54,11 @@ final class PathRemapper {
 	}
 
 	/**
+	 * `ignored` counts, by post type, the posts that have a `_wp_attached_file` under an old prefix without being attachments
+	 * (for example the folder records of a media library plugin): they are left alone.
+	 *
 	 * @return array{
+	 *   ignored:array<string, int>,
 	 *   attachments:array{moved:int, not_ours:int, missing:int[], collisions:int[]},
 	 *   index:array{directories:int, files:int, joined:int, collisions:int},
 	 *   cache:array{moved:int},
@@ -63,11 +67,38 @@ final class PathRemapper {
 	 */
 	public function run( PathMap $map, bool $apply, bool $moveCache = true, bool $countUrls = true ): array {
 		return [
+			'ignored'     => $this->ignored( $map ),
 			'attachments' => $this->attachments( $map, $apply ),
 			'index'       => $this->index( $map, $apply ),
 			'cache'       => [ 'moved' => $moveCache ? $this->cache( $map, $apply ) : 0 ],
 			'urls'        => $countUrls ? $this->urls( $map ) : [ 'counted' => false, 'posts' => 0, 'meta' => 0, 'search_replace' => $this->searchReplaceLines( $map ) ],
 		];
+	}
+
+	/**
+	 * @return array<string, int> Post type => number of posts, for the posts that are not attachments.
+	 */
+	private function ignored( PathMap $map ): array {
+		global $wpdb;
+
+		$ignored = [];
+		foreach ( $map->entries() as $entry ) {
+			[ $low, $high ] = self::range( $entry['from'] );
+			$rows = $wpdb->get_results( $wpdb->prepare(
+				"SELECT p.post_type AS type, COUNT(*) AS n FROM {$wpdb->postmeta} pm INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+				WHERE pm.meta_key = '_wp_attached_file' AND p.post_type <> 'attachment' AND ( pm.meta_value = %s OR ( pm.meta_value >= %s AND pm.meta_value < %s ) )
+				GROUP BY p.post_type", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$entry['from'],
+				$low,
+				$high
+			), ARRAY_A ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			foreach ( is_array( $rows ) ? $rows : [] as $row ) {
+				$ignored[ (string) $row['type'] ] = ( $ignored[ (string) $row['type'] ] ?? 0 ) + (int) $row['n'];
+			}
+		}
+		ksort( $ignored );
+
+		return $ignored;
 	}
 
 	/**
@@ -89,6 +120,7 @@ final class PathRemapper {
 					"SELECT pm.meta_id, pm.post_id, pm.meta_value,
 						EXISTS( SELECT 1 FROM {$wpdb->postmeta} o WHERE o.post_id = pm.post_id AND o.meta_key = %s ) AS owned
 					FROM {$wpdb->postmeta} pm
+					INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id AND p.post_type = 'attachment'
 					WHERE pm.meta_key = '_wp_attached_file' AND pm.meta_id > %d AND ( pm.meta_value = %s OR ( pm.meta_value >= %s AND pm.meta_value < %s ) )
 					ORDER BY pm.meta_id ASC LIMIT %d", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 					AttachmentRegistry::SOURCE_ID_META,
@@ -131,7 +163,7 @@ final class PathRemapper {
 		global $wpdb;
 
 		[ $low, $high ] = self::range( $prefix );
-		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = '_wp_attached_file' AND meta_value >= %s AND meta_value < %s", $low, $high ), ARRAY_A ); // phpcs:ignore WordPress.DB
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT pm.post_id, pm.meta_value FROM {$wpdb->postmeta} pm INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id AND p.post_type = 'attachment' WHERE pm.meta_key = '_wp_attached_file' AND pm.meta_value >= %s AND pm.meta_value < %s", $low, $high ), ARRAY_A ); // phpcs:ignore WordPress.DB
 		$paths = [];
 		foreach ( is_array( $rows ) ? $rows : [] as $row ) {
 			$paths[ (string) $row['meta_value'] ] = (int) $row['post_id'];

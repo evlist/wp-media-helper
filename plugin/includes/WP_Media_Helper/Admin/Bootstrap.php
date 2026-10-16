@@ -4,6 +4,7 @@
 
 namespace WP_Media_Helper\Admin;
 
+use WP_Media_Helper\Cli\AttachmentsCommand;
 use WP_Media_Helper\Cli\IndexCommand;
 use WP_Media_Helper\Cli\MediaHelperCommand;
 use WP_Media_Helper\Cli\PathsCommand;
@@ -22,6 +23,7 @@ class Bootstrap {
 		PathsCommand::register();
 		SourceCommand::register();
 		IndexCommand::register();
+		AttachmentsCommand::register();
 		AdditionalTypes::register();
 		new ExternalSourceSettingsPage();
 		new EditorPanel();

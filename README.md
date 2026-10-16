@@ -304,6 +304,9 @@ For scripts, `wp media-helper source list|add|exclude|include|remove` manage the
 `wp media-helper status --format=json` and `paths remap --format=json` give machine-readable answers, and
 `wp media-helper index dates` shows the dates held by the index. See the end of slice 049.
 
+`wp media-helper attachments clean` finds, and with `--yes` removes (records only, never a file), the duplicate attachments and those whose file is missing,
+with guards on the numbers and a saved list. See [slice 050](docs/slices/050-attachments-clean.md).
+
 ## Reset
 
 The bottom of the settings page has a **Reset** section to start again from nothing

@@ -66,7 +66,7 @@ class PathsCommand {
 	 * : Apply. Without it the command only reports what it would do.
 	 *
 	 * [--format=<format>]
-	 * : text or json. With json the only output is one object: {"applied", "undo", "run", "attachments":{"moved","not_ours","missing","collisions"}, "index":{"directories","files","joined","collisions"}, "cache":{"moved"}, "urls":{"counted","posts","meta","search_replace"}, "problems"}. Default: text.
+	 * : text or json. With json the only output is one object: {"applied", "undo", "run", "ignored":{post type: count}, "attachments":{"moved","not_ours","missing","collisions"}, "index":{"directories","files","joined","collisions"}, "cache":{"moved"}, "urls":{"counted","posts","meta","search_replace"}, "problems"}. Default: text.
 	 *
 	 * [--undo=<run>]
 	 * : Put back the paths of an earlier run, given its identifier.
@@ -116,7 +116,7 @@ class PathsCommand {
 		}
 
 		if ( $json ) {
-			\WP_CLI::line( (string) wp_json_encode( array_merge( [ 'applied' => $apply, 'undo' => isset( $assoc['undo'] ), 'run' => $run ], $report, [ 'problems' => $problems ] ) ) );
+			\WP_CLI::line( (string) wp_json_encode( array_merge( [ 'applied' => $apply, 'undo' => isset( $assoc['undo'] ), 'run' => $run ], array_merge( $report, [ 'ignored' => (object) $report['ignored'] ] ), [ 'problems' => $problems ] ) ) );
 		} else {
 			$this->print( $report, $apply );
 			if ( null !== $run ) {
@@ -215,6 +215,9 @@ class PathsCommand {
 	 */
 	private function print( array $report, bool $apply ): void {
 		$verb = $apply ? 'moved' : 'to move';
+		foreach ( $report['ignored'] as $type => $count ) {
+			\WP_CLI::line( sprintf( 'Ignored, not attachments: %d posts of type %s (they have a _wp_attached_file under an old prefix).', $count, $type ) );
+		}
 		$a    = $report['attachments'];
 		$i    = $report['index'];
 
