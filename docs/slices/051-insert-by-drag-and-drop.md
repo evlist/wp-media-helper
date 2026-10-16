@@ -9,8 +9,9 @@ Status: **proposal** (to be implemented). Related: [022](022-wordpress-native-re
 
 ## Goal
 
-While editing a post, drag a file (or several) from the media panel of the sidebar and drop it **where it should appear in the content**: an image becomes an image block, a
-video a video block, a sound an audio block, any other allowed file a file block (a download link). Today a file can be attached to the post, or set as the featured image, but
+While editing a post, drag a file (or several) from the media panel of the sidebar and drop it **where it should appear in the content**: what is inserted depends on the type of the file, by a
+table of **handlers** that the administrator edits (a block or a shortcode per type: an image in a gallery, a video in a video block, a GPX track with the shortcode or the block of the track plugin, subtitles added
+to a video); a type with no handler is refused. The types that matter first are **images, videos, subtitles and GPX tracks**. Today a file can be attached to the post, or set as the featured image, but
 putting it in the text needs the WordPress media library (*Add media* in a block), which does not show the files of the external sources by day, nor their previews.
 
 ## What exists
@@ -27,17 +28,54 @@ putting it in the text needs the WordPress media library (*Add media* in a block
 1. **Dragging**: a tile of the panel can be dragged with the mouse. The drag image is the preview. In selection mode, dragging a selected tile drags **all the selected files**. A file that cannot be
    inserted (in the trash, a type WordPress does not accept, a file that cannot be registered) is not draggable and says why (the sheet already does for imports).
 2. **Dropping** on the content: the usual insertion line of the editor shows where the block(s) will go; the drop inserts them there, at the root or inside a container (columns, group...), as for any block.
-3. **What is inserted**, by the category of the file (the same categories as the panel filter, 032): image -> `core/image`; video -> `core/video`; audio -> `core/audio`;
-   anything else the site accepts -> `core/file`. Several images dropped together -> **one `core/gallery`** (or one image block each: see the questions); several files of mixed types -> one block each, in the order of the panel.
+3. **What is inserted** is decided by the **handler** of the type of the file (see *Handlers*), not by a fixed rule: a block (with its attributes), or a shortcode. The block is a real block, so the author
+   uses **its own interface** (toolbar, inspector) to set its parameters afterwards. A file whose type has **no handler is refused**: its tile is not draggable and the sheet says "No block is defined for this type".
+   Several files dropped together give what each handler gives, in the order of the panel.
 4. **Registering**: a file that has no attachment yet is registered at the drop (the same code as *Import*), so the block has a real attachment ID, a public URL and the sizes.
    While it is being registered the block shows a loading state (a placeholder image block with the spinner), and is replaced, or removed with a notice if registering failed (the reason of the server is shown).
 5. **Attaching** is **not** implied by inserting: a block in the text and the link of the file with the post (native parent or a method link, 042) are two things. See the questions for a setting
    that attaches too, with the default values of the fields of the method (the modes) or by asking.
 6. **Alternative without dragging** (required, a drag is not accessible and does not exist on touch screens): an action *Insert in the content* in the menu of the tile, the detail sheet and the bulk actions. It inserts after
    the selected block (or at the end when none is selected), with the same blocks as the drop.
-7. **Image sizes**: an image block uses the `large` size (the cache serves it) with `sizeSlug: large`, linked to nothing; the full file is the `url` of the attachment. The alternative text is the one of the
-   attachment (empty when none); the caption stays empty.
+7. **Dropping on a block**: a file can be **added to a block that is already in the content** when the handler has a rule for it: an image dropped on a gallery joins it, subtitles dropped on a video become one of its
+   text tracks. The block under the pointer is highlighted when it accepts the file.
+8. **Image sizes and alternative text**: the shipped image handler uses the `large` size (the cache serves it) with `sizeSlug: large`, linked to nothing; the full file is the `url` of the attachment. The alternative text is
+   the one of the attachment (empty when none); the caption stays empty. All of this is in the handler, so the author changes it with the block.
 8. **What the panel shows afterwards** is unchanged: inserting does not change the state of the tile, except that a file registered by the drop is now "in the library".
+
+## Handlers: which block or shortcode for which type
+
+The choice is **data**, edited by an administrator (a section of the settings page, next to the file types of [045](045-file-types-editor.md)) and overridable in code with the filter `wp_media_helper_insert_handlers`.
+A handler is found by the **extension** first (`gpx`, `vtt`), then by the **category** of the file (image, video, audio, ...). It is one of:
+
+- **A block**: a block name, attributes, and optionally inner blocks, written as a template with placeholders (`{id}` the attachment ID, `{url}` the public URL, `{size_url}` the URL of the size to show, `{width}`, `{height}`,
+  `{alt}`, `{title}`, `{name}`, `{mime}`, `{lang}`). Example: `core/video` with `{ "id": "{id}", "src": "{url}" }`.
+- **A shortcode**: a tag and attributes with the same placeholders, inserted as a `core/shortcode` block (or a paragraph, to be decided). Example for GPX tracks, to check against the version of the plugin of the site:
+  `[sgpx gpx="{url}"]`. A shortcode has no interface of its own: a block is better when the plugin offers one.
+- **An addition to a block that is already there** ("drop on a block"): the file is not inserted but added to the block under the pointer. A rule says the **target block**, the **attribute** or the **inner blocks**
+  that receive it, and the template of what is added.
+
+Handlers shipped (all editable, none imposed):
+
+| Type | Handler | Why |
+|------|---------|-----|
+| image | `core/gallery` holding one `core/image` (`{id}`, `{size_url}`, `sizeSlug: large`) | a single image is a gallery of one, and other images can then be **dropped into it** (an image dropped on a gallery, or between its images, joins it) |
+| video | `core/video` (`id`, `src`) | |
+| audio | `core/audio` | |
+| `vtt` (subtitles) | **added to a `core/video`**: `tracks` gets `{ src, kind: "subtitles", srcLang, label }` | `core/video` has a `tracks` attribute: the same drop on a video adds the subtitles to it |
+| `gpx` | shortcode `[sgpx gpx="{url}"]` or the block of the track plugin | the site decides |
+| anything else | **none**: refused | the types that matter are listed, the rest is not inserted by accident |
+
+Notes on what is possible (a point of view to check in the editor, see the spike):
+
+- **Dropping on a block**: the plugin finds the block under the pointer (`data-block`, the client ID) and asks whether a rule of the handler accepts the file for that block name. If yes, the insertion line is replaced by
+  a highlight of the block, and the drop updates the block (`updateBlockAttributes`) or adds inner blocks (`insertBlocks` with the block as root). If not, the file is inserted next to it as usual, or refused when its
+  handler **requires a target** (subtitles without a video: "Drop it on a video").
+- **A gallery accepts images only** (its inner blocks): another type dropped on it is inserted after it, not in it.
+- **Subtitles**: browsers read WebVTT in a `<track>`; `srt` is not accepted by the rule (the message says to convert it). The language is read from the file name (`trip.fr.vtt`, `trip-en.vtt`), else the language of the site, and the label is
+  the name of the language.
+- **Parameters** of a block are changed by the author with the interface of the block: the plugin sets sensible attributes, it does not offer a second set of options. For a shortcode, the attributes of the template are all there is.
+- A handler that names a block that is not registered on the site (a plugin deactivated) is ignored with a notice in the settings; the type is then refused.
 
 ## How it works (two approaches, to be tried first)
 
@@ -58,10 +96,16 @@ One endpoint, in the family of the existing ones (`wp_media_helper_insert_data`,
 
 - Input: the post ID and a list of `{ source_id, path }` as the panel knows them. **The client never sends a URL or an attachment ID that the server believes**: the server confines the path to the active sources
   (as for import), registers what is missing (the code of *Import*) and reads everything else itself.
-- Output, per file in the order sent: `{ attachment_id, block: 'core/image' | 'core/video' | 'core/audio' | 'core/file' | 'core/gallery', attributes: {...}, mime, name }` or `{ error }`. The server builds the
-  attributes (URL, size URL, dimensions, alt, `fileName`, `href`, ...), so the browser has no rule of its own about types and URLs, and a site can change the choice with the filter
-  `wp_media_helper_insert_block( array $block, int $attachmentId, int $postId )`.
+- Input also carries, for a drop on a block, the **name** of the target block (and its client ID, only echoed back): the server picks the handler and the rule that accepts the file for that block, or says the file is refused.
+- Output, per file in the order sent: `{ attachment_id, mode, mime, name, ... }` with `mode` = `block` (`block`, `attributes`, `innerBlocks`), `shortcode` (`tag`, `attributes`, the text to insert), `append` (the attribute or inner
+  blocks of the target and the value to add), or `{ error }` (type without handler, subtitles not in WebVTT, no target, a file WordPress does not accept...). The server expands the templates (URLs, sizes, dimensions, alt, the language
+  of a subtitle), so the browser has no rule of its own about types and URLs; a site can still change the result with the filter `wp_media_helper_insert_block( array $result, int $attachmentId, int $postId )`.
 - The action *Attach when inserting* (if any) is done by the same call through the active method (`attach()`), with the values of the fields asked in the dialog or the defaults.
+
+## Settings
+
+*WP Media Helper > Insert in the content* (administrators): the table of handlers (type or extension, kind, block or shortcode, template), the rules of drops on blocks, a list of the blocks and shortcodes that exist on the site to choose from,
+a check that the template is valid JSON and the block registered, a **reset to the shipped handlers**, and import/export of the table (as for the file types). A type with no row is refused.
 
 ## Rules
 
@@ -72,8 +116,8 @@ One endpoint, in the family of the existing ones (`wp_media_helper_insert_data`,
 
 ## Tests
 
-- Unit: the server mapping from a file to the block and its attributes for each category (image with and without sizes, a vertical photo, video, audio, other, a file WordPress does not accept), the
-  refusals, the order, and that a URL or an ID sent by the browser is ignored.
+- Unit: the server mapping from a file to the block and its attributes through the handlers (image with and without sizes, a vertical photo, video, subtitles with a language in the name, GPX, a type with no handler, a file WordPress does not
+  accept), the expansion of the templates and the refusal of an invalid one, the rules for drops on blocks (accepted, not accepted, required target), the refusals, the order, and that a URL or an ID sent by the browser is ignored.
 - Browser (the Chromium harness with a mocked server): synthetic `dragstart`/`dragover`/`drop` events with a real `DataTransfer`: the private type is set, a selection drags all its files, a file that cannot be
   inserted is not draggable, the alternative action inserts at the right place, and an error shows its reason. Nothing here proves the behavior of the editor: it needs a run in a real editor.
 - Manual, in the editor of the target version of WordPress: drop at the root, in a column, between two blocks, at the end; undo (one step per drop); a drop on the iframe after a re-render; touch device (the action
@@ -88,27 +132,33 @@ One endpoint, in the family of the existing ones (`wp_media_helper_insert_data`,
 
 ## Acceptance criteria
 
-1. Dragging an image tile onto the content inserts an image block with the attachment ID, the public URL and the `large` size, at the position of the insertion line.
-2. A file not yet in the library is registered by the drop, and the block shows a loading state until it is.
-3. A video, a sound and any other accepted file give a video, audio and file block.
-4. Dragging a selection drops all its files in the order of the panel.
-5. The action *Insert in the content* does the same without a drag, from the menu, the sheet and the bulk actions.
-6. A refused file inserts nothing and says why; nothing is left half done (no block without attachment).
-7. Inserting does not attach, unless the chosen setting says so; and the attachment of a file is unchanged by dropping it.
-8. One undo step removes what a drop inserted.
+1. Dragging an image tile onto the content inserts a gallery holding one image block with the attachment ID, the public URL and the `large` size, at the position of the insertion line; the author changes its parameters with the interface of the block.
+2. An image dropped on that gallery, or between its images, joins it; another type dropped on a gallery is inserted after it.
+3. A file not yet in the library is registered by the drop, and the block shows a loading state until it is.
+4. A video gives a video block; subtitles (WebVTT) dropped on a video are added to its text tracks with their language; subtitles dropped elsewhere are refused with "Drop it on a video"; `srt` is refused with the reason.
+5. A GPX track gives what its handler says (shortcode or block), and changing the handler in the settings changes what the next drop gives.
+6. A type with no handler (or a handler whose block is not registered) is not draggable and says why; nothing of it can be inserted by the alternative action either.
+7. Dragging a selection drops all its files in the order of the panel, each by its handler.
+8. The action *Insert in the content* does the same without a drag, from the menu, the sheet and the bulk actions.
+9. A refused file inserts nothing and says why; nothing is left half done (no block without attachment).
+10. Inserting does not attach, unless the chosen setting says so; and the attachment of a file is unchanged by dropping it.
+11. One undo step removes what a drop inserted.
 
 ## Suggested steps
 
-1. Spike: approach A for images, in the editor of the site (does the ID survive? where does the line appear?). Decide A or B.
-2. Server: the endpoint and the mapping to blocks, with tests; registering at the drop.
+1. Spike, in the editor of the site: approach A for images (does the ID survive? where does the line appear?), and **the drop on a block** (a gallery, a video: can the block under the pointer be found and updated without private APIs?). Decide A or B.
+2. Server: the handlers (shipped table, filter), the expansion of the templates, the rules for drops on blocks, the endpoint, with tests; registering at the drop.
 3. Panel: draggable tiles with the private type, the selection drag, the non-draggable states, and the action *Insert in the content*.
 4. Editor: the drop handler (B) or the HTML payload (A), the loading state, the errors.
-5. Attach when inserting (setting or dialog), documentation, the harness tests.
+5. The settings page of the handlers (table, check of the blocks, reset, import/export).
+6. Attach when inserting (setting or dialog), documentation, the harness tests.
 
 ## Open questions
 
-- **Several images dropped together**: one gallery block, or one image block each? (A gallery block is better for 2 or more, but changes what the author sees.)
 - **Attach when inserting**: never, always, or asked? With a method that has fields (the modes), the values must come from somewhere: the defaults, or the dialog already used for *Attach*.
-- **Which `large`**: the size named `large` of the site, or the largest size that fits the content width of the theme? (The block editor knows the content width.)
-- **The block for a type that is not an image, a video or a sound** (a GPX track, subtitles): `core/file`, or a block of another plugin of the site (the track plugin) through the filter.
-- **Version of the editor**: the lowest version to support; the editor canvas is an iframe from WordPress 6.3 and the drop zone internals changed since, which decides how much of B is possible without private APIs.
+- **Several images dropped together**: with the gallery handler, one gallery holding all of them (natural); with the `core/image` handler, one block each.
+- **A shortcode**: inserted as a `core/shortcode` block, or as text in a paragraph? And which shortcode or block the GPX track plugin of the site expects (to read in its documentation, not assumed here).
+- **Subtitles on a video that is not a core block** (a video of another plugin): only `core/video` at first.
+- **The size of the image** in the gallery: the size named `large` of the site, or the largest that fits the content width of the theme.
+- **Version of the editor**: the lowest version to support; the editor canvas is an iframe from WordPress 6.3, galleries use inner image blocks from 5.9 and the drop zone internals changed since: this decides how much of the drop on a
+  block is possible without private APIs, and the spike must answer it.
