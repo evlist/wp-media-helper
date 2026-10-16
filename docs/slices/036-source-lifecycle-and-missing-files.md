@@ -83,6 +83,7 @@ forgotten after 30 days. The attachment in the library is not touched, which is 
 - **State** (`Maintenance\OrphanRegistry`, option `wp_media_helper_orphans`): the IDs with the date first seen and their group, the IDs ignored, the unavailable groups, the number checked.
 - **Site Health** (`Admin\OrphanNotices`): a direct test *Files of the media library*: good, or recommended with the count and a link to the tool, or recommended when a
   directory could not be checked.
+- **Information tab** of Site Health: a section *WP Media Helper* (indexing paused or running, last check, attachments checked, without a file, ignored, directories not checked).
 - **Notice**: for administrators, on the dashboard, the media library and the settings page of the plugin only (not on every screen).
 - **The tool**, *Tools > Media orphans* (`Admin\OrphansPage`): the attachments without a file, 50 a page, with the registered path, the parent post, where it is used (featured image, `wp-image-<id>` in a
   content), the paths of the index with the same file name, and since when it was seen missing. Bulk actions: *Ignore* / *Stop ignoring* and *Remove the records from the library*

@@ -4,6 +4,7 @@
 
 namespace WP_Media_Helper\Admin;
 
+use WP_Media_Helper\Index\Pause;
 use WP_Media_Helper\Maintenance\OrphanRegistry;
 use WP_Media_Helper\Maintenance\OrphanReport;
 
@@ -17,6 +18,7 @@ final class OrphanNotices {
 
 	public function __construct() {
 		add_filter( 'site_status_tests', [ $this, 'addTest' ] );
+		add_filter( 'debug_information', [ $this, 'debugInformation' ] );
 		add_action( 'admin_notices', [ $this, 'notice' ] );
 	}
 
@@ -34,6 +36,29 @@ final class OrphanNotices {
 		];
 
 		return $tests;
+	}
+
+	/**
+	 * A section of the Info tab of Site Health.
+	 *
+	 * @param mixed $info
+	 * @return mixed
+	 */
+	public function debugInformation( $info ) {
+		if ( ! is_array( $info ) ) {
+			return $info;
+		}
+
+		$fields = [];
+		foreach ( OrphanReport::debugFields( OrphanRegistry::forWordPress()->get(), Pause::isPaused(), time() ) as $label => $value ) {
+			$fields[ sanitize_key( $label ) ] = [ 'label' => $label, 'value' => $value ];
+		}
+		$info['wp-media-helper'] = [
+			'label'  => __( 'WP Media Helper', 'wp-media-helper' ),
+			'fields' => $fields,
+		];
+
+		return $info;
 	}
 
 	/**

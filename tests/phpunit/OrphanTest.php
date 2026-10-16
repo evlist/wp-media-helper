@@ -174,4 +174,14 @@ class OrphanTest extends TestCase {
 		$this->assertSame( 'photos/a.jpg', OrphansPage::cell( 'photos/a.jpg' ) );
 		$this->assertSame( '12', OrphansPage::cell( 12 ) );
 	}
+
+	public function test_the_information_tab_lists_the_state_of_the_check(): void {
+		$fields = OrphanReport::debugFields( [ 'checked_at' => 0, 'ids' => [ 2 => 1, 3 => 1 ], 'ignored' => [ 3 ], 'scanned' => 40, 'unavailable' => [ 'photos/x' => 'r' ] ], true, 10 );
+
+		$this->assertSame( 'paused', $fields['Indexing'] );
+		$this->assertSame( 'never', $fields['Last check of the files'] );
+		$this->assertSame( '1', $fields['Attachments without a file'] );
+		$this->assertSame( '1', $fields['Ignored'] );
+		$this->assertSame( 'photos/x', $fields['Directories not checked'] );
+	}
 }

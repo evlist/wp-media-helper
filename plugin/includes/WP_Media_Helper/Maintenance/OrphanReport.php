@@ -72,6 +72,27 @@ final class OrphanReport {
 	}
 
 	/**
+	 * The lines of the section of the Site Health information page (label => value).
+	 *
+	 * @param array<string, mixed> $state
+	 * @return array<string, string>
+	 */
+	public static function debugFields( array $state, bool $paused, int $now ): array {
+		$checked     = (int) ( $state['checked_at'] ?? 0 );
+		$unavailable = (array) ( $state['unavailable'] ?? [] );
+
+		return [
+			__( 'Indexing', 'wp-media-helper' )                 => $paused ? __( 'paused', 'wp-media-helper' ) : __( 'running', 'wp-media-helper' ),
+			__( 'Last check of the files', 'wp-media-helper' )  => $checked > 0 ? gmdate( 'Y-m-d H:i:s', $checked ) . ' UTC' : __( 'never', 'wp-media-helper' ),
+			__( 'Attachments checked', 'wp-media-helper' )      => (string) (int) ( $state['scanned'] ?? 0 ),
+			__( 'Attachments without a file', 'wp-media-helper' ) => (string) self::open( $state ),
+			__( 'Ignored', 'wp-media-helper' )                  => (string) ( count( (array) ( $state['ids'] ?? [] ) ) - self::open( $state ) ),
+			__( 'Directories not checked', 'wp-media-helper' )  => [] === $unavailable ? __( 'none', 'wp-media-helper' ) : implode( ', ', array_keys( $unavailable ) ),
+			__( 'A check is under way', 'wp-media-helper' )     => (int) ( $state['started_at'] ?? 0 ) > 0 ? __( 'yes', 'wp-media-helper' ) : __( 'no', 'wp-media-helper' ),
+		];
+	}
+
+	/**
 	 * Orphans that are not ignored.
 	 *
 	 * @param array<string, mixed> $state
