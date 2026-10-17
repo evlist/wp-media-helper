@@ -255,7 +255,7 @@ the one used by Thumbnails Folder: its existing files are reused, with its URLs.
   type has a featured image) imports the file if it is not in the Media Library yet and makes it the
   featured image of the post being edited; the tile shows a star, and *Remove featured image*
   undoes it. There is only one, so there is no bulk action. Like any change in the editor it is
-  saved with *Update*. A long press (or Ctrl/Shift+click, or the *Select* button) enters
+  saved with *Update*. A long press with a finger (or Ctrl/Shift+click, or the *Select* button) enters
   selection mode, with a mark on every thumbnail and the bulk actions above. The list is not replaced
   behind your back: when files appear, a notice offers to refresh it. When it is not in the cache yet the browser asks an authenticated endpoint
   (`admin-ajax.php?action=wp_media_helper_thumbnail`) that creates and returns it; only

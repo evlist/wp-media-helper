@@ -1690,10 +1690,14 @@
 			}
 		};
 
-		const pressStart = function ( item ) {
+		// A long press selects with a finger or a pen only. With a mouse, holding the button down is how a drag starts
+		// (Ctrl/Shift+click and the context menu select instead); on a touch screen the long press wins over the drag,
+		// which is cancelled (insert from the menu or the bulk actions there).
+		const pressStart = function ( item, event ) {
 			cancelLongPress();
 			longPress.current.fired = false;
-			if ( selectionMode ) {
+			longPress.current.touch = !! event && 'mouse' !== event.pointerType;
+			if ( selectionMode || ! longPress.current.touch ) {
 				return;
 			}
 
@@ -1745,7 +1749,7 @@
 		// Dragging a tile (or all the selected ones when it is one of them) carries the paths and the sources, never addresses.
 		const startDrag = function ( event, item ) {
 			cancelLongPress();
-			if ( ! canInsert( item ) || ! event.dataTransfer ) {
+			if ( longPress.current.touch || ! canInsert( item ) || ! event.dataTransfer ) {
 				event.preventDefault();
 				return;
 			}
@@ -1784,7 +1788,7 @@
 					},
 					onClick: function ( event ) { handleTileClick( event, item ); },
 					onContextMenu: function ( event ) { cancelLongPress(); openMenu( event, item ); },
-					onPointerDown: function () { pressStart( item ); },
+					onPointerDown: function ( event ) { pressStart( item, event ); },
 					onPointerUp: cancelLongPress,
 					onPointerLeave: cancelLongPress,
 					onPointerCancel: cancelLongPress,
