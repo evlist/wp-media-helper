@@ -32,6 +32,7 @@ class Bootstrap {
 		new ExternalSourceSettingsPage();
 		new EditorPanel();
 		new EditorMediaController();
+		new InsertController();
 		new AttachmentUrls();
 		new Thumbnails();
 		new PostDateMeta();

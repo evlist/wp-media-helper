@@ -52,6 +52,7 @@
 		{ value: 'attach_method', label: __( 'Attach with the method…', 'wp-media-helper' ) },
 		{ value: 'to_method', label: __( 'Switch to the method…', 'wp-media-helper' ) },
 		{ value: 'to_native', label: __( 'Switch to WordPress', 'wp-media-helper' ) },
+		{ value: 'insert', label: __( 'Insert in the content', 'wp-media-helper' ) },
 		{ value: 'trash', label: __( 'Move to trash', 'wp-media-helper' ) },
 		{ value: 'restore', label: __( 'Restore from trash', 'wp-media-helper' ) },
 	];
@@ -224,6 +225,95 @@
 		} ).then( function ( response ) {
 			return response.json();
 		} );
+	};
+
+	// Inserting a file in the content (slice 051).
+	const DRAG_TYPE = 'application/x-wp-media-helper';
+
+	// What the server says to insert for the files (paths and sources only are sent: it decides the rest).
+	const fetchInsertData = function ( items, postId ) {
+		const formData = new window.FormData();
+		formData.append( 'action', 'wp_media_helper_insert_data' );
+		formData.append( 'nonce', nonce );
+		formData.append( 'source_id', wpMediaHelperEditorPanel.sourceId || '' );
+		formData.append( 'post_id', String( postId || 0 ) );
+		formData.append( 'items', JSON.stringify( items.map( function ( item ) {
+			return { id: item.id, path: item.path, source_id: item.source_id };
+		} ) ) );
+
+		return window.fetch( endpoint, { method: 'POST', credentials: 'same-origin', body: formData } ).then( function ( response ) {
+			return response.json();
+		} );
+	};
+
+	const blockFromDescription = function ( description ) {
+		return wp.blocks.createBlock(
+			description.block,
+			description.attributes || {},
+			( description.innerBlocks || [] ).map( blockFromDescription )
+		);
+	};
+
+	const blockEditor = function () {
+		return wp.data.select( 'core/block-editor' );
+	};
+
+	// Where the blocks go, as `{ root, index }`: after the selected block, else at the end of the content.
+	const pointAfterSelection = function () {
+		const editor = blockEditor();
+		const selected = editor.getSelectedBlockClientId ? editor.getSelectedBlockClientId() : null;
+		if ( selected ) {
+			return { root: editor.getBlockRootClientId( selected ) || '', index: editor.getBlockIndex( selected ) + 1 };
+		}
+
+		return { root: '', index: editor.getBlockCount() };
+	};
+
+	// Inserts the blocks described by the server. Into a gallery, photos are image blocks of that gallery, not galleries in a gallery.
+	const placeBlocks = function ( descriptions, point ) {
+		const editor = blockEditor();
+		const inGallery = point.root && 'core/gallery' === editor.getBlockName( point.root );
+		let list = descriptions;
+		if ( inGallery ) {
+			list = [];
+			descriptions.forEach( function ( description ) {
+				if ( 'core/gallery' === description.block ) {
+					description.innerBlocks.forEach( function ( inner ) { list.push( inner ); } );
+				} else {
+					list.push( description );
+				}
+			} );
+		}
+		wp.data.dispatch( 'core/block-editor' ).insertBlocks( list.map( blockFromDescription ), point.index, point.root || undefined, true );
+
+		return list.length;
+	};
+
+	// Can this item be inserted now? Only photos for the moment (the server says so too).
+	const canInsert = function ( item ) {
+		return !! wpMediaHelperEditorPanel.canUpload && 'image' === item.media_type && ! item.is_trashed && ( item.can_import || item.is_imported );
+	};
+
+	// The block under a point of the content, and where a drop there would insert, as `{ root, index, box, vertical, after }`.
+	const dropPoint = function ( event ) {
+		const editor = blockEditor();
+		const element = event.target && event.target.closest ? event.target.closest( '[data-block]' ) : null;
+		if ( ! element ) {
+			return { root: '', index: editor.getBlockCount(), box: null };
+		}
+
+		const clientId = element.getAttribute( 'data-block' );
+		const box = element.getBoundingClientRect();
+		if ( 'core/gallery' === editor.getBlockName( clientId ) ) {
+			// Over the gallery itself, not over one of its images: the end of the gallery.
+			return { root: clientId, index: editor.getBlockCount( clientId ), box: box, vertical: true, after: true, inside: true };
+		}
+
+		const root = editor.getBlockRootClientId( clientId ) || '';
+		const inGallery = root && 'core/gallery' === editor.getBlockName( root );
+		const after = inGallery ? event.clientX > box.left + box.width / 2 : event.clientY > box.top + box.height / 2;
+
+		return { root: root, index: editor.getBlockIndex( clientId ) + ( after ? 1 : 0 ), box: box, vertical: !! inGallery, after: after };
 	};
 
 	const savePanelMode = function ( mode ) {
@@ -711,6 +801,107 @@
 		const sentinel = useRef( null );
 		const [ galleryElement, setGalleryElement ] = useState( null );
 		const longPress = useRef( { timer: null, fired: false } );
+
+		// The content of the editor accepts what is dragged from the panel: a line shows where it goes, the drop inserts it.
+		// The canvas is an iframe in the current editor and is rebuilt now and then: the documents are looked at again regularly.
+		useEffect( function () {
+			let line = null;
+			// What is dragged from the panel, and over the content (in the iframe of the canvas, or in the content area of a page
+			// without iframe): the sidebar, the toolbar and the rest of the page do not take it.
+			const mine = function ( event ) {
+				if ( ! event.dataTransfer || Array.prototype.indexOf.call( event.dataTransfer.types || [], DRAG_TYPE ) < 0 ) {
+					return false;
+				}
+
+				return event.target.ownerDocument !== document || !! ( event.target.closest && event.target.closest( '.editor-styles-wrapper, .block-editor-block-list__layout' ) );
+			};
+			const hideLine = function () {
+				if ( line && line.parentNode ) {
+					line.parentNode.removeChild( line );
+				}
+				line = null;
+			};
+			const showLine = function ( doc, point ) {
+				if ( ! point.box ) {
+					hideLine();
+					return;
+				}
+				if ( ! line || line.ownerDocument !== doc ) {
+					hideLine();
+					line = doc.createElement( 'div' );
+					line.setAttribute( 'data-wpmh-drop-line', '1' );
+					doc.body.appendChild( line );
+				}
+				const thickness = 3;
+				const style = point.inside
+					? { left: point.box.left + 'px', top: point.box.top + 'px', width: point.box.width + 'px', height: point.box.height + 'px', border: '2px dashed #2271b1', background: 'transparent' }
+					: ( point.vertical
+						? { left: ( ( point.after ? point.box.right : point.box.left ) - 1 ) + 'px', top: point.box.top + 'px', width: thickness + 'px', height: point.box.height + 'px', background: '#2271b1' }
+						: { left: point.box.left + 'px', top: ( ( point.after ? point.box.bottom : point.box.top ) - 1 ) + 'px', width: point.box.width + 'px', height: thickness + 'px', background: '#2271b1' } );
+				Object.assign( line.style, { position: 'fixed', zIndex: 100000, pointerEvents: 'none', boxSizing: 'border-box' }, style );
+			};
+			const onOver = function ( event ) {
+				if ( ! mine( event ) ) {
+					return;
+				}
+				event.preventDefault();
+				event.dataTransfer.dropEffect = 'copy';
+				showLine( event.target.ownerDocument, dropPoint( event ) );
+			};
+			const onLeave = function ( event ) {
+				if ( mine( event ) && ! event.relatedTarget ) {
+					hideLine();
+				}
+			};
+			const onDrop = function ( event ) {
+				if ( ! mine( event ) ) {
+					return;
+				}
+				// The editor has its own drop zone: this drop is ours.
+				event.preventDefault();
+				event.stopPropagation();
+				hideLine();
+				let dragged = [];
+				try {
+					dragged = JSON.parse( event.dataTransfer.getData( DRAG_TYPE ) );
+				} catch ( error ) {
+					dragged = [];
+				}
+				const point = dropPoint( event );
+				if ( Array.isArray( dragged ) && dragged.length > 0 && latest.current.insert ) {
+					latest.current.insert( dragged.map( function ( entry ) { return Object.assign( { media_type: 'image', can_import: true, is_imported: true }, entry ); } ), point );
+				}
+			};
+			const bind = function ( doc ) {
+				if ( ! doc || doc.__wpmhDropBound ) {
+					return;
+				}
+				doc.__wpmhDropBound = true;
+				doc.addEventListener( 'dragover', onOver, true );
+				doc.addEventListener( 'dragleave', onLeave, true );
+				doc.addEventListener( 'drop', onDrop, true );
+				doc.addEventListener( 'dragend', hideLine, true );
+			};
+			const bindAll = function () {
+				bind( document );
+				const frames = document.querySelectorAll( 'iframe[name="editor-canvas"]' );
+				Array.prototype.forEach.call( frames, function ( frame ) {
+					try {
+						bind( frame.contentDocument );
+					} catch ( error ) {
+						// A frame of another origin is not the canvas.
+					}
+				} );
+			};
+			bindAll();
+			const timer = window.setInterval( bindAll, 1500 );
+
+			return function () {
+				window.clearInterval( timer );
+				hideLine();
+			};
+		}, [] );
+
 
 		// The editor loads the post asynchronously: on a page reload the stored meta
 		// can arrive after this component first rendered with the default date.
@@ -1209,7 +1400,7 @@
 				return;
 			}
 			// An action chosen in the advanced mode and no longer offered (the mode was switched) is not run.
-			if ( 'simple' === panelMode && ! [ 'attach', 'detach', 'trash', 'restore', 'attach_native', 'attach_method', 'to_native', 'to_method' ].includes( bulkAction ) ) {
+			if ( 'simple' === panelMode && ! [ 'attach', 'detach', 'insert', 'trash', 'restore', 'attach_native', 'attach_method', 'to_native', 'to_method' ].includes( bulkAction ) ) {
 				return;
 			}
 
@@ -1263,6 +1454,13 @@
 				return;
 			}
 
+			if ( 'insert' === bulkAction ) {
+				runInsert( selectedItems );
+				setSelectedIds( [] );
+				setBulkAction( 'none' );
+				return;
+			}
+
 			runBulk( bulkAction, [ 'attach', 'attach_method', 'to_method' ].includes( bulkAction ) ? withLinkContext( selectedItems ) : selectedItems, postId );
 		};
 
@@ -1298,6 +1496,10 @@
 			}
 			if ( 'unfeature' === action ) {
 				setFeatured( 0 );
+				return;
+			}
+			if ( 'insert' === action ) {
+				runInsert( [ item ] );
 				return;
 			}
 			const postId = getCurrentPostId();
@@ -1339,6 +1541,48 @@
 				// The notice is a courtesy: the change is in the editor either way.
 			}
 		};
+
+		// Asks the server what to insert, then inserts it at the point (after the selected block when none is given).
+		const runInsert = function ( items, point ) {
+			const candidates = items.filter( function ( item ) { return canInsert( item ); } );
+			if ( 0 === candidates.length ) {
+				setOperationNotice( __( 'Only photos can be inserted in the content for now.', 'wp-media-helper' ) );
+				return;
+			}
+
+			setLoading( true );
+			setOperationNotice( null );
+			fetchInsertData( candidates, getCurrentPostId() )
+				.then( function ( payload ) {
+					if ( ! payload || ! payload.success ) {
+						setOperationNotice( payload && payload.data && payload.data.message ? payload.data.message : __( 'The files could not be inserted.', 'wp-media-helper' ) );
+						return;
+					}
+
+					const results = payload.data.results || [];
+					const placed = payload.data.blocks.length > 0 ? placeBlocks( payload.data.blocks, point || pointAfterSelection() ) : 0;
+					const reasons = results.filter( function ( result ) { return ! result.success && result.message; } ).map( function ( result ) { return result.message; } );
+					if ( reasons.length > 0 ) {
+						setOperationNotice( reasons.slice( 0, 3 ).join( ' ' ) );
+					}
+					if ( placed > 0 ) {
+						announce( sprintf( _n( '%d photo inserted in the content.', '%d photos inserted in the content.', placed, 'wp-media-helper' ), placed ) );
+						// A file that had no attachment has one now: the tile shows it.
+						setFiles( function ( current ) {
+							return current.map( function ( file ) {
+								const done = results.find( function ( result ) { return result.success && result.path === file.path; } );
+								return done ? Object.assign( {}, file, { is_imported: true, attachment_ids: file.attachment_ids && file.attachment_ids.length ? file.attachment_ids : [ done.attachment_id ] } ) : file;
+							} );
+						} );
+					}
+				} )
+				.finally( function () {
+					setLoading( false );
+				} );
+		};
+
+		// The drop handlers read this one: they are set once and the panel changes.
+		latest.current.insert = runInsert;
 
 		const setFeatured = function ( attachmentId ) {
 			wp.data.dispatch( 'core/editor' ).editPost( { featured_media: attachmentId } );
@@ -1385,6 +1629,9 @@
 				actions.push( isFeatured( item )
 					? { action: 'unfeature', label: __( 'Remove featured image', 'wp-media-helper' ) }
 					: { action: 'feature', label: __( 'Set as featured image', 'wp-media-helper' ) } );
+			}
+			if ( canInsert( item ) ) {
+				actions.push( { action: 'insert', label: __( 'Insert in the content', 'wp-media-helper' ) } );
 			}
 			if ( attachmentMethod.cohabitation ) {
 				// Both mechanisms are in use: a file is attached the WordPress way or through the method, and can be switched.
@@ -1495,6 +1742,24 @@
 			}
 		};
 
+		// Dragging a tile (or all the selected ones when it is one of them) carries the paths and the sources, never addresses.
+		const startDrag = function ( event, item ) {
+			cancelLongPress();
+			if ( ! canInsert( item ) || ! event.dataTransfer ) {
+				event.preventDefault();
+				return;
+			}
+
+			const key = itemKey( item );
+			const dragged = selectionMode && selectedIds.includes( key )
+				? files.map( normalizeMediaItem ).filter( function ( candidate ) { return selectedIds.includes( itemKey( candidate ) ) && canInsert( candidate ); } )
+				: [ item ];
+			event.dataTransfer.clearData();
+			event.dataTransfer.setData( DRAG_TYPE, JSON.stringify( dragged.map( function ( candidate ) { return { id: candidate.id, path: candidate.path, source_id: candidate.source_id }; } ) ) );
+			event.dataTransfer.setData( 'text/plain', dragged.map( function ( candidate ) { return candidate.name; } ).join( '\n' ) );
+			event.dataTransfer.effectAllowed = 'copy';
+		};
+
 		const renderTile = function ( item, row, position ) {
 			const key = itemKey( item );
 			const selected = selectedIds.includes( key );
@@ -1505,8 +1770,18 @@
 				className: 'wpmh-tile',
 				style: { position: 'relative', flex: '0 0 auto', width: row.widths[ position ] + 'px', height: row.height + 'px' }
 			},
-				wp.element.createElement( 'button', {
-					type: 'button',
+				// Not a button: Firefox does not start a drag from a button.
+				wp.element.createElement( 'div', {
+					role: 'button',
+					tabIndex: 0,
+					draggable: canInsert( item ),
+					onDragStart: function ( event ) { startDrag( event, item ); },
+					onKeyDown: function ( event ) {
+						if ( 'Enter' === event.key || ' ' === event.key ) {
+							event.preventDefault();
+							handleTileClick( event, item );
+						}
+					},
 					onClick: function ( event ) { handleTileClick( event, item ); },
 					onContextMenu: function ( event ) { cancelLongPress(); openMenu( event, item ); },
 					onPointerDown: function () { pressStart( item ); },
@@ -1896,6 +2171,9 @@
 			if ( attachmentMethod.cohabitation && [ 'attach', 'import' ].includes( action.value ) ) {
 				return false;
 			}
+			if ( 'insert' === action.value ) {
+				return !! wpMediaHelperEditorPanel.canUpload;
+			}
 			if ( 'trash' === action.value ) {
 				return canTrash;
 			}
@@ -1903,7 +2181,7 @@
 				return canTrash && !! filters.show_trash;
 			}
 
-			return 'advanced' === panelMode || [ 'attach', 'detach' ].includes( action.value );
+			return 'advanced' === panelMode || [ 'attach', 'detach', 'insert' ].includes( action.value );
 		} ).map( function ( action ) {
 			if ( 'attach_method' === action.value ) {
 				return Object.assign( {}, action, { label: sprintf( __( 'Attach with %s…', 'wp-media-helper' ), methodName ) } );

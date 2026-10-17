@@ -3,7 +3,7 @@
 
 # Slice 051: Inserting a file in the content by drag and drop
 
-Status: **proposal** (to be implemented). Related: [022](022-wordpress-native-registration.md) (registering a file as an attachment),
+Status: **first iteration implemented: photos** (see *First iteration* at the end; never tried in a real editor yet). The rest is still a proposal. Related: [022](022-wordpress-native-registration.md) (registering a file as an attachment),
 [029](029-user-interface.md) (the panel), [042](042-attachment-methods.md) (what "attached" means), [043](043-gallery-block.md) (the gallery block),
 [039](039-trash.md) (the trash), [014](014-simple-and-advanced-media-panel-modes.md) (modes of the panel).
 
@@ -162,3 +162,24 @@ a check that the template is valid JSON and the block registered, a **reset to t
 - **The size of the image** in the gallery: the size named `large` of the site, or the largest that fits the content width of the theme.
 - **Version of the editor**: the lowest version to support; the editor canvas is an iframe from WordPress 6.3, galleries use inner image blocks from 5.9 and the drop zone internals changed since: this decides how much of the drop on a
   block is possible without private APIs, and the spike must answer it.
+
+## First iteration: photos (implemented, to be tried in the editor)
+
+- **Server**: `Admin\InsertController` (action `wp_media_helper_insert_data`, same nonce as the panel, `edit_post`s and `upload_files`) takes paths and sources, confines them to the active sources, refuses a file in the trash, registers what has no
+  attachment (the code of *Import*), reads the addresses (`image_downsize( $id, 'large' )`, which makes the size in the cache when needed) and the alternative text, and answers `{ blocks, results }`. It **never attaches**. `Admin\InsertBlocks`
+  builds the description of the blocks: a `core/gallery` (`linkTo: media`) holding `core/image` blocks (`id`, `url` of the size shown, `alt`, `sizeSlug: large`, `linkDestination: media`, `href` the file). All photos of one request go into **one gallery**. A file that
+  is not a photo is refused with "No block is defined for ...". The filter `wp_media_helper_insert_block( $block, $images, $postId )` can change the block.
+- **Panel**: the action *Insert in the content* (menu, sheet, bulk actions; photos that can be imported or are in the library, for those who may upload) inserts after the selected block, else at the end of the content. Tiles of photos are
+  **draggable** (the tile is now a `div role="button"` and not a `<button>`, because Firefox does not start a drag from a button; Enter and Space still activate it). Dragging a selected tile drags all the selected photos. The drag carries only paths and sources
+  (`application/x-wp-media-helper`).
+- **Editor**: approach **B**, a handler of the plugin on the editor canvas (the iframe is looked at again every 1.5 s, and the main document for a page without iframe): a blue line shows where the drop goes (before or after the block under the pointer, at the side of an image inside a gallery,
+  a dashed frame when over the gallery itself), only over the content (not over the sidebar or the toolbar). Photos dropped into a gallery become image blocks of that gallery (no gallery in a gallery); elsewhere one gallery is inserted. The insertion
+  is `insertBlocks()` on the block editor store, so it is one undo step.
+- **Tested**: the server mapping (`InsertBlocksTest`) and, in a browser with a mocked editor, the action, the drag payload, the line, the drop before/after a block, the drop into a gallery and the refusal of a drop outside the content. **Not tested**: a real editor
+  (iframe canvas, the drop zone of the editor, undo, the serialization of the blocks), which is what the first trial on a site must tell; and Firefox, where the drag was changed to avoid its known problem with buttons.
+- **Not done yet**: the other types (videos, subtitles, GPX), the table of handlers and its settings page, a loading placeholder while a file is registered, the dashed frame for a video.
+
+## Ideas for later
+
+- **The gallery block's own picker**: the toolbar of the gallery block (*Add*, *Media Library*) opens the WordPress media modal. To offer the photos of the panel there, to look at: the editor filter `editor.MediaUpload` (a plugin can replace the component that blocks use to pick media,
+  and add a tab or a state that lists the files of the panel and registers them when chosen), or the server filter `ajax_query_attachments_args` (lists attachments only: files not yet registered would not be there). Not looked at yet.
