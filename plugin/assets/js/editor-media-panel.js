@@ -852,6 +852,7 @@
 		const sentinel = useRef( null );
 		const [ galleryElement, setGalleryElement ] = useState( null );
 		const longPress = useRef( { timer: null, fired: false } );
+		const dateSave = useRef( null );
 
 		// The content of the editor accepts what is dragged from the panel: a line shows where it goes, the drop inserts it.
 		// The canvas is an iframe in the current editor and is rebuilt now and then: the documents are looked at again regularly.
@@ -983,6 +984,27 @@
 			const metaUpdate = {};
 			metaUpdate[ dateMetaKey ] = value;
 			wp.data.dispatch( 'core/editor' ).editPost( { meta: metaUpdate } );
+			persistDate( metaUpdate );
+		};
+
+		// The day chosen is saved at once, on its own, and not left among the changes of the post: an edit still waiting for the
+		// next save can be dropped when the editor takes the saved post back (an autosave), and the day chosen before then comes back.
+		// A post that was never saved (an auto-draft) keeps it as an edit: its first save carries it.
+		const persistDate = function ( metaUpdate ) {
+			window.clearTimeout( dateSave.current );
+			dateSave.current = window.setTimeout( function () {
+				const editor = wp.data.select( 'core/editor' );
+				const core = wp.data.dispatch( 'core' );
+				const postId = Number( editor.getCurrentPostId() || 0 );
+				const postType = editor.getCurrentPostType ? editor.getCurrentPostType() : '';
+				if ( ! postId || ! postType || 'auto-draft' === editor.getEditedPostAttribute( 'status' ) || ! core || 'function' !== typeof core.saveEntityRecord ) {
+					return;
+				}
+
+				Promise.resolve( core.saveEntityRecord( 'postType', postType, { id: postId, meta: metaUpdate } ) ).catch( function () {
+					// The day stays an edit of the post and is saved with it.
+				} );
+			}, 600 );
 		};
 
 		// Keeps a filter from the server's answer when it differs from ours, without re-rendering when it does not.
