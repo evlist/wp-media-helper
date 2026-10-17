@@ -14,6 +14,15 @@ class PostDateMeta {
 		add_action( 'init', [ $this, 'register' ], 99 );
 	}
 
+	/**
+	 * A calendar day written Y-m-d, or an empty string.
+	 *
+	 * @param mixed $value
+	 */
+	public static function clean( $value ): string {
+		return is_string( $value ) && 1 === preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $value, $day ) && checkdate( (int) $day[2], (int) $day[3], (int) $day[1] ) ? $value : '';
+	}
+
 	public function register(): void {
 		$postTypes = array_unique( array_merge(
 			self::POST_TYPES,
@@ -33,7 +42,7 @@ class PostDateMeta {
 					'single' => true,
 					'default' => '',
 					// Only a calendar day (or nothing) is stored, whatever the client sends.
-					'sanitize_callback' => static fn ( $value ): string => is_string( $value ) && 1 === preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $value, $day ) && checkdate( (int) $day[2], (int) $day[3], (int) $day[1] ) ? $value : '',
+					'sanitize_callback' => [ self::class, 'clean' ],
 					'show_in_rest' => true,
 					'auth_callback' => static function ( bool $allowed, string $metaKey, int $postId ): bool {
 						return current_user_can( 'edit_post', $postId );

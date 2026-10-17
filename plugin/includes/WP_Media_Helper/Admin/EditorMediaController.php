@@ -329,7 +329,30 @@ class EditorMediaController {
 		add_action( 'wp_ajax_wp_media_helper_panel_mode', [ $this, 'handlePanelMode' ] );
 		add_action( 'wp_ajax_wp_media_helper_save_filter', [ $this, 'handleSaveFilter' ] );
 		add_action( 'wp_ajax_wp_media_helper_nonce', [ $this, 'handleNonce' ] );
+		add_action( 'wp_ajax_wp_media_helper_post_date', [ $this, 'handlePostDate' ] );
 		PanelThumbnail::register();
+	}
+
+	/**
+	 * Stores the day chosen in the panel for a post, on its own: it is not an edit of the post, so a save of the post cannot write an
+	 * older day back.
+	 */
+	public function handlePostDate(): void {
+		check_ajax_referer( 'wp_media_helper_media_panel', 'nonce' );
+
+		$postId = absint( $_POST['post_id'] ?? 0 );
+		if ( $postId <= 0 || ! current_user_can( 'edit_post', $postId ) ) {
+			wp_send_json_error( [ 'message' => __( 'You are not allowed to do this.', 'wp-media-helper' ) ], 403 );
+		}
+
+		$date = PostDateMeta::clean( sanitize_text_field( wp_unslash( $_POST['date'] ?? '' ) ) );
+		if ( '' === $date ) {
+			delete_post_meta( $postId, PostDateMeta::META_KEY );
+		} else {
+			update_post_meta( $postId, PostDateMeta::META_KEY, $date );
+		}
+
+		wp_send_json_success( [ 'date' => $date ] );
 	}
 
 	/**

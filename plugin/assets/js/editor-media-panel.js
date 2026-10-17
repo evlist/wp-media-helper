@@ -30,7 +30,6 @@
 	};
 	let attachmentMethod = normalizeMethod( wpMediaHelperEditorPanel.attachmentMethod );
 	const defaultPanelMode = 'advanced' === wpMediaHelperEditorPanel.panelMode ? 'advanced' : 'simple';
-	const dateMetaKey = 'wp_media_helper_date';
 
 	// What the data of a link is called: the name of the first field the method declares ("Modes"), else "link".
 	const editLabel = function () {
@@ -184,9 +183,8 @@
 
 	const getStoredDate = function () {
 		const editor = wp.data.select( 'core/editor' );
-		const meta = editor.getEditedPostAttribute( 'meta' ) || {};
 
-		return meta[ dateMetaKey ] || publicationDay( editor.getEditedPostAttribute( 'status' ), editor.getEditedPostAttribute( 'date' ) ) || defaultDate;
+		return wpMediaHelperEditorPanel.postDate || publicationDay( editor.getEditedPostAttribute( 'status' ), editor.getEditedPostAttribute( 'date' ) ) || defaultDate;
 	};
 
 	const normalizeMediaItem = function ( item ) {
@@ -347,6 +345,16 @@
 		formData.append( 'action', 'wp_media_helper_panel_mode' );
 		formData.append( 'nonce', nonce );
 		formData.append( 'mode', mode );
+
+		return send( formData );
+	};
+
+	const savePostDate = function ( postId, date ) {
+		const formData = new window.FormData();
+		formData.append( 'action', 'wp_media_helper_post_date' );
+		formData.append( 'nonce', nonce );
+		formData.append( 'post_id', String( postId ) );
+		formData.append( 'date', date );
 
 		return send( formData );
 	};
@@ -958,54 +966,49 @@
 		}, [] );
 
 
-		// The editor loads the post asynchronously: on a page reload the stored meta
-		// can arrive after this component first rendered with the default date.
-		const storedDate = wp.data.useSelect( function ( select ) {
+		// The day chosen for the post comes from the server, and is saved there on its own (not as an edit of the post: a save of the post
+		// could write an older day back). The editor only tells the day the post is published, which is the day to start from without a choice.
+		const [ chosenDate, setChosenDate ] = useState( wpMediaHelperEditorPanel.postDate || '' );
+		const startDate = wp.data.useSelect( function ( select ) {
 			const editor = select( 'core/editor' );
-			const meta = editor.getEditedPostAttribute( 'meta' ) || {};
 
-			// The date chosen for the post, else the day it was published (which is not saved as a choice).
-			return meta[ dateMetaKey ] || publicationDay( editor.getEditedPostAttribute( 'status' ), editor.getEditedPostAttribute( 'date' ) );
-		}, [] );
+			return chosenDate || publicationDay( editor.getEditedPostAttribute( 'status' ), editor.getEditedPostAttribute( 'date' ) );
+		}, [ chosenDate ] );
 
+		// The editor loads the post asynchronously: the day it was published can arrive after the first render.
 		useEffect( function () {
-			if ( storedDate ) {
+			if ( startDate ) {
 				setFiltersState( function ( currentFilters ) {
-					return currentFilters.date === storedDate ? currentFilters : Object.assign( {}, currentFilters, { date: storedDate } );
+					return currentFilters.date === startDate ? currentFilters : Object.assign( {}, currentFilters, { date: startDate } );
 				} );
 			}
-		}, [ storedDate ] );
+		}, [ startDate ] );
 
 		const setDate = function ( value ) {
 			setFiltersState( function ( currentFilters ) {
 				return Object.assign( {}, currentFilters, { date: value } );
 			} );
+			if ( ! value ) {
+				return;
+			}
 
-			const metaUpdate = {};
-			metaUpdate[ dateMetaKey ] = value;
-			wp.data.dispatch( 'core/editor' ).editPost( { meta: metaUpdate } );
-			persistDate( metaUpdate );
-		};
-
-		// The day chosen is saved at once, on its own, and not left among the changes of the post: an edit still waiting for the
-		// next save can be dropped when the editor takes the saved post back (an autosave), and the day chosen before then comes back.
-		// A post that was never saved (an auto-draft) keeps it as an edit: its first save carries it.
-		const persistDate = function ( metaUpdate ) {
+			setChosenDate( value );
 			window.clearTimeout( dateSave.current );
 			dateSave.current = window.setTimeout( function () {
-				const editor = wp.data.select( 'core/editor' );
-				const core = wp.data.dispatch( 'core' );
-				const postId = Number( editor.getCurrentPostId() || 0 );
-				const postType = editor.getCurrentPostType ? editor.getCurrentPostType() : '';
-				if ( ! postId || ! postType || 'auto-draft' === editor.getEditedPostAttribute( 'status' ) || ! core || 'function' !== typeof core.saveEntityRecord ) {
+				const postId = getCurrentPostId();
+				if ( ! postId ) {
 					return;
 				}
-
-				Promise.resolve( core.saveEntityRecord( 'postType', postType, { id: postId, meta: metaUpdate } ) ).catch( function () {
-					// The day stays an edit of the post and is saved with it: say so.
+				savePostDate( postId, value ).then( function ( payload ) {
+					if ( payload && payload.success ) {
+						wpMediaHelperEditorPanel.postDate = payload.data.date;
+						return;
+					}
+					throw new Error( 'refused' );
+				} ).catch( function () {
 					const notices = wp.data.dispatch( 'core/notices' );
 					if ( notices && notices.createNotice ) {
-						notices.createNotice( 'warning', __( 'The day chosen in the Media Helper could not be saved now. It will be saved with the post.', 'wp-media-helper' ), { type: 'snackbar', id: 'wp-media-helper-date' } );
+						notices.createNotice( 'warning', __( 'The day chosen in the Media Helper could not be saved. Choose it again.', 'wp-media-helper' ), { type: 'snackbar', id: 'wp-media-helper-date' } );
 					}
 				} );
 			}, 600 );

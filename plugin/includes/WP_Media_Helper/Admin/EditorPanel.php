@@ -33,6 +33,8 @@ class EditorPanel {
 			'canSeeTrash' => TrashedFiles::canSeeTrash(),
 			'fileTypes' => self::fileTypes(),
 			'date' => current_time( 'Y-m-d' ),
+			// The day chosen for this post, as stored: the panel does not read it from the editor, whose saves could write an old one back.
+			'postDate' => $postId > 0 ? PostDateMeta::clean( get_post_meta( $postId, PostDateMeta::META_KEY, true ) ) : '',
 			'panelMode' => EditorMediaController::normalizePanelMode( get_user_meta( get_current_user_id(), EditorMediaController::panelModeMetaKey, true ) ),
 			'attachmentMethod' => EditorMediaController::methodForPanel( Methods::active( $postId ), Methods::cohabitation( $postId ) ),
 		];
