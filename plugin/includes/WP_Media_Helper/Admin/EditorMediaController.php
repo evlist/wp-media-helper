@@ -328,7 +328,20 @@ class EditorMediaController {
 		add_action( 'wp_ajax_wp_media_helper_bulk_media', [ $this, 'handleBulk' ] );
 		add_action( 'wp_ajax_wp_media_helper_panel_mode', [ $this, 'handlePanelMode' ] );
 		add_action( 'wp_ajax_wp_media_helper_save_filter', [ $this, 'handleSaveFilter' ] );
+		add_action( 'wp_ajax_wp_media_helper_nonce', [ $this, 'handleNonce' ] );
 		PanelThumbnail::register();
+	}
+
+	/**
+	 * A new nonce for the panel, for an editor left open while the session was renewed (it asked to log in again). Like the
+	 * `rest-nonce` action of WordPress, it only answers a logged-in user who can edit, and the answer is not readable from another site.
+	 */
+	public function handleNonce(): void {
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			wp_send_json_error( [ 'message' => __( 'You are not allowed to do this.', 'wp-media-helper' ) ], 403 );
+		}
+
+		wp_send_json_success( [ 'nonce' => wp_create_nonce( 'wp_media_helper_media_panel' ) ] );
 	}
 
 	private function makeMediaFilters(): MediaFilters {

@@ -445,6 +445,10 @@ GPL-3.0-or-later — see [LICENSE](LICENSE).
 With a gallery block selected, *Insert in the content* adds the photos at the end of that gallery. The toolbar of the gallery block also has a button, *Add from the Media Helper panel*, that opens the panel (same filters and thumbnails) in a modal:
 choose photos and *Add to the gallery*. The number of images per row follows the width of the screen and there is always a choice: 1 or 2 on a narrow screen (a phone held upright), 1 to 3 up to 1000 px (a phone on its side), 3, 4, 6 or 8 above. The last choice is remembered, and the value shown is the closest one the screen offers (an 8 chosen on a computer shows 2 on a phone and is back at 8 on the computer).
 
+## Long editing sessions
+
+When the editor asks to log in again, the nonce held by the panel is no longer valid. A refused request (403) now asks the server for a new nonce (`wp_media_helper_nonce`, for a logged-in user who can edit posts) and is sent again once, so the panel keeps working without reloading the editor. If that fails too, the panel says so.
+
 ## Asset caching
 
 Scripts and styles are enqueued with the plugin version plus the file's modification time

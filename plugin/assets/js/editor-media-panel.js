@@ -12,7 +12,8 @@
 	const { useState, useEffect, useRef } = wp.element;
 
 	const endpoint = wpMediaHelperEditorPanel.ajaxUrl;
-	const nonce = wpMediaHelperEditorPanel.nonce;
+	// The nonce is renewed when the session was renewed (the editor asks to log in again after a long time): see `send`.
+	let nonce = wpMediaHelperEditorPanel.nonce;
 	const defaultDate = wpMediaHelperEditorPanel.date;
 	const canTrash = !! wpMediaHelperEditorPanel.canTrash;
 	const canUpload = !! wpMediaHelperEditorPanel.canUpload;
@@ -122,6 +123,40 @@
 		return Number( wp.data.select( 'core/editor' ).getCurrentPostId() || 0 );
 	};
 
+	const refreshNonce = function () {
+		const formData = new window.FormData();
+		formData.append( 'action', 'wp_media_helper_nonce' );
+
+		return window.fetch( endpoint, { method: 'POST', credentials: 'same-origin', body: formData } )
+			.then( function ( response ) { return response.json(); } )
+			.then( function ( payload ) {
+				if ( payload && payload.success && payload.data && payload.data.nonce ) {
+					nonce = payload.data.nonce;
+				}
+
+				return !! ( payload && payload.success );
+			} )
+			.catch( function () { return false; } );
+	};
+
+	// Sends a request of the panel. A refused nonce (403) after the session was renewed is asked for again, once, and the request is sent again.
+	const send = function ( formData, retried ) {
+		return window.fetch( endpoint, { method: 'POST', credentials: 'same-origin', body: formData } ).then( function ( response ) {
+			if ( 403 === response.status && ! retried ) {
+				return refreshNonce().then( function ( renewed ) {
+					if ( ! renewed ) {
+						return response.json();
+					}
+					formData.set( 'nonce', nonce );
+
+					return send( formData, true );
+				} );
+			}
+
+			return response.json();
+		} );
+	};
+
 	const fetchState = function ( filters, forceRefresh, page ) {
 		const formData = new window.FormData();
 		formData.append( 'action', 'wp_media_helper_media_panel_state' );
@@ -132,13 +167,7 @@
 		formData.append( 'filters', JSON.stringify( filters ) );
 		formData.append( 'page', String( page || 1 ) );
 
-		return window.fetch( endpoint, {
-			method: 'POST',
-			credentials: 'same-origin',
-			body: formData,
-		} ).then( function ( response ) {
-			return response.json();
-		} );
+		return send( formData );
 	};
 
 	// The day to start from when no date was chosen for the post: the day of publication for a post
@@ -218,13 +247,7 @@
 			return entry;
 		} ) ) );
 
-		return window.fetch( endpoint, {
-			method: 'POST',
-			credentials: 'same-origin',
-			body: formData,
-		} ).then( function ( response ) {
-			return response.json();
-		} );
+		return send( formData );
 	};
 
 	// Inserting a file in the content (slice 051).
@@ -241,9 +264,7 @@
 			return { id: item.id, path: item.path, source_id: item.source_id };
 		} ) ) );
 
-		return window.fetch( endpoint, { method: 'POST', credentials: 'same-origin', body: formData } ).then( function ( response ) {
-			return response.json();
-		} );
+		return send( formData );
 	};
 
 	const blockFromDescription = function ( description ) {
@@ -327,13 +348,7 @@
 		formData.append( 'nonce', nonce );
 		formData.append( 'mode', mode );
 
-		return window.fetch( endpoint, {
-			method: 'POST',
-			credentials: 'same-origin',
-			body: formData,
-		} ).then( function ( response ) {
-			return response.json();
-		} );
+		return send( formData );
 	};
 
 	const saveFilter = function ( key, value, postId ) {
@@ -344,13 +359,7 @@
 		formData.append( 'post_id', String( postId || 0 ) );
 		formData.append( 'value', JSON.stringify( value ) );
 
-		return window.fetch( endpoint, {
-			method: 'POST',
-			credentials: 'same-origin',
-			body: formData,
-		} ).then( function ( response ) {
-			return response.json();
-		} );
+		return send( formData );
 	};
 
 	const itemKey = function ( item ) {
