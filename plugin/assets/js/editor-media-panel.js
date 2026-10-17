@@ -1002,7 +1002,11 @@
 				}
 
 				Promise.resolve( core.saveEntityRecord( 'postType', postType, { id: postId, meta: metaUpdate } ) ).catch( function () {
-					// The day stays an edit of the post and is saved with it.
+					// The day stays an edit of the post and is saved with it: say so.
+					const notices = wp.data.dispatch( 'core/notices' );
+					if ( notices && notices.createNotice ) {
+						notices.createNotice( 'warning', __( 'The day chosen in the Media Helper could not be saved now. It will be saved with the post.', 'wp-media-helper' ), { type: 'snackbar', id: 'wp-media-helper-date' } );
+					}
 				} );
 			}, 600 );
 		};
