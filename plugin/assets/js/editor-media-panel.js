@@ -476,26 +476,31 @@
 	// ---- Gallery -------------------------------------------------------------------------
 
 	const DENSITIES = [ 1, 2, 3 ];
+	// The modal of the gallery block is wide: more images per row, with a choice of its own.
+	const PICKER_DENSITIES = [ 3, 4, 6, 8 ];
 	const DENSITY_KEY = 'wpMediaHelperDensity';
+	const PICKER_DENSITY_KEY = 'wpMediaHelperPickerDensity';
 	const GAP = 2;
 	const LONG_PRESS_MS = 1000;
 	// Drag-and-drop insertion is parked (slice 051): it fought with the long press on a touch screen. The code stays, the tiles are not draggable.
 	const DRAG_ENABLED = false;
 
 	// Images per row, remembered in this browser.
-	const readDensity = function () {
+	const readDensity = function ( picker ) {
+		const choices = picker ? PICKER_DENSITIES : DENSITIES;
+		const fallback = picker ? 4 : 2;
 		try {
-			const value = Number( window.localStorage.getItem( DENSITY_KEY ) );
+			const value = Number( window.localStorage.getItem( picker ? PICKER_DENSITY_KEY : DENSITY_KEY ) );
 
-			return DENSITIES.includes( value ) ? value : 2;
+			return choices.includes( value ) ? value : fallback;
 		} catch ( error ) {
-			return 2;
+			return fallback;
 		}
 	};
 
-	const writeDensity = function ( value ) {
+	const writeDensity = function ( value, picker ) {
 		try {
-			window.localStorage.setItem( DENSITY_KEY, String( value ) );
+			window.localStorage.setItem( picker ? PICKER_DENSITY_KEY : DENSITY_KEY, String( value ) );
 		} catch ( error ) {
 			// The choice just is not remembered.
 		}
@@ -778,7 +783,7 @@
 		const [ selectionMode, setSelectionMode ] = useState( !! picker );
 		const [ bulkAction, setBulkAction ] = useState( 'none' );
 		const [ panelMode, setPanelMode ] = useState( defaultPanelMode );
-		const [ density, setDensity ] = useState( readDensity );
+		const [ density, setDensity ] = useState( function () { return readDensity( !! picker ); } );
 		const [ galleryWidth, setGalleryWidth ] = useState( 0 );
 		const [ hasNews, setHasNews ] = useState( false );
 		// The filters with nothing checked, as the server reports them: the list is empty because of them.
@@ -1214,7 +1219,7 @@
 
 		const chooseDensity = function ( value ) {
 			setDensity( value );
-			writeDensity( value );
+			writeDensity( value, !! picker );
 		};
 
 		const changeFilterList = function ( key, values ) {
@@ -2240,6 +2245,20 @@
 			} );
 		};
 		const hasMore = pagination.page < pagination.total_pages;
+		const densityControl = wp.element.createElement( 'div', { role: 'group', 'aria-label': __( 'Images per row', 'wp-media-helper' ), style: { display: 'inline-flex', border: '1px solid #949494', borderRadius: '3px', overflow: 'hidden' } },
+			( picker ? PICKER_DENSITIES : DENSITIES ).map( function ( value, index ) {
+				return wp.element.createElement( Button, {
+					key: value,
+					isPrimary: density === value,
+					isSecondary: density !== value,
+					onClick: function () { chooseDensity( value ); },
+					'aria-pressed': density === value,
+					'aria-label': sprintf( _n( '%d image per row', '%d images per row', value, 'wp-media-helper' ), value ),
+					style: { border: 0, borderLeft: 0 === index ? 0 : '1px solid #949494', borderRadius: 0, minWidth: '2rem', justifyContent: 'center' },
+					text: String( value )
+				} );
+			} )
+		);
 
 		return wp.element.createElement(
 			picker ? 'div' : PluginSidebar,
@@ -2391,6 +2410,7 @@
 										? __( 'Add to the gallery', 'wp-media-helper' )
 										: sprintf( _n( 'Add %d photo to the gallery', 'Add %d photos to the gallery', selectedIds.length, 'wp-media-helper' ), selectedIds.length )
 								} ),
+								densityControl,
 								wp.element.createElement( Button, { isLink: true, disabled: loading || 0 === visibleItems.length, onClick: selectAllLoaded, text: __( 'Select all', 'wp-media-helper' ) } ),
 								wp.element.createElement( Button, { isLink: true, onClick: picker.onClose, text: __( 'Cancel', 'wp-media-helper' ) } )
 							)
@@ -2437,20 +2457,7 @@
 								wp.element.createElement( Button, { isLink: true, onClick: endSelection, text: __( 'Cancel', 'wp-media-helper' ) } )
 							)
 							: wp.element.createElement( 'div', { style: { display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' } },
-								wp.element.createElement( 'div', { role: 'group', 'aria-label': __( 'Images per row', 'wp-media-helper' ), style: { display: 'inline-flex', border: '1px solid #949494', borderRadius: '3px', overflow: 'hidden' } },
-									DENSITIES.map( function ( value, index ) {
-										return wp.element.createElement( Button, {
-											key: value,
-											isPrimary: density === value,
-											isSecondary: density !== value,
-											onClick: function () { chooseDensity( value ); },
-											'aria-pressed': density === value,
-											'aria-label': sprintf( _n( '%d image per row', '%d images per row', value, 'wp-media-helper' ), value ),
-											style: { border: 0, borderLeft: 0 === index ? 0 : '1px solid #949494', borderRadius: 0, minWidth: '2rem', justifyContent: 'center' },
-											text: String( value )
-										} );
-									} )
-								),
+								densityControl,
 								wp.element.createElement( Button, { isSecondary: true, disabled: loading || 0 === visibleItems.length, onClick: function () { startSelection( null ); }, text: __( 'Select', 'wp-media-helper' ) } )
 							),
 						wp.element.createElement( 'div', { ref: setGalleryElement, role: 'list', 'aria-label': __( 'Media files', 'wp-media-helper' ), style: { display: 'flex', flexDirection: 'column', gap: GAP + 'px', width: '100%' } },

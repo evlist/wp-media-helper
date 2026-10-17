@@ -443,7 +443,7 @@ GPL-3.0-or-later — see [LICENSE](LICENSE).
 ## Adding photos to a gallery block
 
 With a gallery block selected, *Insert in the content* adds the photos at the end of that gallery. The toolbar of the gallery block also has a button, *Add from the Media Helper panel*, that opens the panel (same filters and thumbnails) in a modal:
-choose photos and *Add to the gallery*. The files are registered in the Media Library when needed and are never attached to the post.
+choose photos and *Add to the gallery*. The number of images per row has its own choice there (3, 4, 6 or 8), remembered in the browser. The files are registered in the Media Library when needed and are never attached to the post.
 
 ## Asset caching
 
