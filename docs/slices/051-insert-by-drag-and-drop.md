@@ -165,6 +165,9 @@ a check that the template is valid JSON and the block registered, a **reset to t
 
 ## First iteration: photos (implemented, to be tried in the editor)
 
+> **Status: the drag-and-drop is parked.** Trying it on a phone showed that it fights with the long press that enters selection mode, and the insertion by the action *Insert in the content* works well. `DRAG_ENABLED` is `false` in `editor-media-panel.js`: tiles
+> are not draggable, the code of the drag and of the drop handler stays. The long press (one second, finger and mouse alike) enters selection mode. Drag-and-drop may come back later, for a mouse only.
+
 - **Server**: `Admin\InsertController` (action `wp_media_helper_insert_data`, same nonce as the panel, `edit_post`s and `upload_files`) takes paths and sources, confines them to the active sources, refuses a file in the trash, registers what has no
   attachment (the code of *Import*), reads the addresses (`image_downsize( $id, 'large' )`, which makes the size in the cache when needed) and the alternative text, and answers `{ blocks, results }`. It **never attaches**. `Admin\InsertBlocks`
   builds the description of the blocks: a `core/gallery` (`linkTo: media`) holding `core/image` blocks (`id`, `url` of the size shown, `alt`, `sizeSlug: large`, `linkDestination: media`, `href` the file). All photos of one request go into **one gallery**. A file that
@@ -181,5 +184,12 @@ a check that the template is valid JSON and the block registered, a **reset to t
 
 ## Ideas for later
 
-- **The gallery block's own picker**: the toolbar of the gallery block (*Add*, *Media Library*) opens the WordPress media modal. To offer the photos of the panel there, to look at: the editor filter `editor.MediaUpload` (a plugin can replace the component that blocks use to pick media,
-  and add a tab or a state that lists the files of the panel and registers them when chosen), or the server filter `ajax_query_attachments_args` (lists attachments only: files not yet registered would not be there). Not looked at yet.
+- **The gallery block's own picker** (looked at; not implemented). The capture of the *Add to gallery* modal is the WordPress media frame (Backbone, `wp.media.view.MediaFrame.Post`, state `gallery-library`), with two tabs, *Upload files* and *Media Library*.
+  - What the library already shows: every file **registered** as an attachment (`ajax_query_attachments_args` can filter or order those, nothing more). The files of the panel that are not registered yet cannot appear there: the library is a list of posts. So a server filter
+    cannot do it, and creating the attachments of a whole source to fill the list is what the plugin avoids.
+  - Proposed way: **a third tab in the frame**, *Panel* (name to decide), added by patching `wp.media.view.MediaFrame.Select.prototype.browseRouter` (the frame of the gallery block extends it) and handling `content:create:<tab>` with a small Backbone view. The view lists the
+    files of the panel through the existing endpoint (`wp_media_helper_media_panel_state`, same filters: source, date, type; photos only here) with the same thumbnails (`wp_media_helper_thumbnail`). Choosing a file calls an action of the plugin that registers it (the code
+    of *Import*, as `InsertController` does, never attaching) and answers the attachment id; the view then fetches `wp.media.attachment( id )` and adds it to the frame's selection, so the button *Add to gallery* works as for any other image. Several files can be chosen.
+  - A hook in the editor (`editor.MediaUpload`) is not needed: the frame is created by WordPress itself and the patch applies to every block that opens it (gallery, image, cover, featured image), where the tab could be limited to images.
+  - Cost and risk: a Backbone view and CSS to write (the grid cannot reuse the React tiles), a patch on a core prototype that must be checked on each major WordPress version, and the frame's router differs between the *Select* and *Post* frames. A first spike (tab with a plain list of photos of the
+    day, one click adds it) would tell how far the reuse goes.

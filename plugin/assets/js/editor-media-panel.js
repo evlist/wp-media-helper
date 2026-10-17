@@ -474,6 +474,8 @@
 	const DENSITY_KEY = 'wpMediaHelperDensity';
 	const GAP = 2;
 	const LONG_PRESS_MS = 1000;
+	// Drag-and-drop insertion is parked (slice 051): it fought with the long press on a touch screen. The code stays, the tiles are not draggable.
+	const DRAG_ENABLED = false;
 
 	// Images per row, remembered in this browser.
 	const readDensity = function () {
@@ -1747,7 +1749,7 @@
 		// Dragging a tile (or all the selected ones when it is one of them) carries the paths and the sources, never addresses.
 		const startDrag = function ( event, item ) {
 			cancelLongPress();
-			if ( ! canInsert( item ) || ! event.dataTransfer ) {
+			if ( ! DRAG_ENABLED || ! canInsert( item ) || ! event.dataTransfer ) {
 				event.preventDefault();
 				return;
 			}
@@ -1776,7 +1778,7 @@
 				wp.element.createElement( 'div', {
 					role: 'button',
 					tabIndex: 0,
-					draggable: canInsert( item ),
+					draggable: DRAG_ENABLED && canInsert( item ),
 					onDragStart: function ( event ) { startDrag( event, item ); },
 					onKeyDown: function ( event ) {
 						if ( 'Enter' === event.key || ' ' === event.key ) {
