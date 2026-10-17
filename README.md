@@ -439,3 +439,8 @@ Current position:
 ## License
 
 GPL-3.0-or-later — see [LICENSE](LICENSE).
+
+## Asset caching
+
+Scripts and styles are enqueued with the plugin version plus the file's modification time
+(`wp_media_helper_asset_version()`), so browsers load the new files after every update without clearing their cache.

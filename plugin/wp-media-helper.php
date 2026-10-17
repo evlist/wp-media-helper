@@ -26,6 +26,16 @@ define( 'WP_MEDIA_HELPER_VERSION', '0.1.0' );
 // Version of the contract for the plugins that add attachment methods (slice 042).
 define( 'WP_MEDIA_HELPER_CONTRACT', 1 );
 
+/**
+ * Cache-busting version of a plugin asset: the plugin version plus the file's mtime,
+ * so browsers fetch the new file after every update.
+ */
+function wp_media_helper_asset_version( string $relativePath ): string {
+	$mtime = @filemtime( __DIR__ . '/' . ltrim( $relativePath, '/' ) );
+
+	return WP_MEDIA_HELPER_VERSION . ( $mtime ? '.' . $mtime : '' );
+}
+
 spl_autoload_register( function ( string $class ): void {
 	$prefix = 'WP_Media_Helper\\';
 	$base   = __DIR__ . '/includes/WP_Media_Helper/';

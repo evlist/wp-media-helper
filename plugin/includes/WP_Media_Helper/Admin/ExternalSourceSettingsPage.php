@@ -60,14 +60,14 @@ class ExternalSourceSettingsPage {
 			'wp-media-helper-settings',
 			plugins_url( 'assets/css/settings.css', WP_MEDIA_HELPER_FILE ),
 			[],
-			WP_MEDIA_HELPER_VERSION
+			wp_media_helper_asset_version( 'assets/css/settings.css' )
 		);
 
 		wp_enqueue_script(
 			$handle,
 			plugins_url( 'assets/js/external-source-settings.js', WP_MEDIA_HELPER_FILE ),
 			[ 'wp-i18n' ],
-			WP_MEDIA_HELPER_VERSION,
+			wp_media_helper_asset_version( 'assets/js/external-source-settings.js' ),
 			true
 		);
 
