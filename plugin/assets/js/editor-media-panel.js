@@ -476,15 +476,22 @@
 	// ---- Gallery -------------------------------------------------------------------------
 
 	const DENSITIES = [ 1, 2, 3 ];
-	// The modal of the gallery block follows the width of the screen: a phone held upright has no choice, a phone on its side
-	// or a small window has 1, 2 or 3 per row, a wide window has more.
+	// The modal of the gallery block follows the width of the screen: 1 or 2 per row on a phone held upright, 1 to 3 on a phone on its
+	// side or in a small window, more in a wide window. The choice remembered is the last one made; the value used is the closest
+	// one the screen offers.
 	const PICKER_BUCKETS = {
-		compact: { choices: [], fallback: 4, key: 'wpMediaHelperPickerDensityCompact' },
-		medium: { choices: [ 1, 2, 3 ], fallback: 2, key: 'wpMediaHelperPickerDensityMedium' },
-		wide: { choices: [ 3, 4, 6, 8 ], fallback: 4, key: 'wpMediaHelperPickerDensity' }
+		compact: { choices: [ 1, 2 ], fallback: 2 },
+		medium: { choices: [ 1, 2, 3 ], fallback: 2 },
+		wide: { choices: [ 3, 4, 6, 8 ], fallback: 4 }
 	};
+	const PICKER_DENSITY_KEY = 'wpMediaHelperPickerDensity';
 	const pickerBucket = function ( width ) {
 		return width < 600 ? 'compact' : ( width < 1000 ? 'medium' : 'wide' );
+	};
+	const closestChoice = function ( wanted, choices ) {
+		return choices.reduce( function ( best, choice ) {
+			return Math.abs( choice - wanted ) < Math.abs( best - wanted ) ? choice : best;
+		}, choices[ 0 ] );
 	};
 	const DENSITY_KEY = 'wpMediaHelperDensity';
 	const GAP = 2;
@@ -492,22 +499,20 @@
 	// Drag-and-drop insertion is parked (slice 051): it fought with the long press on a touch screen. The code stays, the tiles are not draggable.
 	const DRAG_ENABLED = false;
 
-	// Images per row, remembered in this browser. `bucket` is set in the modal of the gallery block.
-	const readDensity = function ( bucket ) {
-		const choices = bucket ? PICKER_BUCKETS[ bucket ].choices : DENSITIES;
-		const fallback = bucket ? PICKER_BUCKETS[ bucket ].fallback : 2;
+	// Images per row, remembered in this browser (0 when nothing is remembered; the modal has its own memory).
+	const readDensity = function ( picker ) {
 		try {
-			const value = Number( window.localStorage.getItem( bucket ? PICKER_BUCKETS[ bucket ].key : DENSITY_KEY ) );
+			const value = Number( window.localStorage.getItem( picker ? PICKER_DENSITY_KEY : DENSITY_KEY ) );
 
-			return choices.includes( value ) ? value : fallback;
+			return picker ? ( value > 0 ? value : 0 ) : ( DENSITIES.includes( value ) ? value : 2 );
 		} catch ( error ) {
-			return fallback;
+			return picker ? 0 : 2;
 		}
 	};
 
-	const writeDensity = function ( value, bucket ) {
+	const writeDensity = function ( value, picker ) {
 		try {
-			window.localStorage.setItem( bucket ? PICKER_BUCKETS[ bucket ].key : DENSITY_KEY, String( value ) );
+			window.localStorage.setItem( picker ? PICKER_DENSITY_KEY : DENSITY_KEY, String( value ) );
 		} catch ( error ) {
 			// The choice just is not remembered.
 		}
@@ -792,9 +797,11 @@
 		const [ panelMode, setPanelMode ] = useState( defaultPanelMode );
 		const [ viewportWidth, setViewportWidth ] = useState( window.innerWidth );
 		const bucket = picker ? pickerBucket( viewportWidth ) : null;
-		const [ density, setDensity ] = useState( function () { return readDensity( bucket ); } );
+		// What was chosen, and what the screen shows of it.
+		const [ chosenDensity, setDensity ] = useState( function () { return readDensity( !! picker ); } );
 		const densityChoices = picker ? PICKER_BUCKETS[ bucket ].choices : DENSITIES;
-		// Turning the phone changes the choices: the one remembered for them applies.
+		const density = picker ? closestChoice( chosenDensity || PICKER_BUCKETS[ bucket ].fallback, densityChoices ) : chosenDensity;
+		// Turning the phone changes the choices.
 		useEffect( function () {
 			if ( ! picker ) {
 				return undefined;
@@ -804,11 +811,6 @@
 
 			return function () { window.removeEventListener( 'resize', onResize ); };
 		}, [] );
-		useEffect( function () {
-			if ( picker ) {
-				setDensity( readDensity( bucket ) );
-			}
-		}, [ bucket ] );
 		const [ galleryWidth, setGalleryWidth ] = useState( 0 );
 		const [ hasNews, setHasNews ] = useState( false );
 		// The filters with nothing checked, as the server reports them: the list is empty because of them.
@@ -1244,7 +1246,7 @@
 
 		const chooseDensity = function ( value ) {
 			setDensity( value );
-			writeDensity( value, bucket );
+			writeDensity( value, !! picker );
 		};
 
 		const changeFilterList = function ( key, values ) {
@@ -2270,7 +2272,7 @@
 			} );
 		};
 		const hasMore = pagination.page < pagination.total_pages;
-		const densityControl = 0 === densityChoices.length ? null : wp.element.createElement( 'div', { role: 'group', 'aria-label': __( 'Images per row', 'wp-media-helper' ), style: { display: 'inline-flex', border: '1px solid #949494', borderRadius: '3px', overflow: 'hidden' } },
+		const densityControl = wp.element.createElement( 'div', { role: 'group', 'aria-label': __( 'Images per row', 'wp-media-helper' ), style: { display: 'inline-flex', border: '1px solid #949494', borderRadius: '3px', overflow: 'hidden' } },
 			densityChoices.map( function ( value, index ) {
 				return wp.element.createElement( Button, {
 					key: value,
