@@ -473,7 +473,7 @@
 	const DENSITIES = [ 1, 2, 3 ];
 	const DENSITY_KEY = 'wpMediaHelperDensity';
 	const GAP = 2;
-	const LONG_PRESS_MS = 500;
+	const LONG_PRESS_MS = 1000;
 
 	// Images per row, remembered in this browser.
 	const readDensity = function () {
@@ -1690,14 +1690,12 @@
 			}
 		};
 
-		// A long press selects with a finger or a pen only. With a mouse, holding the button down is how a drag starts
-		// (Ctrl/Shift+click and the context menu select instead); on a touch screen the long press wins over the drag,
-		// which is cancelled (insert from the menu or the bulk actions there).
-		const pressStart = function ( item, event ) {
+		// Same behaviour with a finger and a mouse: moving the pressed tile within the delay is a drag (which cancels the timer),
+		// holding it still for the whole delay enters selection mode.
+		const pressStart = function ( item ) {
 			cancelLongPress();
 			longPress.current.fired = false;
-			longPress.current.touch = !! event && 'mouse' !== event.pointerType;
-			if ( selectionMode || ! longPress.current.touch ) {
+			if ( selectionMode ) {
 				return;
 			}
 
@@ -1749,7 +1747,7 @@
 		// Dragging a tile (or all the selected ones when it is one of them) carries the paths and the sources, never addresses.
 		const startDrag = function ( event, item ) {
 			cancelLongPress();
-			if ( longPress.current.touch || ! canInsert( item ) || ! event.dataTransfer ) {
+			if ( ! canInsert( item ) || ! event.dataTransfer ) {
 				event.preventDefault();
 				return;
 			}
@@ -1788,7 +1786,7 @@
 					},
 					onClick: function ( event ) { handleTileClick( event, item ); },
 					onContextMenu: function ( event ) { cancelLongPress(); openMenu( event, item ); },
-					onPointerDown: function ( event ) { pressStart( item, event ); },
+					onPointerDown: function () { pressStart( item ); },
 					onPointerUp: cancelLongPress,
 					onPointerLeave: cancelLongPress,
 					onPointerCancel: cancelLongPress,
