@@ -16,4 +16,10 @@ class PostDateMetaTest extends TestCase {
 			$this->assertSame( '', PostDateMeta::clean( $value ) );
 		}
 	}
+
+	public function test_the_key_is_protected_so_the_custom_fields_box_cannot_write_an_old_day_back(): void {
+		$this->assertTrue( PostDateMeta::protect( false, PostDateMeta::META_KEY ) );
+		$this->assertFalse( PostDateMeta::protect( false, 'something_else' ) );
+		$this->assertTrue( PostDateMeta::protect( true, 'something_else' ) );
+	}
 }

@@ -12,6 +12,18 @@ class PostDateMeta {
 
 	public function __construct() {
 		add_action( 'init', [ $this, 'register' ], 99 );
+		add_filter( 'is_protected_meta', [ self::class, 'protect' ], 10, 2 );
+	}
+
+	/**
+	 * Hides the key from the Custom Fields box of the classic editor and makes saving a post ignore it. That box lists every key that
+	 * does not start with an underscore, and its form, loaded with the old day, writes it back whenever the post is saved (the block
+	 * editor sends the legacy boxes along with each save).
+	 *
+	 * @param mixed $protected
+	 */
+	public static function protect( $protected, $metaKey ): bool {
+		return self::META_KEY === $metaKey ? true : (bool) $protected;
 	}
 
 	/**

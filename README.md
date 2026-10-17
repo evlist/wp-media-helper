@@ -447,7 +447,7 @@ choose photos and *Add to the gallery*. The number of images per row follows the
 
 ## The day chosen for a post
 
-The day chosen in the *Date* filter is stored in the post's metadata (`wp_media_helper_date`) at once, by a request of its own (`wp_media_helper_post_date`), and not as an edit of the post: saving the post (a draft, an autosave) can then never write an older day back. The panel reads the day from the server when the editor opens and does not take it from the editor's copy of the post. Choosing today's date stores today like any other day.
+The day chosen in the *Date* filter is stored in the post's metadata (`wp_media_helper_date`) at once, by a request of its own (`wp_media_helper_post_date`), and not as an edit of the post: saving the post (a draft, an autosave) can then never write an older day back. The panel reads the day from the server when the editor opens and does not take it from the editor's copy of the post. Choosing today's date stores today like any other day. The key is declared protected (`is_protected_meta`): it does not appear in the *Custom Fields* box of the editor, whose form, loaded with an older day, would otherwise write it back at each save of the post.
 
 ## Long editing sessions
 
