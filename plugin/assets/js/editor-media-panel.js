@@ -763,7 +763,10 @@
 		} );
 	};
 
-	const MediaPanel = function () {
+	// With `picker` ({ galleryClientId, onClose }) the panel is shown in a modal opened from a gallery block: the photos chosen
+	// are added to that gallery.
+	const MediaPanel = function ( props ) {
+		const picker = props && props.picker ? props.picker : null;
 		const [ filters, setFiltersState ] = useState( function () { return { date: getStoredDate() }; } );
 		const [ availableSources, setAvailableSources ] = useState( [] );
 		const [ status, setStatus ] = useState( 'fresh' );
@@ -772,7 +775,7 @@
 		const [ pagination, setPagination ] = useState( { page: 1, per_page: 0, total: 0, total_pages: 1 } );
 		const [ loading, setLoading ] = useState( false );
 		const [ selectedIds, setSelectedIds ] = useState( [] );
-		const [ selectionMode, setSelectionMode ] = useState( false );
+		const [ selectionMode, setSelectionMode ] = useState( !! picker );
 		const [ bulkAction, setBulkAction ] = useState( 'none' );
 		const [ panelMode, setPanelMode ] = useState( defaultPanelMode );
 		const [ density, setDensity ] = useState( readDensity );
@@ -812,6 +815,9 @@
 		// The content of the editor accepts what is dragged from the panel: a line shows where it goes, the drop inserts it.
 		// The canvas is an iframe in the current editor and is rebuilt now and then: the documents are looked at again regularly.
 		useEffect( function () {
+			if ( picker ) {
+				return undefined;
+			}
 			let line = null;
 			// What is dragged from the panel, and over the content (in the iframe of the canvas, or in the content area of a page
 			// without iframe): the sidebar, the toolbar and the rest of the page do not take it.
@@ -1291,6 +1297,10 @@
 
 		const toggleSelected = function ( item ) {
 			const key = itemKey( item );
+			if ( picker && ! canInsert( item ) ) {
+				setOperationNotice( __( 'Only photos can be added to a gallery.', 'wp-media-helper' ) );
+				return;
+			}
 			setSelectedIds( function ( currentIds ) {
 				return currentIds.includes( key )
 					? currentIds.filter( function ( id ) { return id !== key; } )
@@ -1313,6 +1323,12 @@
 			setSelectionMode( false );
 			setSelectedIds( [] );
 			setBulkAction( 'none' );
+		};
+
+		// The picker: the chosen photos go to the end of the gallery, then the modal closes.
+		const addToGallery = function () {
+			const chosen = files.map( normalizeMediaItem ).filter( function ( item ) { return selectedIds.includes( itemKey( item ) ); } );
+			runInsert( chosen, { root: picker.galleryClientId, index: blockEditor().getBlockCount( picker.galleryClientId ) }, picker.onClose );
 		};
 
 		const selectAllLoaded = function () {
@@ -1550,7 +1566,7 @@
 		};
 
 		// Asks the server what to insert, then inserts it at the point (after the selected block when none is given).
-		const runInsert = function ( items, point ) {
+		const runInsert = function ( items, point, done ) {
 			const candidates = items.filter( function ( item ) { return canInsert( item ); } );
 			if ( 0 === candidates.length ) {
 				setOperationNotice( __( 'Only photos can be inserted in the content for now.', 'wp-media-helper' ) );
@@ -1572,6 +1588,9 @@
 					if ( reasons.length > 0 ) {
 						setOperationNotice( reasons.slice( 0, 3 ).join( ' ' ) );
 					}
+					if ( placed > 0 && done ) {
+						done();
+					}
 					if ( placed > 0 ) {
 						announce( sprintf( _n( '%d photo inserted in the content.', '%d photos inserted in the content.', placed, 'wp-media-helper' ), placed ) );
 						// A file that had no attachment has one now: the tile shows it.
@@ -1589,7 +1608,9 @@
 		};
 
 		// The drop handlers read this one: they are set once and the panel changes.
-		latest.current.insert = runInsert;
+		if ( ! picker ) {
+			latest.current.insert = runInsert;
+		}
 
 		const setFeatured = function ( attachmentId ) {
 			wp.data.dispatch( 'core/editor' ).editPost( { featured_media: attachmentId } );
@@ -2221,11 +2242,13 @@
 		const hasMore = pagination.page < pagination.total_pages;
 
 		return wp.element.createElement(
-			PluginSidebar,
-			{
-				name: 'wp-media-helper-sidebar',
-				title: __( 'Media Helper', 'wp-media-helper' )
-			},
+			picker ? 'div' : PluginSidebar,
+			picker
+				? { className: 'wpmh-picker' }
+				: {
+					name: 'wp-media-helper-sidebar',
+					title: __( 'Media Helper', 'wp-media-helper' )
+				},
 			wp.element.createElement(
 				PanelBody,
 				{ title: __( 'External media', 'wp-media-helper' ), initialOpen: true },
@@ -2358,7 +2381,20 @@
 								? ' · ' + sprintf( _n( '%d selected', '%d selected', selectedIds.length, 'wp-media-helper' ), selectedIds.length )
 								: ''
 						),
-						selectionMode
+						picker
+							? wp.element.createElement( 'div', { style: { display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', position: 'sticky', top: 0, background: '#fff', padding: '4px 0', zIndex: 2 } },
+								wp.element.createElement( Button, {
+									isPrimary: true,
+									disabled: loading || 0 === selectedIds.length,
+									onClick: addToGallery,
+									text: 0 === selectedIds.length
+										? __( 'Add to the gallery', 'wp-media-helper' )
+										: sprintf( _n( 'Add %d photo to the gallery', 'Add %d photos to the gallery', selectedIds.length, 'wp-media-helper' ), selectedIds.length )
+								} ),
+								wp.element.createElement( Button, { isLink: true, disabled: loading || 0 === visibleItems.length, onClick: selectAllLoaded, text: __( 'Select all', 'wp-media-helper' ) } ),
+								wp.element.createElement( Button, { isLink: true, onClick: picker.onClose, text: __( 'Cancel', 'wp-media-helper' ) } )
+							)
+							: selectionMode
 							? wp.element.createElement( 'div', { style: { display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap' } },
 								wp.element.createElement( Dropdown, {
 									className: 'wp-media-helper-bulk-actions',
@@ -2451,6 +2487,35 @@
 			)
 		);
 	};
+
+	// A button in the toolbar of the gallery block opens the panel in a modal; the photos chosen are added to that gallery.
+	if ( canUpload && wp.hooks && wp.blockEditor && wp.blockEditor.BlockControls && wp.components.ToolbarButton ) {
+		wp.hooks.addFilter( 'editor.BlockEdit', 'wp-media-helper/gallery-picker', function ( BlockEdit ) {
+			return function ( props ) {
+				const [ open, setOpen ] = useState( false );
+				const show = 'core/gallery' === props.name && props.isSelected;
+				const close = function () { setOpen( false ); };
+
+				return wp.element.createElement( wp.element.Fragment, null,
+					wp.element.createElement( BlockEdit, props ),
+					show
+						? wp.element.createElement( wp.blockEditor.BlockControls, { group: 'other' },
+							wp.element.createElement( wp.components.ToolbarButton, {
+								icon: 'images-alt2',
+								label: __( 'Add from the Media Helper panel', 'wp-media-helper' ),
+								onClick: function () { setOpen( true ); }
+							} )
+						)
+						: null,
+					show && open
+						? wp.element.createElement( Modal, { title: __( 'Add to the gallery from the Media Helper panel', 'wp-media-helper' ), onRequestClose: close, isFullScreen: true },
+							wp.element.createElement( MediaPanel, { picker: { galleryClientId: props.clientId, onClose: close } } )
+						)
+						: null
+				);
+			};
+		} );
+	}
 
 	registerPlugin( 'wp-media-helper', {
 		render: MediaPanel,
