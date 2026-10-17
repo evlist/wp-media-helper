@@ -1074,10 +1074,27 @@
 					if ( payload && payload.success ) {
 						applyPayload( payload, requestedFilters, replace );
 						setHasNews( false );
-					} else if ( replace && ! settings.force ) {
-						setStatus( 'fresh' );
-						setReason( null );
-						setFiles( [] );
+						if ( replace ) {
+							setOperationNotice( null );
+						}
+					} else {
+						// The list could not be had: say so, and do not leave the count of the previous list above an empty one.
+						setOperationNotice( payload && payload.data && payload.data.message ? payload.data.message : __( 'The list could not be loaded. Try Refresh.', 'wp-media-helper' ) );
+						if ( replace && ! settings.force ) {
+							setStatus( 'fresh' );
+							setReason( null );
+							setFiles( [] );
+							setPagination( { page: 1, per_page: 0, total: 0, total_pages: 1 } );
+						}
+					}
+				} )
+				.catch( function () {
+					if ( mine === sequence.current ) {
+						setOperationNotice( __( 'The list could not be loaded (no valid answer from the server). Reload the editor if this persists.', 'wp-media-helper' ) );
+						if ( replace && ! settings.force ) {
+							setFiles( [] );
+							setPagination( { page: 1, per_page: 0, total: 0, total_pages: 1 } );
+						}
 					}
 				} )
 				.finally( function () {
