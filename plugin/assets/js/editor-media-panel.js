@@ -262,6 +262,11 @@
 	const pointAfterSelection = function () {
 		const editor = blockEditor();
 		const selected = editor.getSelectedBlockClientId ? editor.getSelectedBlockClientId() : null;
+		if ( selected && 'core/gallery' === editor.getBlockName( selected ) ) {
+			// The gallery itself is selected: the photos join it, at the end.
+			return { root: selected, index: editor.getBlockCount( selected ) };
+		}
+
 		if ( selected ) {
 			return { root: editor.getBlockRootClientId( selected ) || '', index: editor.getBlockIndex( selected ) + 1 };
 		}
