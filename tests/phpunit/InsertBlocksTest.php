@@ -39,7 +39,23 @@ class InsertBlocksTest extends TestCase {
 
 	public function test_a_file_that_is_not_a_photo_is_refused_with_the_reason_for_now(): void {
 		$this->assertNull( InsertBlocks::refusal( 'image', 'a.jpg' ) );
-		$this->assertTrue( str_contains( (string) InsertBlocks::refusal( 'video', 'clip.mp4' ), 'clip.mp4' ) );
 		$this->assertNotNull( InsertBlocks::refusal( 'other', 'track.gpx' ) );
+	}
+
+	public function test_videos_and_webvtt_subtitles_can_be_inserted_other_subtitles_cannot(): void {
+		$this->assertNull( InsertBlocks::refusal( 'video', 'clip.mp4' ) );
+		$this->assertNull( InsertBlocks::refusal( 'subtitles', 'clip.fr.vtt' ) );
+		$this->assertTrue( str_contains( (string) InsertBlocks::refusal( 'subtitles', 'clip.fr.srt' ), 'WebVTT' ) );
+	}
+
+	public function test_a_video_block_holds_its_subtitles_as_tracks(): void {
+		$block = InsertBlocks::video(
+			[ 'id' => 7, 'url' => 'https://e/clip.mp4' ],
+			[ [ 'url' => 'https://e/clip.fr.vtt', 'srclang' => 'fr', 'label' => 'Français' ] ]
+		);
+
+		$this->assertSame( 'core/video', $block['block'] );
+		$this->assertSame( [ 'id' => 7, 'src' => 'https://e/clip.mp4', 'controls' => true, 'tracks' => [ [ 'src' => 'https://e/clip.fr.vtt', 'kind' => 'subtitles', 'label' => 'Français', 'srclang' => 'fr' ] ] ], $block['attributes'] );
+		$this->assertArrayNotHasKey( 'tracks', InsertBlocks::video( [ 'id' => 7, 'url' => 'u' ] )['attributes'] );
 	}
 }

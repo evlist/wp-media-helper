@@ -4,7 +4,7 @@
 	const { __, sprintf, _n } = wp.i18n;
 	const { registerPlugin } = wp.plugins;
 	const { PluginSidebar } = wp.editPost;
-	const { PanelBody, PanelRow, Button, TextControl, Notice, Dropdown, MenuItem, CheckboxControl, Modal } = wp.components;
+	const { PanelBody, PanelRow, Button, TextControl, SelectControl, Notice, Dropdown, MenuItem, CheckboxControl, Modal } = wp.components;
 	// An icon font may be missing in some versions: the tile then shows its text only.
 	const Dashicon = wp.components.Dashicon || function () { return null; };
 	const chevronDown = wp.icons && wp.icons.chevronDown ? wp.icons.chevronDown : null;
@@ -252,12 +252,27 @@
 	const DRAG_TYPE = 'application/x-wp-media-helper';
 
 	// What the server says to insert for the files (paths and sources only are sent: it decides the rest).
-	const fetchInsertData = function ( items, postId ) {
+	const fetchInsertData = function ( items, postId, tracks ) {
 		const formData = new window.FormData();
 		formData.append( 'action', 'wp_media_helper_insert_data' );
 		formData.append( 'nonce', nonce );
+		if ( tracks ) {
+			formData.append( 'tracks', JSON.stringify( tracks ) );
+		}
 		formData.append( 'source_id', wpMediaHelperEditorPanel.sourceId || '' );
 		formData.append( 'post_id', String( postId || 0 ) );
+		formData.append( 'items', JSON.stringify( items.map( function ( item ) {
+			return { id: item.id, path: item.path, source_id: item.source_id };
+		} ) ) );
+
+		return send( formData );
+	};
+
+	// Which video each subtitle goes with, as the names suggest (nothing is changed on the server).
+	const fetchInsertPlan = function ( items ) {
+		const formData = new window.FormData();
+		formData.append( 'action', 'wp_media_helper_insert_plan' );
+		formData.append( 'nonce', nonce );
 		formData.append( 'items', JSON.stringify( items.map( function ( item ) {
 			return { id: item.id, path: item.path, source_id: item.source_id };
 		} ) ) );
@@ -296,7 +311,12 @@
 	// Inserts the blocks described by the server. Into a gallery, photos are image blocks of that gallery, not galleries in a gallery.
 	const placeBlocks = function ( descriptions, point ) {
 		const editor = blockEditor();
-		const inGallery = point.root && 'core/gallery' === editor.getBlockName( point.root );
+		let inGallery = point.root && 'core/gallery' === editor.getBlockName( point.root );
+		// Only photos go into a gallery: with a video among the blocks, everything goes after the gallery.
+		if ( inGallery && descriptions.some( function ( description ) { return 'core/gallery' !== description.block && 'core/image' !== description.block; } ) ) {
+			point = { root: editor.getBlockRootClientId( point.root ) || '', index: editor.getBlockIndex( point.root ) + 1 };
+			inGallery = false;
+		}
 		let list = descriptions;
 		if ( inGallery ) {
 			list = [];
@@ -313,9 +333,24 @@
 		return list.length;
 	};
 
-	// Can this item be inserted now? Only photos for the moment (the server says so too).
+	// Subtitles that were not paired with a video go to the video block selected in the editor, when there is one.
+	const addTracksToSelectedVideo = function ( tracks ) {
+		const editor = blockEditor();
+		const selected = editor.getSelectedBlockClientId ? editor.getSelectedBlockClientId() : null;
+		if ( ! selected || 'core/video' !== editor.getBlockName( selected ) ) {
+			return false;
+		}
+
+		const attributes = editor.getBlockAttributes ? editor.getBlockAttributes( selected ) || {} : {};
+		wp.data.dispatch( 'core/block-editor' ).updateBlockAttributes( selected, { tracks: ( attributes.tracks || [] ).concat( tracks ) } );
+
+		return true;
+	};
+
+	// Can this item be inserted now? Photos, videos and subtitles (the server says so too).
+	const INSERTABLE_TYPES = [ 'image', 'video', 'subtitles' ];
 	const canInsert = function ( item ) {
-		return !! wpMediaHelperEditorPanel.canUpload && 'image' === item.media_type && ! item.is_trashed && ( item.can_import || item.is_imported );
+		return !! wpMediaHelperEditorPanel.canUpload && INSERTABLE_TYPES.includes( item.media_type ) && ! item.is_trashed && ( item.can_import || item.is_imported );
 	};
 
 	// The block under a point of the content, and where a drop there would insert, as `{ root, index, box, vertical, after }`.
@@ -847,6 +882,8 @@
 		// The files waiting for the confirmation of their move to the trash.
 		const [ trashRequest, setTrashRequest ] = useState( null );
 		const [ removeRequest, setRemoveRequest ] = useState( null );
+		// The proposal of subtitles for videos, waiting to be validated before the insertion.
+		const [ tracksDialog, setTracksDialog ] = useState( null );
 		const [ menu, setMenu ] = useState( null );
 		const [ sheetKey, setSheetKey ] = useState( null );
 		const [ operationNotice, setOperationNotice ] = useState( null );
@@ -1384,7 +1421,7 @@
 
 		const toggleSelected = function ( item ) {
 			const key = itemKey( item );
-			if ( picker && ! canInsert( item ) ) {
+			if ( picker && ( ! canInsert( item ) || 'image' !== item.media_type ) ) {
 				setOperationNotice( __( 'Only photos can be added to a gallery.', 'wp-media-helper' ) );
 				return;
 			}
@@ -1653,16 +1690,10 @@
 		};
 
 		// Asks the server what to insert, then inserts it at the point (after the selected block when none is given).
-		const runInsert = function ( items, point, done ) {
-			const candidates = items.filter( function ( item ) { return canInsert( item ); } );
-			if ( 0 === candidates.length ) {
-				setOperationNotice( __( 'Only photos can be inserted in the content for now.', 'wp-media-helper' ) );
-				return;
-			}
-
+		const doInsert = function ( candidates, point, done, assignments ) {
 			setLoading( true );
 			setOperationNotice( null );
-			fetchInsertData( candidates, getCurrentPostId() )
+			fetchInsertData( candidates, getCurrentPostId(), assignments )
 				.then( function ( payload ) {
 					if ( ! payload || ! payload.success ) {
 						setOperationNotice( payload && payload.data && payload.data.message ? payload.data.message : __( 'The files could not be inserted.', 'wp-media-helper' ) );
@@ -1672,14 +1703,23 @@
 					const results = payload.data.results || [];
 					const placed = payload.data.blocks.length > 0 ? placeBlocks( payload.data.blocks, point || pointAfterSelection() ) : 0;
 					const reasons = results.filter( function ( result ) { return ! result.success && result.message; } ).map( function ( result ) { return result.message; } );
+					const orphans = payload.data.orphan_tracks || [];
+					let tracksAdded = false;
+					if ( orphans.length > 0 ) {
+						tracksAdded = addTracksToSelectedVideo( orphans );
+						if ( ! tracksAdded ) {
+							reasons.push( __( 'Subtitles need a video: select the video with them, or a video block in the content.', 'wp-media-helper' ) );
+						}
+					}
 					if ( reasons.length > 0 ) {
 						setOperationNotice( reasons.slice( 0, 3 ).join( ' ' ) );
 					}
-					if ( placed > 0 && done ) {
+					const inserted = results.filter( function ( result ) { return result.success; } ).length;
+					if ( ( placed > 0 || tracksAdded ) && done ) {
 						done();
 					}
-					if ( placed > 0 ) {
-						announce( sprintf( _n( '%d photo inserted in the content.', '%d photos inserted in the content.', placed, 'wp-media-helper' ), placed ) );
+					if ( placed > 0 || tracksAdded ) {
+						announce( sprintf( _n( '%d file inserted in the content.', '%d files inserted in the content.', inserted, 'wp-media-helper' ), inserted ) );
 						// A file that had no attachment has one now: the tile shows it.
 						setFiles( function ( current ) {
 							return current.map( function ( file ) {
@@ -1692,6 +1732,110 @@
 				.finally( function () {
 					setLoading( false );
 				} );
+		};
+
+		// Subtitles along with videos: the proposal of the names is shown first, to be validated or changed.
+		const runInsert = function ( items, point, done ) {
+			const candidates = items.filter( function ( item ) { return canInsert( item ); } );
+			if ( 0 === candidates.length ) {
+				setOperationNotice( __( 'Only photos, videos and subtitles can be inserted in the content for now.', 'wp-media-helper' ) );
+				return;
+			}
+
+			const hasVideo = candidates.some( function ( item ) { return 'video' === item.media_type; } );
+			const hasSubtitles = candidates.some( function ( item ) { return 'subtitles' === item.media_type; } );
+			if ( ! ( hasVideo && hasSubtitles ) ) {
+				doInsert( candidates, point, done, null );
+				return;
+			}
+
+			setLoading( true );
+			setOperationNotice( null );
+			const where = point || pointAfterSelection();
+			fetchInsertPlan( candidates )
+				.then( function ( payload ) {
+					if ( ! payload || ! payload.success ) {
+						setOperationNotice( payload && payload.data && payload.data.message ? payload.data.message : __( 'The files could not be inserted.', 'wp-media-helper' ) );
+						return;
+					}
+					setTracksDialog( {
+						items: candidates, point: where, done: done,
+						videos: payload.data.videos || [], subtitles: payload.data.subtitles || [],
+						rows: ( payload.data.proposal || [] ).map( function ( row ) { return Object.assign( {}, row ); } )
+					} );
+				} )
+				.catch( function () {
+					setOperationNotice( __( 'The files could not be inserted.', 'wp-media-helper' ) );
+				} )
+				.finally( function () {
+					setLoading( false );
+				} );
+		};
+
+		const changeTrackRow = function ( subtitle, changes ) {
+			setTracksDialog( function ( current ) {
+				return current ? Object.assign( {}, current, { rows: current.rows.map( function ( row ) { return row.subtitle === subtitle ? Object.assign( {}, row, changes ) : row; } ) } ) : current;
+			} );
+		};
+
+		const renderTracksDialog = function () {
+			if ( ! tracksDialog ) {
+				return null;
+			}
+
+			const close = function () { setTracksDialog( null ); };
+			const nameOf = function ( list, key ) {
+				const found = list.find( function ( entry ) { return entry.key === key; } );
+
+				return found ? found.name : key;
+			};
+			const videoOptions = [ { value: '', label: __( '— No video —', 'wp-media-helper' ) } ].concat( tracksDialog.videos.map( function ( video ) { return { value: video.key, label: video.name }; } ) );
+
+			return wp.element.createElement( Modal, { title: __( 'Subtitles of the videos', 'wp-media-helper' ), onRequestClose: close },
+				wp.element.createElement( 'p', null, __( 'Check which video each subtitle file goes with, and its language. The names of the files gave the first guess.', 'wp-media-helper' ) ),
+				tracksDialog.rows.map( function ( row ) {
+					return wp.element.createElement( 'div', { key: row.subtitle, className: 'wpmh-track-row', style: { borderTop: '1px solid #ddd', padding: '8px 0' } },
+						wp.element.createElement( 'strong', null, nameOf( tracksDialog.subtitles, row.subtitle ) ),
+						'none' === row.reason && ! row.video
+							? wp.element.createElement( 'span', { style: { color: '#b32d2e', marginLeft: '0.5rem' } }, __( 'No video guessed.', 'wp-media-helper' ) )
+							: null,
+						wp.element.createElement( SelectControl, {
+							label: __( 'Video', 'wp-media-helper' ),
+							value: row.video || '',
+							options: videoOptions,
+							onChange: function ( value ) { changeTrackRow( row.subtitle, { video: value || null, reason: 'user' } ); }
+						} ),
+						wp.element.createElement( 'div', { style: { display: 'flex', gap: '0.5rem' } },
+							wp.element.createElement( TextControl, {
+								label: __( 'Language code', 'wp-media-helper' ),
+								value: row.srclang || '',
+								maxLength: 12,
+								onChange: function ( value ) { changeTrackRow( row.subtitle, { srclang: value } ); }
+							} ),
+							wp.element.createElement( TextControl, {
+								label: __( 'Name shown', 'wp-media-helper' ),
+								value: row.label || '',
+								maxLength: 80,
+								onChange: function ( value ) { changeTrackRow( row.subtitle, { label: value } ); }
+							} )
+						)
+					);
+				} ),
+				wp.element.createElement( 'div', { style: { display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' } },
+					wp.element.createElement( Button, { isSecondary: true, onClick: close, text: __( 'Cancel', 'wp-media-helper' ) } ),
+					wp.element.createElement( Button, {
+						isPrimary: true,
+						onClick: function () {
+							const dialog = tracksDialog;
+							close();
+							doInsert( dialog.items, dialog.point, dialog.done, dialog.rows.map( function ( row ) {
+								return { subtitle: row.subtitle, video: row.video || '', srclang: row.srclang || '', label: row.label || '' };
+							} ) );
+						},
+						text: __( 'Insert', 'wp-media-helper' )
+					} )
+				)
+			);
 		};
 
 		// The drop handlers read this one: they are set once and the panel changes.
@@ -2570,6 +2714,7 @@
 						renderSheet(),
 						renderTrashDialog(),
 						renderRemoveDialog(),
+						renderTracksDialog(),
 						renderLinkDialog()
 					)
 				)

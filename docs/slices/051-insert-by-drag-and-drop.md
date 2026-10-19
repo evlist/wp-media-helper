@@ -182,6 +182,18 @@ a check that the template is valid JSON and the block registered, a **reset to t
   (iframe canvas, the drop zone of the editor, undo, the serialization of the blocks), which is what the first trial on a site must tell; and Firefox, where the drag was changed to avoid its known problem with buttons.
 - **Not done yet**: the other types (videos, subtitles, GPX), the table of handlers and its settings page, a loading placeholder while a file is registered, the dashed frame for a video.
 
+## Second iteration: videos and subtitles (implemented, to be tried in the editor)
+
+- **Videos**: *Insert in the content* on a video inserts a `core/video` block (`id`, `src`, `controls`), one block per video, after the selected block (never inside a gallery: with a video among the blocks everything goes after the gallery). The file is registered in the Media Library
+  when needed and never attached.
+- **Subtitles** go in the `tracks` of the video block (`kind: subtitles`, `srclang`, `label`). Only **WebVTT** (`.vtt`) can be used: the browser reads nothing else, and `.srt`, `.ass`... are refused with that reason. The type must be allowed by WordPress (*Additional file types* in the settings).
+- **Pairing** (`Admin\SubtitleMatcher`, tested): one video gets all the subtitles; otherwise a subtitle goes to the video whose name (without extension) is the subtitle's name without extension and language suffix (`film.fr.vtt`, `film_pt-BR.vtt`, `film.en.forced.vtt` go to `film.mp4`), or the longest video name that starts the
+  subtitle's name followed by a separator; a tie goes to the video of the same directory, else to none. The language (`srclang`) and the name shown (`label`, the name of the language, with `forced`, `sdh`... when there is one) come from the same suffix.
+- **Validation screen**: when videos and subtitles are inserted together, the panel first asks the server for its proposal (`wp_media_helper_insert_plan`, nothing is registered yet) and shows it in a dialog: for each subtitle, a list of the videos (or none), the language code and the name shown, all editable; a subtitle with no
+  guess is flagged. *Insert* sends the validated pairs (`tracks` in `wp_media_helper_insert_data`), *Cancel* does nothing.
+- **Subtitles without a video** in the request go to the video block selected in the editor; without one, the panel says to select the video too. A subtitle the dialog did not mention follows the names.
+- **Not done yet**: GPX, the table of handlers and its settings page, a poster, the other attributes of the video block (autoplay, loop), a subtitle file shared by several videos, `.srt` to `.vtt` conversion, a loading placeholder.
+
 ## Ideas for later
 
 - **The gallery block's own picker** (looked at; not implemented). The capture of the *Add to gallery* modal is the WordPress media frame (Backbone, `wp.media.view.MediaFrame.Post`, state `gallery-library`), with two tabs, *Upload files* and *Media Library*.

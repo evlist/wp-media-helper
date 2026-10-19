@@ -50,16 +50,50 @@ final class InsertBlocks {
 	}
 
 	/**
+	 * A video block, with the subtitles that go with it (`tracks`, as the block holds them).
+	 *
+	 * @param array{id:int, url:string} $video
+	 * @param array<int, array{url:string, srclang:string, label:string}> $tracks
+	 * @return array{block:string, attributes:array<string, mixed>, innerBlocks:array<int, array<string, mixed>>}
+	 */
+	public static function video( array $video, array $tracks = [] ): array {
+		$attributes = [ 'id' => (int) $video['id'], 'src' => (string) $video['url'], 'controls' => true ];
+		if ( [] !== $tracks ) {
+			$attributes['tracks'] = array_map( [ self::class, 'track' ], $tracks );
+		}
+
+		return [ 'block' => 'core/video', 'attributes' => $attributes, 'innerBlocks' => [] ];
+	}
+
+	/**
+	 * One track of a video block.
+	 *
+	 * @param array{url:string, srclang:string, label:string} $track
+	 * @return array{src:string, kind:string, label:string, srclang:string}
+	 */
+	public static function track( array $track ): array {
+		return [ 'src' => (string) $track['url'], 'kind' => 'subtitles', 'label' => (string) $track['label'], 'srclang' => (string) $track['srclang'] ];
+	}
+
+	/**
 	 * Why a file cannot be inserted yet, or null when it can.
 	 */
 	public static function refusal( string $mediaType, string $name ): ?string {
-		if ( 'image' === $mediaType ) {
+		if ( in_array( $mediaType, [ 'image', 'video' ], true ) ) {
 			return null;
+		}
+		if ( 'subtitles' === $mediaType ) {
+			// The video element only reads WebVTT.
+			return 'vtt' === strtolower( pathinfo( $name, PATHINFO_EXTENSION ) ) ? null : sprintf(
+				/* translators: %s: file name. */
+				__( '%s cannot be used as subtitles of a video: the browser only reads WebVTT (.vtt) files. Convert it first.', 'wp-media-helper' ),
+				$name
+			);
 		}
 
 		return sprintf(
 			/* translators: %s: file name. */
-			__( 'No block is defined for %s: only photos can be inserted in the content for now.', 'wp-media-helper' ),
+			__( 'No block is defined for %s: only photos, videos and subtitles can be inserted in the content for now.', 'wp-media-helper' ),
 			$name
 		);
 	}

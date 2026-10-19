@@ -440,6 +440,11 @@ Current position:
 
 GPL-3.0-or-later — see [LICENSE](LICENSE).
 
+## Inserting videos and subtitles
+
+*Insert in the content* also works on videos (a video block each) and on WebVTT subtitle files (`.vtt`, in the `tracks` of a video block). When videos and subtitles are inserted together, a dialog shows which video each subtitle was paired with (by name: `film.fr.vtt` goes with
+`film.mp4`; with a single video it takes them all) and its language, to be checked or changed before inserting. Subtitles alone go to the video block selected in the editor. Files are registered in the Media Library when needed and never attached to the post.
+
 ## Adding photos to a gallery block
 
 With a gallery block selected, *Insert in the content* adds the photos at the end of that gallery. The toolbar of the gallery block also has a button, *Add from the Media Helper panel*, that opens the panel (same filters and thumbnails) in a modal:
