@@ -1794,31 +1794,41 @@
 			return wp.element.createElement( Modal, { title: __( 'Subtitles of the videos', 'wp-media-helper' ), onRequestClose: close },
 				wp.element.createElement( 'p', null, __( 'Check which video each subtitle file goes with, and its language. The names of the files gave the first guess.', 'wp-media-helper' ) ),
 				tracksDialog.rows.map( function ( row ) {
-					return wp.element.createElement( 'div', { key: row.subtitle, className: 'wpmh-track-row', style: { borderTop: '1px solid #ddd', padding: '8px 0' } },
-						wp.element.createElement( 'strong', null, nameOf( tracksDialog.subtitles, row.subtitle ) ),
-						'none' === row.reason && ! row.video
-							? wp.element.createElement( 'span', { style: { color: '#b32d2e', marginLeft: '0.5rem' } }, __( 'No video guessed.', 'wp-media-helper' ) )
-							: null,
-						wp.element.createElement( SelectControl, {
-							label: __( 'Video', 'wp-media-helper' ),
-							value: row.video || '',
-							options: videoOptions,
-							onChange: function ( value ) { changeTrackRow( row.subtitle, { video: value || null, reason: 'user' } ); }
+					const included = false !== row.include;
+
+					return wp.element.createElement( 'div', { key: row.subtitle, className: 'wpmh-track-row', style: { borderTop: '1px solid #ddd', padding: '8px 0', opacity: included ? 1 : 0.55 } },
+						// The name of the file, its language and the name shown stay together; a file ticked off is left out.
+						wp.element.createElement( CheckboxControl, {
+							label: nameOf( tracksDialog.subtitles, row.subtitle ),
+							checked: included,
+							onChange: function ( value ) { changeTrackRow( row.subtitle, { include: !! value } ); }
 						} ),
+						included && 'none' === row.reason && ! row.video
+							? wp.element.createElement( 'span', { style: { color: '#b32d2e' } }, __( 'No video guessed.', 'wp-media-helper' ) )
+							: null,
 						wp.element.createElement( 'div', { style: { display: 'flex', gap: '0.5rem' } },
 							wp.element.createElement( TextControl, {
 								label: __( 'Language code', 'wp-media-helper' ),
 								value: row.srclang || '',
 								maxLength: 12,
+								disabled: ! included,
 								onChange: function ( value ) { changeTrackRow( row.subtitle, { srclang: value } ); }
 							} ),
 							wp.element.createElement( TextControl, {
 								label: __( 'Name shown', 'wp-media-helper' ),
 								value: row.label || '',
 								maxLength: 80,
+								disabled: ! included,
 								onChange: function ( value ) { changeTrackRow( row.subtitle, { label: value } ); }
 							} )
-						)
+						),
+						wp.element.createElement( SelectControl, {
+							label: __( 'Video', 'wp-media-helper' ),
+							value: row.video || '',
+							options: videoOptions,
+							disabled: ! included,
+							onChange: function ( value ) { changeTrackRow( row.subtitle, { video: value || null, reason: 'user' } ); }
+						} )
 					);
 				} ),
 				wp.element.createElement( 'div', { style: { display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' } },
@@ -1827,8 +1837,10 @@
 						isPrimary: true,
 						onClick: function () {
 							const dialog = tracksDialog;
+							const left = dialog.rows.filter( function ( row ) { return false === row.include; } ).map( function ( row ) { return row.subtitle; } );
 							close();
-							doInsert( dialog.items, dialog.point, dialog.done, dialog.rows.map( function ( row ) {
+							// A subtitle ticked off is not sent at all: it is not even registered.
+							doInsert( dialog.items.filter( function ( item ) { return ! left.includes( item.id ); } ), dialog.point, dialog.done, dialog.rows.filter( function ( row ) { return false !== row.include; } ).map( function ( row ) {
 								return { subtitle: row.subtitle, video: row.video || '', srclang: row.srclang || '', label: row.label || '' };
 							} ) );
 						},
