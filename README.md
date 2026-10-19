@@ -440,6 +440,11 @@ Current position:
 
 GPL-3.0-or-later — see [LICENSE](LICENSE).
 
+## Changing the modes of a link from its badges
+
+On a tile of a file attached to the post with a method that has modes (the icons *web*, *print*...), a click on one of those icons opens a small menu with the choices of the field (the modes), saved at once as they are ticked. It does what the action *Edit modes…* does, in one gesture. It is not offered in
+selection mode (a click then selects the tile) nor in the modal of the gallery block.
+
 ## Inserting videos and subtitles
 
 *Insert in the content* also works on videos (a video block each) and on WebVTT subtitle files (`.vtt`, in the `tracks` of a video block). When videos and subtitles are inserted together, a dialog shows which video each subtitle was paired with (by name: `film.fr.vtt` goes with

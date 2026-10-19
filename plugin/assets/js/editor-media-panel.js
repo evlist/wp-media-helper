@@ -684,7 +684,8 @@
 
 	// The pictograms of the values of the link (the modes) of a file attached to the post: the options of the fields that are filters,
 	// drawn with their icon (a letter when an option has none), at the bottom right of the tile.
-	const LinkValueBadges = function ( { item } ) {
+	// With `onOpen`, a click on a badge opens the menu to change the values of its field (the modes of the link).
+	const LinkValueBadges = function ( { item, onOpen } ) {
 		if ( ! item.is_attached_to_current_post || item.attached_natively_only || ! item.attachment_data ) {
 			return null;
 		}
@@ -708,13 +709,21 @@
 			chips.map( function ( chip ) {
 				const label = chip.field.label + ': ' + chip.option.label;
 
-				return wp.element.createElement( 'span', {
+				return wp.element.createElement( onOpen ? 'button' : 'span', Object.assign( {
 					key: chip.key,
-					role: 'img',
 					'aria-label': label,
 					title: label,
-					style: { minWidth: '18px', height: '18px', padding: '0 2px', boxSizing: 'border-box', borderRadius: '9px', background: 'rgba(255,255,255,0.92)', boxShadow: '0 0 2px rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1d2327', fontSize: '10px', fontWeight: 600 }
-				},
+					style: { border: 0, cursor: onOpen ? 'pointer' : undefined, minWidth: '18px', height: '18px', padding: '0 2px', boxSizing: 'border-box', borderRadius: '9px', background: 'rgba(255,255,255,0.92)', boxShadow: '0 0 2px rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1d2327', fontSize: '10px', fontWeight: 600 }
+				}, onOpen
+					? {
+						type: 'button',
+						'aria-haspopup': 'dialog',
+						// The tile under it neither opens nor starts the long press.
+						onPointerDown: function ( event ) { event.stopPropagation(); },
+						onClick: function ( event ) { event.stopPropagation(); onOpen( event, item, chip.field ); },
+						onKeyDown: function ( event ) { event.stopPropagation(); }
+					}
+					: { role: 'img' } ),
 					chip.option.icon || chip.option.icon_svg ? wp.element.createElement( OptionIcon, { option: chip.option } ) : chip.option.label.slice( 0, 2 )
 				);
 			} )
@@ -885,6 +894,8 @@
 		// The proposal of subtitles for videos, waiting to be validated before the insertion.
 		const [ tracksDialog, setTracksDialog ] = useState( null );
 		const [ menu, setMenu ] = useState( null );
+		// The menu of the modes of a link, opened from a badge: { key, field, x, y }.
+		const [ modeMenu, setModeMenu ] = useState( null );
 		const [ sheetKey, setSheetKey ] = useState( null );
 		const [ operationNotice, setOperationNotice ] = useState( null );
 		const [ lastRefreshedAt, setLastRefreshedAt ] = useState( null );
@@ -2078,7 +2089,7 @@
 					isFeatured( item )
 						? wp.element.createElement( CornerBadge, { icon: 'star-filled', label: __( 'Featured image', 'wp-media-helper' ), position: { left: '24px' }, colour: '#b8860b' } )
 						: null,
-					wp.element.createElement( LinkValueBadges, { item: item } ),
+					wp.element.createElement( LinkValueBadges, { item: item, onOpen: canChangeLink( item ) && ! selectionMode ? openModeMenu : null } ),
 					item.attached_natively_only
 						? wp.element.createElement( CornerBadge, { icon: attachmentMethod.cohabitation ? 'wordpress' : 'update', label: stateLabel( item ), position: { bottom: '3px', right: '3px' }, colour: attachmentMethod.cohabitation ? '#2271b1' : '#996800' } )
 						: null,
@@ -2106,6 +2117,65 @@
 		};
 
 		// The actions of an item as a menu, opened by a right click, the menu key or the "more" button.
+		// Only a link of this post can be changed, as the action *Edit modes* does.
+		const canChangeLink = function ( item ) {
+			return !! item.is_attached_to_current_post && ! item.attached_natively_only && !! item.attachment_data && ! picker;
+		};
+
+		const openModeMenu = function ( event, item, field ) {
+			const box = event.currentTarget.getBoundingClientRect();
+			setMenu( null );
+			setModeMenu( { key: itemKey( item ), field: field.key, x: box.left, y: box.bottom + 4 } );
+		};
+
+		// A change in the menu is saved at once, like the edit of a link in the dialog.
+		const changeLinkField = function ( item, field, next ) {
+			const data = Object.assign( {}, item.attachment_data || {}, { [ field.key ]: next } );
+			setLoading( true );
+			setOperationNotice( null );
+			bulkMediaItems( 'update', [ Object.assign( {}, item, { data: data } ) ], getCurrentPostId() )
+				.then( function ( payload ) {
+					const result = payload && payload.success && payload.data.results ? payload.data.results[ 0 ] : null;
+					if ( result && result.success ) {
+						applyBulkResults( payload );
+					} else {
+						setOperationNotice( result && result.message ? result.message : __( 'The link could not be changed.', 'wp-media-helper' ) );
+					}
+				} )
+				.finally( function () { setLoading( false ); } );
+		};
+
+		const renderModeMenu = function () {
+			const item = modeMenu ? visibleItems.find( function ( candidate ) { return itemKey( candidate ) === modeMenu.key; } ) : null;
+			const field = modeMenu ? attachmentMethod.fields.find( function ( candidate ) { return candidate.key === modeMenu.field; } ) : null;
+			if ( ! modeMenu || ! item || ! field ) {
+				return null;
+			}
+
+			const close = function () { setModeMenu( null ); };
+			const left = Math.max( 4, Math.min( modeMenu.x, window.innerWidth - 240 ) );
+			const top = Math.max( 4, Math.min( modeMenu.y, window.innerHeight - 40 * ( field.options.length + 3 ) ) );
+
+			return wp.element.createElement( wp.element.Fragment, null,
+				wp.element.createElement( 'div', { onClick: close, style: { position: 'fixed', inset: 0, zIndex: 999999 } } ),
+				wp.element.createElement( 'div', {
+					role: 'dialog',
+					'aria-label': sprintf( __( '%1$s of %2$s', 'wp-media-helper' ), field.label, item.name ),
+					onKeyDown: function ( event ) { if ( 'Escape' === event.key ) { event.stopPropagation(); close(); } },
+					style: { position: 'fixed', left: left + 'px', top: top + 'px', zIndex: 1000000, minWidth: '200px', maxWidth: '240px', background: '#fff', border: '1px solid #949494', borderRadius: '2px', boxShadow: '0 3px 10px rgba(0,0,0,0.25)', padding: '8px 12px' }
+				},
+					wp.element.createElement( 'div', { style: { fontSize: '12px', fontWeight: 600, overflowWrap: 'anywhere', borderBottom: '1px solid #ddd', marginBottom: '6px', paddingBottom: '4px' } }, item.name ),
+					wp.element.createElement( FieldControl, {
+						field: field,
+						value: item.attachment_data ? item.attachment_data[ field.key ] : null,
+						disabled: loading,
+						onChange: function ( next ) { changeLinkField( item, field, next ); }
+					} ),
+					wp.element.createElement( Button, { isLink: true, onClick: close, text: __( 'Close', 'wp-media-helper' ) } )
+				)
+			);
+		};
+
 		const renderContextMenu = function () {
 			const item = menu ? visibleItems.find( function ( candidate ) { return itemKey( candidate ) === menu.key; } ) : null;
 			if ( ! menu || ! item ) {
@@ -2723,6 +2793,7 @@
 							hasMore && loading ? __( 'Loading…', 'wp-media-helper' ) : ''
 						),
 						renderContextMenu(),
+						renderModeMenu(),
 						renderSheet(),
 						renderTrashDialog(),
 						renderRemoveDialog(),
