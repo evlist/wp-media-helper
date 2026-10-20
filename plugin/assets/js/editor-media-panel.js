@@ -537,6 +537,9 @@
 		wide: { choices: [ 3, 4, 6, 8 ], fallback: 4 }
 	};
 	const PICKER_DENSITY_KEY = 'wpMediaHelperPickerDensity';
+	// The floating window can be made wide: more images per row.
+	const FLOAT_DENSITIES = [ 1, 2, 3, 4, 6 ];
+	const FLOAT_DENSITY_KEY = 'wpMediaHelperFloatDensity';
 	const pickerBucket = function ( width ) {
 		return width < 600 ? 'compact' : ( width < 1000 ? 'medium' : 'wide' );
 	};
@@ -552,19 +555,27 @@
 	const DRAG_ENABLED = false;
 
 	// Images per row, remembered in this browser (0 when nothing is remembered; the modal has its own memory).
-	const readDensity = function ( picker ) {
-		try {
-			const value = Number( window.localStorage.getItem( picker ? PICKER_DENSITY_KEY : DENSITY_KEY ) );
+	// `kind`: 'picker' (the modal of the gallery block), 'float' (the floating window), else the sidebar.
+	const densityKey = function ( kind ) {
+		return 'picker' === kind ? PICKER_DENSITY_KEY : ( 'float' === kind ? FLOAT_DENSITY_KEY : DENSITY_KEY );
+	};
 
-			return picker ? ( value > 0 ? value : 0 ) : ( DENSITIES.includes( value ) ? value : 2 );
+	const readDensity = function ( kind ) {
+		try {
+			const value = Number( window.localStorage.getItem( densityKey( kind ) ) );
+			if ( 'picker' === kind ) {
+				return value > 0 ? value : 0;
+			}
+
+			return ( 'float' === kind ? FLOAT_DENSITIES : DENSITIES ).includes( value ) ? value : 2;
 		} catch ( error ) {
-			return picker ? 0 : 2;
+			return 'picker' === kind ? 0 : 2;
 		}
 	};
 
-	const writeDensity = function ( value, picker ) {
+	const writeDensity = function ( value, kind ) {
 		try {
-			window.localStorage.setItem( picker ? PICKER_DENSITY_KEY : DENSITY_KEY, String( value ) );
+			window.localStorage.setItem( densityKey( kind ), String( value ) );
 		} catch ( error ) {
 			// The choice just is not remembered.
 		}
@@ -845,6 +856,9 @@
 	// are added to that gallery.
 	const MediaPanel = function ( props ) {
 		const picker = props && props.picker ? props.picker : null;
+		// With `floating` ({ onClose }) the panel is shown in the floating window over the editor.
+		const floating = props && props.floating ? props.floating : null;
+		const densityKind = picker ? 'picker' : ( floating ? 'float' : null );
 		const [ filters, setFiltersState ] = useState( function () { return { date: getStoredDate() }; } );
 		const [ availableSources, setAvailableSources ] = useState( [] );
 		const [ status, setStatus ] = useState( 'fresh' );
@@ -859,8 +873,8 @@
 		const [ viewportWidth, setViewportWidth ] = useState( window.innerWidth );
 		const bucket = picker ? pickerBucket( viewportWidth ) : null;
 		// What was chosen, and what the screen shows of it.
-		const [ chosenDensity, setDensity ] = useState( function () { return readDensity( !! picker ); } );
-		const densityChoices = picker ? PICKER_BUCKETS[ bucket ].choices : DENSITIES;
+		const [ chosenDensity, setDensity ] = useState( function () { return readDensity( densityKind ); } );
+		const densityChoices = picker ? PICKER_BUCKETS[ bucket ].choices : ( floating ? FLOAT_DENSITIES : DENSITIES );
 		const density = picker ? closestChoice( chosenDensity || PICKER_BUCKETS[ bucket ].fallback, densityChoices ) : chosenDensity;
 		// Turning the phone changes the choices.
 		useEffect( function () {
@@ -913,7 +927,7 @@
 		// The content of the editor accepts what is dragged from the panel: a line shows where it goes, the drop inserts it.
 		// The canvas is an iframe in the current editor and is rebuilt now and then: the documents are looked at again regularly.
 		useEffect( function () {
-			if ( picker ) {
+			if ( picker || floating ) {
 				return undefined;
 			}
 			let line = null;
@@ -1349,7 +1363,7 @@
 
 		const chooseDensity = function ( value ) {
 			setDensity( value );
-			writeDensity( value, !! picker );
+			writeDensity( value, densityKind );
 		};
 
 		const changeFilterList = function ( key, values ) {
@@ -1862,7 +1876,7 @@
 		};
 
 		// The drop handlers read this one: they are set once and the panel changes.
-		if ( ! picker ) {
+		if ( ! picker && ! floating ) {
 			latest.current.insert = runInsert;
 		}
 
@@ -2569,9 +2583,9 @@
 		);
 
 		return wp.element.createElement(
-			picker ? 'div' : PluginSidebar,
-			picker
-				? { className: 'wpmh-picker' }
+			picker || floating ? 'div' : PluginSidebar,
+			picker || floating
+				? { className: picker ? 'wpmh-picker' : 'wpmh-floating-body' }
 				: {
 					name: 'wp-media-helper-sidebar',
 					title: __( 'Media Helper', 'wp-media-helper' )
@@ -2579,6 +2593,11 @@
 			wp.element.createElement(
 				PanelBody,
 				{ title: __( 'External media', 'wp-media-helper' ), initialOpen: true },
+				picker || floating
+					? null
+					: wp.element.createElement( PanelRow, null,
+						wp.element.createElement( Button, { isLink: true, icon: 'external', onClick: function () { setFloatingWindow( true ); }, text: __( 'Open in a floating window', 'wp-media-helper' ) } )
+					),
 				wp.element.createElement(
 					PanelRow,
 					null,
@@ -2834,8 +2853,154 @@
 		} );
 	}
 
+	// ---- The floating window ---------------------------------------------------------------
+
+	// Whether the window is open, for the sidebar button, the menu item and the window itself (they are in different places of the editor).
+	const floatingListeners = [];
+	let floatingOpen = false;
+	const setFloatingWindow = function ( open ) {
+		floatingOpen = !! open;
+		floatingListeners.slice().forEach( function ( listener ) { listener( floatingOpen ); } );
+	};
+	const useFloatingOpen = function () {
+		const [ open, setOpen ] = useState( floatingOpen );
+		useEffect( function () {
+			floatingListeners.push( setOpen );
+			setOpen( floatingOpen );
+
+			return function () {
+				const at = floatingListeners.indexOf( setOpen );
+				if ( at >= 0 ) {
+					floatingListeners.splice( at, 1 );
+				}
+			};
+		}, [] );
+
+		return open;
+	};
+
+	const FLOAT_KEY = 'wpMediaHelperFloatBox';
+	const readBox = function () {
+		const fallback = { x: Math.max( 8, window.innerWidth - 460 ), y: 110, w: 420, h: Math.min( 600, Math.max( 320, window.innerHeight - 180 ) ) };
+		try {
+			const box = JSON.parse( window.localStorage.getItem( FLOAT_KEY ) || 'null' );
+
+			return box && [ 'x', 'y', 'w', 'h' ].every( function ( key ) { return 'number' === typeof box[ key ]; } ) ? box : fallback;
+		} catch ( error ) {
+			return fallback;
+		}
+	};
+	const keepInView = function ( box ) {
+		const w = Math.min( Math.max( 280, box.w ), window.innerWidth - 8 );
+		const h = Math.min( Math.max( 220, box.h ), window.innerHeight - 8 );
+
+		return { w: w, h: h, x: Math.min( Math.max( 0, box.x ), window.innerWidth - Math.min( w, 120 ) ), y: Math.min( Math.max( 32, box.y ), window.innerHeight - 40 ) };
+	};
+
+	// The panel in a window of its own over the editor: moved by its title bar, resized by its corner, remembered by the browser.
+	// It is the same panel as the sidebar (the same code, in the page of the editor), so insertion and the other actions work as there.
+	const FloatingWindow = function () {
+		const open = useFloatingOpen();
+		const [ box, setBox ] = useState( function () { return keepInView( readBox() ); } );
+		const element = useRef( null );
+		const save = function ( next ) {
+			try {
+				window.localStorage.setItem( FLOAT_KEY, JSON.stringify( next ) );
+			} catch ( error ) {
+				// The place is just not remembered.
+			}
+		};
+
+		useEffect( function () {
+			if ( ! open || ! element.current || ! window.ResizeObserver ) {
+				return undefined;
+			}
+			const observer = new window.ResizeObserver( function () {
+				const node = element.current;
+				if ( node && node.offsetWidth > 0 ) {
+					setBox( function ( current ) {
+						const next = Object.assign( {}, current, { w: node.offsetWidth, h: node.offsetHeight } );
+						if ( next.w !== current.w || next.h !== current.h ) {
+							save( next );
+
+							return next;
+						}
+
+						return current;
+					} );
+				}
+			} );
+			observer.observe( element.current );
+
+			return function () { observer.disconnect(); };
+		}, [ open ] );
+
+		if ( ! open ) {
+			return null;
+		}
+
+		const startMove = function ( event ) {
+			if ( event.target.closest( 'button' ) ) {
+				return;
+			}
+			event.preventDefault();
+			const startX = event.clientX;
+			const startY = event.clientY;
+			const origin = box;
+			const move = function ( moveEvent ) {
+				setBox( keepInView( Object.assign( {}, origin, { x: origin.x + moveEvent.clientX - startX, y: origin.y + moveEvent.clientY - startY } ) ) );
+			};
+			const stop = function ( stopEvent ) {
+				document.removeEventListener( 'pointermove', move );
+				document.removeEventListener( 'pointerup', stop );
+				setBox( function ( current ) {
+					const next = keepInView( Object.assign( {}, origin, { x: origin.x + stopEvent.clientX - startX, y: origin.y + stopEvent.clientY - startY } ) );
+					save( next );
+
+					return next;
+				} );
+			};
+			document.addEventListener( 'pointermove', move );
+			document.addEventListener( 'pointerup', stop );
+		};
+
+		return wp.element.createElement( 'div', {
+			ref: element,
+			className: 'wpmh-floating',
+			role: 'dialog',
+			'aria-label': __( 'Media Helper', 'wp-media-helper' ),
+			style: { position: 'fixed', left: box.x + 'px', top: box.y + 'px', width: box.w + 'px', height: box.h + 'px', zIndex: 100000, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', background: '#fff', border: '1px solid #949494', borderRadius: '4px', boxShadow: '0 6px 24px rgba(0,0,0,0.3)', resize: 'both', overflow: 'hidden', minWidth: '280px', minHeight: '220px' }
+		},
+			wp.element.createElement( 'div', {
+				onPointerDown: startMove,
+				style: { flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px 6px 12px', background: '#1e1e1e', color: '#fff', cursor: 'move', userSelect: 'none', touchAction: 'none' }
+			},
+				wp.element.createElement( 'strong', { style: { fontSize: '13px' } }, __( 'Media Helper', 'wp-media-helper' ) ),
+				wp.element.createElement( Button, { icon: 'no-alt', label: __( 'Close the window', 'wp-media-helper' ), 'aria-label': __( 'Close the window', 'wp-media-helper' ), onClick: function () { setFloatingWindow( false ); }, style: { color: '#fff', minWidth: '24px', height: '24px', padding: 0 } } )
+			),
+			wp.element.createElement( 'div', { style: { flex: '1 1 auto', overflow: 'auto', padding: '0 8px' } },
+				wp.element.createElement( MediaPanel, { floating: { onClose: function () { setFloatingWindow( false ); } } } )
+			)
+		);
+	};
+
+	// The sidebar and the floating window are two views of the same panel; the menu item of the editor opens the window.
+	const MoreMenuItem = wp.editPost && wp.editPost.PluginMoreMenuItem ? wp.editPost.PluginMoreMenuItem : ( wp.editor && wp.editor.PluginMoreMenuItem ? wp.editor.PluginMoreMenuItem : null );
+	const PanelRoot = function () {
+		const open = useFloatingOpen();
+
+		return wp.element.createElement( wp.element.Fragment, null,
+			wp.element.createElement( MediaPanel, null ),
+			wp.element.createElement( FloatingWindow, null ),
+			MoreMenuItem
+				? wp.element.createElement( MoreMenuItem, { icon: 'external', onClick: function () { setFloatingWindow( ! open ); } },
+					open ? __( 'Close the Media Helper window', 'wp-media-helper' ) : __( 'Open the Media Helper in a window', 'wp-media-helper' ) )
+				: null
+		);
+	};
+
 	registerPlugin( 'wp-media-helper', {
-		render: MediaPanel,
+		render: PanelRoot,
 		icon: 'format-image'
 	} );
 } )( window.wp );
