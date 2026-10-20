@@ -23,6 +23,9 @@ use WP_Media_Helper\MediaSource\AttachmentRegistry;
 final class Thumbnails {
 
 	public const CRON_HOOK    = 'wp_media_helper_generate_thumbnails';
+	public const CATCH_UP_HOOK = 'wp_media_helper_catch_up_thumbnails';
+	public const FINGERPRINT_OPTION = 'wp_media_helper_sizes_fingerprint';
+	private const CATCH_UP_BATCH = 100;
 	public const BUDGET       = 10;
 	public const MAX_PIXELS   = 100000000;
 	public const FAILURE_TTL  = 600;
@@ -78,6 +81,8 @@ final class Thumbnails {
 		add_action( 'delete_attachment', [ $this, 'purge' ] );
 		add_action( 'wp_media_helper_attachment_registered', [ $this, 'schedule' ] );
 		add_action( self::CRON_HOOK, [ $this, 'generateInBackground' ] );
+		add_action( 'wp_loaded', [ $this, 'checkDefinitions' ] );
+		add_action( self::CATCH_UP_HOOK, [ $this, 'catchUp' ] );
 		add_filter( 'rest_prepare_attachment', [ $this, 'restSizes' ], 10, 3 );
 	}
 
@@ -118,12 +123,19 @@ final class Thumbnails {
 			$size = $name;
 		}
 
-		$entry = $metadata['sizes'][ $size ] ?? null;
+		$entry   = $metadata['sizes'][ $size ] ?? null;
+		$replace = false;
+		$current = null;
 		if ( is_array( $entry ) ) {
 			$path = $service->existing( $relative, $entry );
 			$url  = null === $path ? null : $service->url( $path );
 			if ( null !== $url ) {
-				return [ $url, (int) ( $entry['width'] ?? 0 ), (int) ( $entry['height'] ?? 0 ), true ];
+				$current = [ $url, (int) ( $entry['width'] ?? 0 ), (int) ( $entry['height'] ?? 0 ), true ];
+				// A size of a file registered here whose definition changed since it was made (another page format, say) is made again.
+				if ( ! $this->isRegisteredByUs( $attachmentId ) || ! $this->isStale( $metadata, (string) $size, $entry ) ) {
+					return $current;
+				}
+				$replace = true;
 			}
 		}
 
@@ -133,9 +145,10 @@ final class Thumbnails {
 			return $out;
 		}
 
-		$created = $this->createSize( $service, $attachmentId, $relative, $metadata, $size );
+		$created = $this->createSize( $service, $attachmentId, $relative, $metadata, $size, $replace );
 		if ( null === $created ) {
-			return $out;
+			// The old file is better than none.
+			return $replace ? $current : $out;
 		}
 
 		wp_update_attachment_metadata( $attachmentId, $created['metadata'] );
@@ -144,6 +157,85 @@ final class Thumbnails {
 		$url   = null === $path ? null : $service->url( $path );
 
 		return null === $url ? $out : [ $url, (int) $entry['width'], (int) $entry['height'], true ];
+	}
+
+	/**
+	 * Whether the dimensions of an entry of the metadata differ from what the current definition of the size gives.
+	 *
+	 * @param array<string, mixed> $metadata
+	 * @param array<string, mixed> $entry
+	 */
+	private function isStale( array $metadata, string $size, array $entry ): bool {
+		$definition = wp_get_registered_image_subsizes()[ $size ] ?? null;
+		if ( ! is_array( $definition ) ) {
+			return false;
+		}
+		$expected = ThumbnailPlan::expected( (int) ( $metadata['width'] ?? 0 ), (int) ( $metadata['height'] ?? 0 ), $definition );
+
+		return null !== $expected && ( (int) ( $entry['width'] ?? 0 ) !== $expected['width'] || (int) ( $entry['height'] ?? 0 ) !== $expected['height'] );
+	}
+
+	/**
+	 * Notices that the definitions of the image sizes changed since the last look (a size added, removed or redefined: another page
+	 * format, a theme or plugin update) and plans a catch-up of the images in batches. The first look only records them: for what
+	 * exists already, `wp media-helper thumbnails generate` does it by hand. The filter `wp_media_helper_catch_up_thumbnails` turns this off.
+	 */
+	public function checkDefinitions(): void {
+		$current = ThumbnailPlan::fingerprint( wp_get_registered_image_subsizes() );
+		$known   = get_option( self::FINGERPRINT_OPTION, '' );
+		if ( $known === $current ) {
+			return;
+		}
+		update_option( self::FINGERPRINT_OPTION, $current );
+		if ( '' === $known || ! apply_filters( 'wp_media_helper_catch_up_thumbnails', true ) ) {
+			return;
+		}
+		if ( false === wp_next_scheduled( self::CATCH_UP_HOOK, [ 0 ] ) ) {
+			wp_schedule_single_event( time() + 10, self::CATCH_UP_HOOK, [ 0 ] );
+		}
+	}
+
+	/**
+	 * A batch of the catch-up: the images after `$after`, by id, are given what they miss (the sizes they do not have, and those whose
+	 * definition changed) until the time budget is used, then the event schedules itself again where it stopped.
+	 *
+	 * @param int $after The last attachment done.
+	 */
+	public function catchUp( $after = 0 ): void {
+		global $wpdb;
+
+		$after    = (int) $after;
+		$deadline = microtime( true ) + self::BUDGET;
+		$more     = true;
+		while ( $more && microtime( true ) < $deadline ) {
+			$ids = array_map( 'intval', (array) $wpdb->get_col( $wpdb->prepare( // phpcs:ignore WordPress.DB
+				"SELECT ID FROM {$wpdb->posts} WHERE post_type = 'attachment' AND post_mime_type LIKE 'image/%%' AND ID > %d ORDER BY ID ASC LIMIT %d",
+				$after,
+				self::CATCH_UP_BATCH
+			) ) );
+			if ( [] === $ids ) {
+				return;
+			}
+			foreach ( $ids as $id ) {
+				if ( microtime( true ) >= $deadline ) {
+					break 2;
+				}
+				$plan = $this->sizesToMake( $id );
+				if ( null !== $plan && ( [] !== $plan['missing'] || [] !== $plan['stale'] ) ) {
+					$report = $this->makeSizes( $id, $plan['missing'], $plan['stale'], $deadline );
+					if ( [] !== $report['left'] ) {
+						// The budget ended in the middle of this image: it is looked at again.
+						break 2;
+					}
+				}
+				$after = $id;
+			}
+			$more = count( $ids ) === self::CATCH_UP_BATCH;
+		}
+
+		if ( $more || microtime( true ) >= $deadline ) {
+			wp_schedule_single_event( time() + 5, self::CATCH_UP_HOOK, [ $after ] );
+		}
 	}
 
 	/**

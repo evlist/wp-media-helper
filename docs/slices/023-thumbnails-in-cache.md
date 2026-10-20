@@ -276,3 +276,6 @@ A plugin can register named sizes (`add_image_size()`) whose pixels depend on th
   compares. `fingerprint()` is a hash of the definitions (name, width, height, crop), for detecting that something was redefined.
 - **`wp media-helper thumbnails generate`** (`Cli\ThumbnailsCommand`) makes the sizes by hand: `--size`, `--stale`, `--post-ids` (images of the content found by `Thumbnails\PostImages`, featured images, attached children), `--prefix`, `--from`, `--to`, `--limit`, `--dry-run`. It can be run twice. A size made again at new dimensions
   replaces the entry of the metadata; the old file stays in the cache.
+- **Detection and automatic catch-up** (`Thumbnails::checkDefinitions()` at `wp_loaded`, `catchUp()`): the fingerprint of the definitions is kept in the option `wp_media_helper_sizes_fingerprint`; a change schedules the event `wp_media_helper_catch_up_thumbnails( $after )`, which handles
+  the image attachments by id in batches of 100 within the 10 s budget and schedules itself again with the last id done (5 s later). The first look only records the fingerprint. The filter `wp_media_helper_catch_up_thumbnails` turns it off. In `image_downsize()`, an entry of a file registered here
+  whose dimensions differ from the current definition is made again at once (the old file is returned if that fails).

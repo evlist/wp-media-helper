@@ -234,6 +234,12 @@ the one used by Thumbnails Folder: its existing files are reused, with its URLs.
   event is scheduled even when `DISABLE_WP_CRON` is set (that constant only stops WP-Cron from
   starting at page views; a system cron runs `wp cron event run --due-now`, and an event nobody runs just waits);
   the filter `wp_media_helper_background_thumbnails` turns it off. A request for a thumbnail URL never creates anything.
+- **A size whose definition changed is made again.** The plugin keeps a fingerprint of the registered sizes (name, width, height, crop).
+  When it changes (a size added, removed or redefined: another page format for the print sizes of a book, a theme update), a catch-up event
+  goes through the images in batches within a time budget, making the sizes they miss and those whose stored dimensions differ from the
+  new definition, and schedules itself again where it stopped (it needs a cron that runs, like the creation after an import). A size asked for
+  by a page whose stored dimensions are stale is made again at once. The first look at the fingerprint only records it: for the images
+  that exist already, run the command below once. The filter `wp_media_helper_catch_up_thumbnails` turns the catch-up off.
 - `wp media-helper thumbnails generate` makes the sizes by hand, and can be run again at any time (it only makes what is missing):
   `--size=<names>` limits it to some sizes, `--stale` also makes again the sizes whose dimensions differ from their current
   definition (a size redefined, for example for another page format), `--post-ids=<ids>` to the images used by posts
