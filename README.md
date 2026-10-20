@@ -234,6 +234,12 @@ the one used by Thumbnails Folder: its existing files are reused, with its URLs.
   event is scheduled even when `DISABLE_WP_CRON` is set (that constant only stops WP-Cron from
   starting at page views; a system cron runs `wp cron event run --due-now`, and an event nobody runs just waits);
   the filter `wp_media_helper_background_thumbnails` turns it off. A request for a thumbnail URL never creates anything.
+- `wp media-helper thumbnails generate` makes the sizes by hand, and can be run again at any time (it only makes what is missing):
+  `--size=<names>` limits it to some sizes, `--stale` also makes again the sizes whose dimensions differ from their current
+  definition (a size redefined, for example for another page format), `--post-ids=<ids>` to the images used by posts
+  (their content, featured image and attached children), `--prefix=<paths>`, `--from=<Y-m-d>` / `--to=<Y-m-d>` (date of the
+  attachment) and `--limit=<n>` narrow the images, `--dry-run` says what would be made. It reports, by size, what was missing, stale,
+  made and failed. The files of a stale size made again stay in the cache until the attachment is deleted.
 - Sizes not smaller than the original are not created: WordPress uses the full image.
   The original is never modified, and the orientation of a photo is applied to the
   thumbnail only.

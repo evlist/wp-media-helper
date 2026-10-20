@@ -282,6 +282,75 @@ final class Thumbnails {
 		return $response;
 	}
 
+	/**
+	 * The named sizes that an attachment registered by this plugin still needs: those it has not (`missing`) and, when asked, those it has
+	 * with other dimensions than the current definition gives (`stale`). Null when the attachment is not concerned (another tool's, not an
+	 * image, no usable cache).
+	 *
+	 * @param string[]|null $names Only these sizes (null: all the registered ones).
+	 * @return array{missing: string[], stale: string[]}|null
+	 */
+	public function sizesToMake( int $attachmentId, ?array $names = null, bool $includeStale = true ): ?array {
+		$service  = $this->service();
+		$relative = $this->relativePath( $attachmentId );
+		$metadata = wp_get_attachment_metadata( $attachmentId );
+		if ( null === $service || null === $relative || ! is_array( $metadata ) || ! $this->isRegisteredByUs( $attachmentId ) || ! wp_attachment_is_image( $attachmentId ) ) {
+			return null;
+		}
+
+		$plan = ThumbnailPlan::classify(
+			$metadata,
+			wp_get_registered_image_subsizes(),
+			$names,
+			static fn ( string $name, array $entry ): bool => null !== $service->existing( $relative, $entry )
+		);
+
+		return [ 'missing' => $plan['missing'], 'stale' => $includeStale ? $plan['stale'] : [] ];
+	}
+
+	/**
+	 * Makes the given sizes of an attachment (the stale ones are made again at their new dimensions; the files of the old ones stay in
+	 * the cache until the attachment is deleted). Stops at the deadline, if there is one.
+	 *
+	 * @param string[] $missing
+	 * @param string[] $stale
+	 * @return array{made: string[], failed: string[], left: string[]} `left`: what the deadline kept from being tried.
+	 */
+	public function makeSizes( int $attachmentId, array $missing, array $stale = [], ?float $deadline = null ): array {
+		$report   = [ 'made' => [], 'failed' => [], 'left' => [] ];
+		$service  = $this->service();
+		$relative = $this->relativePath( $attachmentId );
+		$metadata = wp_get_attachment_metadata( $attachmentId );
+		if ( null === $service || null === $relative || ! is_array( $metadata ) ) {
+			return [ 'made' => [], 'failed' => array_merge( $missing, $stale ), 'left' => [] ];
+		}
+
+		$changed = false;
+		$todo    = array_merge( array_map( static fn ( string $name ): array => [ $name, false ], $missing ), array_map( static fn ( string $name ): array => [ $name, true ], $stale ) );
+		foreach ( $todo as $index => [ $name, $replace ] ) {
+			if ( null !== $deadline && microtime( true ) >= $deadline ) {
+				$report['left'] = array_map( static fn ( array $entry ): string => $entry[0], array_slice( $todo, $index ) );
+				break;
+			}
+			// A run asked for by hand tries again what failed a moment ago.
+			delete_transient( 'wp_media_helper_thumb_failed_' . $attachmentId . '_' . $name );
+			$created = $this->createSize( $service, $attachmentId, $relative, $metadata, $name, $replace );
+			if ( null === $created ) {
+				$report['failed'][] = $name;
+				continue;
+			}
+			$metadata         = $created['metadata'];
+			$report['made'][] = $name;
+			$changed          = true;
+		}
+
+		if ( $changed ) {
+			wp_update_attachment_metadata( $attachmentId, $metadata );
+		}
+
+		return $report;
+	}
+
 	public function generateInBackground( $attachmentId ): void {
 		$attachmentId = (int) $attachmentId;
 		$service      = $this->service();
@@ -320,7 +389,7 @@ final class Thumbnails {
 	 * @param array<string, mixed> $metadata
 	 * @return array{entry: array<string, mixed>, metadata: array<string, mixed>}|null
 	 */
-	private function createSize( ThumbnailService $service, int $attachmentId, string $relative, array $metadata, string $size ): ?array {
+	private function createSize( ThumbnailService $service, int $attachmentId, string $relative, array $metadata, string $size, bool $replace = false ): ?array {
 		$definitions = wp_get_registered_image_subsizes();
 		$width       = (int) ( $metadata['width'] ?? 0 );
 		$height      = (int) ( $metadata['height'] ?? 0 );
@@ -335,7 +404,7 @@ final class Thumbnails {
 		}
 
 		$existing = $metadata['sizes'][ $size ] ?? null;
-		if ( is_array( $existing ) && null !== $service->existing( $relative, $existing ) ) {
+		if ( ! $replace && is_array( $existing ) && null !== $service->existing( $relative, $existing ) ) {
 			return null;
 		}
 

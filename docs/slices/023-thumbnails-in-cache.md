@@ -266,3 +266,13 @@ later), so `image_get_intermediate_size()` finds nothing and WordPress showed th
 the REST answer, made them, which is why the list was right after a visit to the grid). Now, for an attachment registered by this plugin whose metadata has no sizes, the size is
 chosen among the registered ones the way WordPress chooses (`ThumbnailLayout::sizeNameForDimensions`: the smallest **cropped** size at least as large with the same proportions,
 `thumbnail` for 60 x 60) and made on the spot, like any named size. Other proportions, or no cropped size that fits: unchanged.
+
+## Catching up the sizes (print sizes of the books)
+
+A plugin can register named sizes (`add_image_size()`) whose pixels depend on the page format of a book. Three things serve that:
+
+- **The event is always scheduled** after an import (see above).
+- **`Thumbnails\ThumbnailPlan`** says which sizes an attachment still needs: the missing ones (no entry in the metadata, or no file) and the **stale** ones, whose stored dimensions differ from what `image_resize_dimensions()` gives for the current definition. WordPress trusts the metadata and never
+  compares. `fingerprint()` is a hash of the definitions (name, width, height, crop), for detecting that something was redefined.
+- **`wp media-helper thumbnails generate`** (`Cli\ThumbnailsCommand`) makes the sizes by hand: `--size`, `--stale`, `--post-ids` (images of the content found by `Thumbnails\PostImages`, featured images, attached children), `--prefix`, `--from`, `--to`, `--limit`, `--dry-run`. It can be run twice. A size made again at new dimensions
+  replaces the entry of the metadata; the old file stays in the cache.
