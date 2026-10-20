@@ -2964,7 +2964,8 @@
 			document.addEventListener( 'pointerup', stop );
 		};
 
-		return wp.element.createElement( 'div', {
+		// The plugin area of the editor is a hidden box: the window is put in the body of the page.
+		return wp.element.createPortal( wp.element.createElement( 'div', {
 			ref: element,
 			className: 'wpmh-floating',
 			role: 'dialog',
@@ -2981,7 +2982,7 @@
 			wp.element.createElement( 'div', { style: { flex: '1 1 auto', overflow: 'auto', padding: '0 8px' } },
 				wp.element.createElement( MediaPanel, { floating: { onClose: function () { setFloatingWindow( false ); } } } )
 			)
-		);
+		), document.body );
 	};
 
 	// The sidebar and the floating window are two views of the same panel; the menu item of the editor opens the window.
