@@ -230,9 +230,10 @@ stay read-only. The layout is `thumbnails/<folder of the original below uploads>
 the one used by Thumbnails Folder: its existing files are reused, with its URLs.
 
 - A size is created when WordPress asks for it (page rendering, media library) and
-  does not exist yet, and in the background after the import by a WP-Cron event. With
-  WP-Cron disabled (`DISABLE_WP_CRON`) nothing is scheduled and sizes are created
-  when asked for. A request for a thumbnail URL never creates anything.
+  does not exist yet, and in the background after the import by a WP-Cron event. The
+  event is scheduled even when `DISABLE_WP_CRON` is set (that constant only stops WP-Cron from
+  starting at page views; a system cron runs `wp cron event run --due-now`, and an event nobody runs just waits);
+  the filter `wp_media_helper_background_thumbnails` turns it off. A request for a thumbnail URL never creates anything.
 - Sizes not smaller than the original are not created: WordPress uses the full image.
   The original is never modified, and the orientation of a photo is applied to the
   thumbnail only.

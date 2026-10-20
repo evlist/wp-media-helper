@@ -204,9 +204,9 @@ Done:
 - `wp_calculate_image_srcset` points cached sizes to their URL.
 - `delete_attachment` deletes the cached files, never the original.
 - Background: one WP-Cron event per registered attachment (`wp_media_helper_generate_thumbnails`),
-  staggered, with a 10 s budget and a reschedule while sizes remain. **With
-  `DISABLE_WP_CRON` nothing is scheduled** and only on-demand creation remains
-  (filter `wp_media_helper_background_thumbnails` overrides).
+  staggered, with a 10 s budget and a reschedule while sizes remain. **It is
+  scheduled whatever `DISABLE_WP_CRON` says** (the constant only stops WP-Cron from starting at page views; a system cron runs the events, and an event nobody runs just waits).
+  The filter `wp_media_helper_background_thumbnails` turns the background creation off; on-demand creation is unchanged.
 - Safeguards: write below the canonical cache only, links refused (checked before
   creating directories), temporary file then rename, 100-megapixel limit (filter),
   orientation applied to the thumbnail only.

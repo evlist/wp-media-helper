@@ -16,8 +16,9 @@ use WP_Media_Helper\MediaSource\AttachmentRegistry;
  * - A request for a URL never creates anything: only the sizes WordPress asks for,
  *   or the background event below, do.
  * - After registration a single cron event per attachment creates the registered
- *   sizes within a time budget, and reschedules itself while sizes remain. With
- *   WordPress cron disabled nothing is scheduled and sizes are created when asked for.
+ *   sizes within a time budget, and reschedules itself while sizes remain. The event is
+ *   scheduled even with `DISABLE_WP_CRON` (a system cron runs it); the filter
+ *   `wp_media_helper_background_thumbnails` turns it off.
  */
 final class Thumbnails {
 
@@ -220,8 +221,9 @@ final class Thumbnails {
 	 */
 	public function schedule( $attachmentId ): void {
 		$attachmentId = (int) $attachmentId;
-		$enabled      = ! ( defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON );
-		if ( ! apply_filters( 'wp_media_helper_background_thumbnails', $enabled, $attachmentId )
+		// Scheduled whatever `DISABLE_WP_CRON` says: that constant only stops WP-Cron from starting at page views, a system cron
+		// still runs the events, and an event nobody runs just waits. The filter turns the background creation off.
+		if ( ! apply_filters( 'wp_media_helper_background_thumbnails', true, $attachmentId )
 			|| ! wp_attachment_is_image( $attachmentId )
 			|| false !== wp_next_scheduled( self::CRON_HOOK, [ $attachmentId ] ) ) {
 			return;
