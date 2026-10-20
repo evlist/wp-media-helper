@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use PHPUnit\Framework\TestCase;
+use WP_Media_Helper\Thumbnails\ManagedFiles;
 use WP_Media_Helper\Thumbnails\PostImages;
 use WP_Media_Helper\Thumbnails\ThumbnailPlan;
 
@@ -81,5 +82,17 @@ class ThumbnailPlanTest extends TestCase {
 
 		$this->assertSame( [ 5, 8, 9, 10, 12, 30, 44, 77 ], PostImages::ids( $content ) );
 		$this->assertSame( [], PostImages::ids( 'nothing here' ) );
+	}
+
+	public function test_a_file_is_managed_when_it_is_under_the_directory_of_an_active_source(): void {
+		$roots = [ '/var/www/html/wp-content/uploads/photos', '/srv/cumulus/' ];
+
+		$this->assertTrue( ManagedFiles::isUnderRoots( '/var/www/html/wp-content/uploads/photos/2025/eric/07/03/a.jpg', $roots ) );
+		$this->assertTrue( ManagedFiles::isUnderRoots( '/srv/cumulus//eric/a.jpg', $roots ) );
+		$this->assertFalse( ManagedFiles::isUnderRoots( '/var/www/html/wp-content/uploads/photos-old/a.jpg', $roots ) );
+		$this->assertFalse( ManagedFiles::isUnderRoots( '/var/www/html/wp-content/uploads/photos/../secret/a.jpg', $roots ) );
+		$this->assertFalse( ManagedFiles::isUnderRoots( '/var/www/html/wp-content/uploads/photos', $roots ) );
+		$this->assertFalse( ManagedFiles::isUnderRoots( '/anywhere/a.jpg', [] ) );
+		$this->assertFalse( ManagedFiles::isUnderRoots( '', $roots ) );
 	}
 }

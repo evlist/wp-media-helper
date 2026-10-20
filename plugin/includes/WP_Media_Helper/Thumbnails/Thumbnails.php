@@ -5,6 +5,7 @@
 namespace WP_Media_Helper\Thumbnails;
 
 use WP_Media_Helper\MediaSource\AttachmentRegistry;
+use WP_Media_Helper\Settings\ActiveSources;
 
 /**
  * Serves the sub-sizes of attachments from the thumbnail cache, and creates the
@@ -114,7 +115,7 @@ final class Thumbnails {
 			// An attachment just imported has no sizes in its metadata yet (they are made in the background): the size is chosen
 			// among the registered ones, as WordPress would, and made now. Without it the list of the media library shows the
 			// whole picture, squeezed, until the sizes exist.
-			if ( null === $name && $this->isRegisteredByUs( $attachmentId ) && [] === (array) ( $metadata['sizes'] ?? [] ) ) {
+			if ( null === $name && $this->isManaged( $attachmentId ) && [] === (array) ( $metadata['sizes'] ?? [] ) ) {
 				$name = ThumbnailLayout::sizeNameForDimensions( wp_get_registered_image_subsizes(), (int) ( $size[0] ?? 0 ), (int) ( $size[1] ?? 0 ) );
 			}
 			if ( null === $name ) {
@@ -132,7 +133,7 @@ final class Thumbnails {
 			if ( null !== $url ) {
 				$current = [ $url, (int) ( $entry['width'] ?? 0 ), (int) ( $entry['height'] ?? 0 ), true ];
 				// A size of a file registered here whose definition changed since it was made (another page format, say) is made again.
-				if ( ! $this->isRegisteredByUs( $attachmentId ) || ! $this->isStale( $metadata, (string) $size, $entry ) ) {
+				if ( ! $this->isManaged( $attachmentId ) || ! $this->isStale( $metadata, (string) $size, $entry ) ) {
 					return $current;
 				}
 				$replace = true;
@@ -140,9 +141,21 @@ final class Thumbnails {
 		}
 
 		// Attachments made by another tool are left alone, unless the file that their metadata lists is not
-		// beside the original: WordPress would then give the address of a file that does not exist.
-		if ( ! $this->isRegisteredByUs( $attachmentId ) && ! ( is_array( $entry ) && $this->isMissingBesideOriginal( $relative, $entry ) ) ) {
-			return $out;
+		// beside the original (WordPress would then give the address of a file that does not exist), or, for a file under the
+		// directory of an active source, the size is missing or its definition changed: a size WordPress made beside the
+		// original and that is still right is left as it is.
+		if ( ! $this->isRegisteredByUs( $attachmentId ) ) {
+			$missingBeside = is_array( $entry ) && $this->isMissingBesideOriginal( $relative, $entry );
+			if ( ! $this->isManaged( $attachmentId ) ) {
+				if ( ! $missingBeside ) {
+					return $out;
+				}
+			} elseif ( is_array( $entry ) && ! $missingBeside ) {
+				if ( ! $this->isStale( $metadata, (string) $size, $entry ) ) {
+					return $out;
+				}
+				$replace = true;
+			}
 		}
 
 		$created = $this->createSize( $service, $attachmentId, $relative, $metadata, $size, $replace );
@@ -386,15 +399,17 @@ final class Thumbnails {
 		$service  = $this->service();
 		$relative = $this->relativePath( $attachmentId );
 		$metadata = wp_get_attachment_metadata( $attachmentId );
-		if ( null === $service || null === $relative || ! is_array( $metadata ) || ! $this->isRegisteredByUs( $attachmentId ) || ! wp_attachment_is_image( $attachmentId ) ) {
+		if ( null === $service || null === $relative || ! is_array( $metadata ) || ! $this->isManaged( $attachmentId ) || ! wp_attachment_is_image( $attachmentId ) ) {
 			return null;
 		}
 
+		$owned = $this->isRegisteredByUs( $attachmentId );
 		$plan = ThumbnailPlan::classify(
 			$metadata,
 			wp_get_registered_image_subsizes(),
 			$names,
-			static fn ( string $name, array $entry ): bool => null !== $service->existing( $relative, $entry )
+			// For a file registered by another tool, a size WordPress made beside the original counts as there.
+			fn ( string $name, array $entry ): bool => null !== $service->existing( $relative, $entry ) || ( ! $owned && ! $this->isMissingBesideOriginal( $relative, $entry ) )
 		);
 
 		return [ 'missing' => $plan['missing'], 'stale' => $includeStale ? $plan['stale'] : [] ];
@@ -448,7 +463,7 @@ final class Thumbnails {
 		$service      = $this->service();
 		$relative     = $this->relativePath( $attachmentId );
 		$metadata     = wp_get_attachment_metadata( $attachmentId );
-		if ( null === $service || null === $relative || ! is_array( $metadata ) || ! $this->isRegisteredByUs( $attachmentId ) ) {
+		if ( null === $service || null === $relative || ! is_array( $metadata ) || ! $this->isManaged( $attachmentId ) ) {
 			return;
 		}
 
@@ -539,6 +554,41 @@ final class Thumbnails {
 		$directory = dirname( $relative );
 
 		return ! file_exists( rtrim( (string) $uploads['basedir'], '/' ) . ( '.' === $directory ? '' : '/' . $directory ) . '/' . $name );
+	}
+
+	/** @var string[]|null */
+	private ?array $sourceRoots = null;
+
+	/**
+	 * Whether the sizes of an attachment are looked after here: it was registered by this plugin, or its file is under the directory of an
+	 * active source, whichever tool registered it (the photos of a library registered by an older version, or by another plugin). It
+	 * only concerns the sizes (the file in the cache and the entry of the metadata), never what may be removed: see isRegisteredByUs().
+	 */
+	private function isManaged( int $attachmentId ): bool {
+		if ( $this->isRegisteredByUs( $attachmentId ) ) {
+			return true;
+		}
+		$relative = $this->relativePath( $attachmentId );
+		$uploads  = wp_upload_dir( null, false );
+		if ( null === $relative || ! is_array( $uploads ) || empty( $uploads['basedir'] ) ) {
+			return false;
+		}
+		if ( null === $this->sourceRoots ) {
+			$this->sourceRoots = [];
+			foreach ( ActiveSources::all() as $source ) {
+				if ( ! empty( $source['root'] ) ) {
+					$this->sourceRoots[] = (string) $source['root'];
+					$real = realpath( (string) $source['root'] );
+					if ( false !== $real ) {
+						$this->sourceRoots[] = $real;
+					}
+				}
+			}
+		}
+		$file = rtrim( (string) $uploads['basedir'], '/' ) . '/' . $relative;
+		$real = realpath( $file );
+
+		return ManagedFiles::isUnderRoots( $file, $this->sourceRoots ) || ( false !== $real && ManagedFiles::isUnderRoots( $real, $this->sourceRoots ) );
 	}
 
 	private function isRegisteredByUs( int $attachmentId ): bool {

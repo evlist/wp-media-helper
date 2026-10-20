@@ -234,6 +234,10 @@ the one used by Thumbnails Folder: its existing files are reused, with its URLs.
   event is scheduled even when `DISABLE_WP_CRON` is set (that constant only stops WP-Cron from
   starting at page views; a system cron runs `wp cron event run --due-now`, and an event nobody runs just waits);
   the filter `wp_media_helper_background_thumbnails` turns it off. A request for a thumbnail URL never creates anything.
+- **Which images.** The sizes are looked after for the images registered by this plugin and for any image whose file is under the directory of an
+  active source, whichever tool registered its attachment (a library registered by an older version, or by another plugin). For the latter the
+  plugin writes nothing to the attachment but the new size in its metadata, and the file in the cache; a size that WordPress made beside the original
+  and that is still right is left as it is. This is about the sizes only: what the plugin may remove stays limited to the attachments it created.
 - **A size whose definition changed is made again.** The plugin keeps a fingerprint of the registered sizes (name, width, height, crop).
   When it changes (a size added, removed or redefined: another page format for the print sizes of a book, a theme update), a catch-up event
   goes through the images in batches within a time budget, making the sizes they miss and those whose stored dimensions differ from the
