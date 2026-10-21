@@ -128,6 +128,23 @@ class IndexScannerTest extends TestCase {
 		$this->assertSame( '2026-10-03 12:00:00', $this->store->filesForDay( [ 's' ], '2026-10-03' )[0]['effective_date'], 'A date alone is placed at the median time.' );
 	}
 
+	private function window( string $value ): array {
+		$parsed = \WP_Media_Helper\Admin\DateWindow::parse( $value );
+
+		return array_column( $this->store->filesForRange( [ 's' ], $parsed['start'], $parsed['end'] ), 'name' );
+	}
+
+	public function test_a_window_of_dates_and_times_lists_the_files_whose_date_is_in_it(): void {
+		$this->pass();
+
+		$this->assertSame( [ '20261002_121549.jpg', '20261003-subtitles.vtt' ], $this->window( '2026-10-02/2026-10-03' ), 'Whole days.' );
+		$this->assertSame( [ '20261002_121549.jpg' ], $this->window( '2026-10-02T12:00/2026-10-02T13:00' ), 'A part of a day.' );
+		$this->assertSame( [], $this->window( '2026-10-02T09:00/2026-10-02T11:00' ), 'A part of a day with nothing in it.' );
+		$this->assertSame( [], $this->window( '2026-10-02T12:16/2026-10-03T11:59' ), 'A night across two days: the photo is just before, the file dated by its day alone (noon) is after.' );
+		$this->assertSame( [ '20261002_121549.jpg', '20261003-subtitles.vtt' ], $this->window( '2026-10-02T12:00/2026-10-03T12:00' ) );
+		$this->assertSame( [ '20261002_121549.jpg' ], $this->window( '2026-10-02' ), 'A single day is a window of the whole day.' );
+	}
+
 	public function test_an_unchanged_tree_is_not_read_again(): void {
 		$this->pass();
 

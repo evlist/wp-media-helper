@@ -289,6 +289,27 @@ class WpdbIndexStore implements IndexStore {
 		return array_map( [ self::class, 'typed' ], is_array( $rows ) ? $rows : [] );
 	}
 
+	public function filesForRange( array $sourceIds, string $start, string $end, bool $includeHidden = false ): array {
+		global $wpdb;
+
+		$sourceIds = array_values( array_unique( array_map( 'strval', $sourceIds ) ) );
+		if ( [] === $sourceIds ) {
+			return [];
+		}
+
+		$table = Schema::filesTable();
+		$rows  = $wpdb->get_results( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				// The day column narrows the search with its index; the date column gives the exact bounds.
+				"SELECT * FROM {$table} WHERE effective_day >= %s AND effective_day <= %s AND effective_date >= %s AND effective_date <= %s AND missing_since IS NULL" . ( $includeHidden ? '' : ' AND hidden = 0' ) . " AND source_id IN (" . implode( ', ', array_fill( 0, count( $sourceIds ), '%s' ) ) . ') ORDER BY effective_date ASC, name ASC',
+				array_merge( [ substr( $start, 0, 10 ), substr( $end, 0, 10 ), $start, $end ], $sourceIds )
+			),
+			ARRAY_A
+		);
+
+		return array_map( [ self::class, 'typed' ], is_array( $rows ) ? $rows : [] );
+	}
+
 	public function setHidden( array $keys, bool $hidden, int $userId, int $now ): int {
 		global $wpdb;
 

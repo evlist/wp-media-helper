@@ -27,12 +27,12 @@ class PostDateMeta {
 	}
 
 	/**
-	 * A calendar day written Y-m-d, or an empty string.
+	 * A calendar day written Y-m-d or a window of dates and times (see DateWindow), as DateWindow writes it, or an empty string.
 	 *
 	 * @param mixed $value
 	 */
 	public static function clean( $value ): string {
-		return is_string( $value ) && 1 === preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $value, $day ) && checkdate( (int) $day[2], (int) $day[3], (int) $day[1] ) ? $value : '';
+		return is_string( $value ) ? DateWindow::normalize( $value, '' ) : '';
 	}
 
 	public function register(): void {

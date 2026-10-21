@@ -524,7 +524,10 @@ class MediaPanelState {
 			throw new InvalidArgumentException( 'Source identifier is required for media panel state.' );
 		}
 
-		$result    = $this->dayIndex()->forDay( array_merge( $source, [ 'id' => $sourceId ] ), $date, $force, $includeHidden );
+		// With an end, the window from the start to the end (dates and times); without one, the day.
+		$result    = null === $dateEnd
+			? $this->dayIndex()->forDay( array_merge( $source, [ 'id' => $sourceId ] ), $date, $force, $includeHidden )
+			: $this->dayIndex()->forRange( array_merge( $source, [ 'id' => $sourceId ] ), $date, $dateEnd, $force, $includeHidden );
 		$dateValue = $date->format( 'Y-m-d' );
 
 		return [

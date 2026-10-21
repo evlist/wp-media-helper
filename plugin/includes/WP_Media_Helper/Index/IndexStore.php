@@ -90,6 +90,16 @@ interface IndexStore {
 	public function filesForDay( array $sourceIds, string $day, bool $includeHidden = false ): array;
 
 	/**
+	 * The files whose effective date is within a window, oldest first.
+	 *
+	 * @param string[] $sourceIds
+	 * @param string   $start Y-m-d H:i:s, included.
+	 * @param string   $end   Y-m-d H:i:s, included.
+	 * @return array<int, array<string, mixed>> Rows like filesForDay().
+	 */
+	public function filesForRange( array $sourceIds, string $start, string $end, bool $includeHidden = false ): array;
+
+	/**
 	 * Hides or shows files, whatever the source: the flag is global to the site and kept
 	 * on the row of the file, so it survives the scans. Returns how many rows changed.
 	 *

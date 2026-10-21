@@ -187,6 +187,29 @@
 		return wpMediaHelperEditorPanel.postDate || publicationDay( editor.getEditedPostAttribute( 'status' ), editor.getEditedPostAttribute( 'date' ) ) || defaultDate;
 	};
 
+	// The date of the panel: a day, or a window written `start/end` with each end a day and an optional time (`2026-10-08T22:00/2026-10-09T06:00`).
+	const END_PATTERN = /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}:\d{2}))?$/;
+	const parseWindow = function ( value ) {
+		const parts = String( value || '' ).split( '/' );
+		const first = END_PATTERN.exec( parts[ 0 ] || '' );
+		if ( ! first ) {
+			return { from: '', fromTime: '', to: '', toTime: '', isRange: false };
+		}
+		if ( 1 === parts.length ) {
+			return { from: first[ 1 ], fromTime: '', to: first[ 1 ], toTime: '', isRange: false };
+		}
+		const second = END_PATTERN.exec( parts[ 1 ] || '' );
+
+		return { from: first[ 1 ], fromTime: first[ 2 ] || '', to: second ? second[ 1 ] : first[ 1 ], toTime: second && second[ 2 ] ? second[ 2 ] : '', isRange: true };
+	};
+	const composeWindow = function ( window ) {
+		if ( ! window.isRange ) {
+			return window.from;
+		}
+
+		return window.from + ( window.fromTime ? 'T' + window.fromTime : '' ) + '/' + ( window.to || window.from ) + ( window.toTime ? 'T' + window.toTime : '' );
+	};
+
 	const normalizeMediaItem = function ( item ) {
 		if ( 'string' === typeof item ) {
 			return {
@@ -1046,6 +1069,26 @@
 				} );
 			}
 		}, [ startDate ] );
+
+		// The date as a window (a day, or a start and an end), and whether the controls of a range are shown.
+		const dateWindow = parseWindow( filters.date );
+		const [ rangeOpen, setRangeOpen ] = useState( dateWindow.isRange );
+		useEffect( function () {
+			if ( dateWindow.isRange && ! rangeOpen ) {
+				setRangeOpen( true );
+			}
+		}, [ filters.date ] );
+		const changeWindow = function ( changes ) {
+			const next = Object.assign( {}, dateWindow, changes, { isRange: rangeOpen } );
+			if ( next.isRange && ( ! next.to || next.to < next.from ) && ! next.fromTime && ! next.toTime ) {
+				next.to = next.from;
+			}
+			setDate( composeWindow( next ) );
+		};
+		const toggleRange = function ( open ) {
+			setRangeOpen( open );
+			setDate( composeWindow( Object.assign( {}, dateWindow, { isRange: open, to: dateWindow.to || dateWindow.from } ) ) );
+		};
 
 		const setDate = function ( value ) {
 			setFiltersState( function ( currentFilters ) {
@@ -2626,10 +2669,37 @@
 					wp.element.createElement( 'div', { style: { width: '100%', borderTop: '1px solid #ddd', borderBottom: '1px solid #ddd', padding: '10px 0' } },
 						wp.element.createElement( 'h3', { style: { margin: '0 0 8px', color: '#50575e', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase' } }, __( 'Filters', 'wp-media-helper' ) ),
 						wp.element.createElement( TextControl, {
-							label: __( 'Date', 'wp-media-helper' ),
-							value: filters.date,
-							onChange: setDate,
+							label: rangeOpen ? __( 'From', 'wp-media-helper' ) : __( 'Date', 'wp-media-helper' ),
+							value: dateWindow.from,
+							onChange: function ( value ) { changeWindow( { from: value } ); },
 							type: 'date'
+						} ),
+						rangeOpen
+							? wp.element.createElement( 'div', null,
+								wp.element.createElement( TextControl, {
+									label: __( 'Time of the start (optional)', 'wp-media-helper' ),
+									value: dateWindow.fromTime,
+									onChange: function ( value ) { changeWindow( { fromTime: value } ); },
+									type: 'time'
+								} ),
+								wp.element.createElement( TextControl, {
+									label: __( 'To', 'wp-media-helper' ),
+									value: dateWindow.to,
+									onChange: function ( value ) { changeWindow( { to: value } ); },
+									type: 'date'
+								} ),
+								wp.element.createElement( TextControl, {
+									label: __( 'Time of the end (optional)', 'wp-media-helper' ),
+									value: dateWindow.toTime,
+									onChange: function ( value ) { changeWindow( { toTime: value } ); },
+									type: 'time'
+								} )
+							)
+							: null,
+						wp.element.createElement( CheckboxControl, {
+							label: __( 'Range of dates and times', 'wp-media-helper' ),
+							checked: rangeOpen,
+							onChange: function ( checked ) { toggleRange( !! checked ); }
 						} ),
 						wp.element.createElement( TextControl, {
 							label: __( 'Filename', 'wp-media-helper' ),

@@ -481,6 +481,14 @@ selection mode (a click then selects the tile) nor in the modal of the gallery b
 With a gallery block selected, *Insert in the content* adds the photos at the end of that gallery. The toolbar of the gallery block also has a button, *Add from the Media Helper panel*, that opens the panel (same filters and thumbnails) in a modal:
 choose photos and *Add to the gallery*. The number of images per row follows the width of the screen and there is always a choice: 1 or 2 on a narrow screen (a phone held upright), 1 to 3 up to 1000 px (a phone on its side), 3, 4, 6 or 8 above. The last choice is remembered, and the value shown is the closest one the screen offers (an 8 chosen on a computer shows 2 on a phone and is back at 8 on the computer).
 
+## A range of dates and times
+
+The *Date* filter is a day, as before. Ticking *Range of dates and times* shows the controls of a window: *From* (a date) and *To* (a date), each with an optional time. Without times the ends are whole days: a **range of dates** (8 to 12 October). With times it is
+**a part of a day** (8 October from 09:00 to 17:30: both dates the same) or **a span across days** (8 October 22:00 to 9 October 06:00, which a night or a trip needs). Without a *To* date the window is the day of *From*. Two ends in the wrong order are swapped. A time includes its whole minute.
+
+The panel lists the files whose date (the one the panel shows: name, embedded date or modification time) is in the window; a file dated by its day alone is counted at noon of that day. The window is kept for the post like a day, as one string: `2026-10-08`, `2026-10-08/2026-10-12`,
+`2026-10-08T09:00/2026-10-08T17:30`, `2026-10-08T22:00/2026-10-09T06:00` (`wp_media_helper_date`). Unticking the box goes back to the day of *From*.
+
 ## The day chosen for a post
 
 The day chosen in the *Date* filter is stored in the post's metadata (`wp_media_helper_date`) at once, by a request of its own (`wp_media_helper_post_date`), and not as an edit of the post: saving the post (a draft, an autosave) can then never write an older day back. The panel reads the day from the server when the editor opens and does not take it from the editor's copy of the post. Choosing today's date stores today like any other day. The key is declared protected (`is_protected_meta`): it does not appear in the *Custom Fields* box of the editor, whose form, loaded with an older day, would otherwise write it back at each save of the post.

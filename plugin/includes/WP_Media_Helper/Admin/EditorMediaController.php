@@ -1023,8 +1023,10 @@ class EditorMediaController {
 			fn () => $this->makeMediaFilters()->resolveUserPost( $postId, 'filename', '' ),
 			self::defaultAttachmentScope( ! empty( Methods::active( $postId )->capabilities()['multiple_posts'] ) )
 		);
-		$filters['date'] = MediaPanelState::normalizeDate( (string) $filters['date'], $legacyDate );
+		// The day, or a window of dates and times (see DateWindow).
+		$filters['date'] = DateWindow::normalize( (string) $filters['date'], $legacyDate );
 		$dateValue = $filters['date'];
+		$window = DateWindow::parse( $dateValue );
 		$maxEntries = $this->getMaxEntries();
 		$forceRefresh = ! empty( $_POST['force_refresh'] );
 		$selectedSources = self::resolveSourcesForFilter( $activeSources, $filters['source'] );
@@ -1067,7 +1069,8 @@ class EditorMediaController {
 			] );
 		}
 
-		$date = new DateTimeImmutable( $dateValue );
+		$date    = new DateTimeImmutable( $window['start'] ?? $dateValue );
+		$dateEnd = null !== $window && $window['is_window'] ? new DateTimeImmutable( $window['end'] ) : null;
 		$panelState = new MediaPanelState();
 		$includeHidden = ! empty( $filters['show_trash'] ) && TrashedFiles::canSeeTrash();
 		$filters['show_trash'] = $includeHidden;
@@ -1075,14 +1078,14 @@ class EditorMediaController {
 		foreach ( $selectedSources as $selected ) {
 			$sourceKey = (string) ( $selected['id'] ?? '' );
 			$results[] = $forceRefresh
-				? $panelState->requestRefresh( $selected, $date, $sourceKey, null, $includeHidden )
-				: $panelState->resolve( $selected, $date, $sourceKey, null, $includeHidden );
+				? $panelState->requestRefresh( $selected, $date, $sourceKey, $dateEnd, $includeHidden )
+				: $panelState->resolve( $selected, $date, $sourceKey, $dateEnd, $includeHidden );
 		}
 
 		$merged = [
 			'source_id' => 1 === count( $filters['source'] ) && 'all' !== $filters['source'][0] ? $filters['source'][0] : 'all',
 			'date' => $dateValue,
-			'date_range' => null,
+			'date_range' => null !== $window && $window['is_window'] ? [ 'start' => $window['start_day'], 'end' => $window['end_day'] ] : null,
 			'status' => 'fresh',
 			'refresh_required' => false,
 			'stale' => false,

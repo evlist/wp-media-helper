@@ -27,6 +27,7 @@ class DayIndex {
 	public const REASON_PAUSED     = 'index-paused';
 
 	private const HINT_SECONDS = 1.0;
+	private const HINT_DAYS    = 7;
 
 	private IndexStore $store;
 	private IndexManager $manager;
@@ -107,12 +108,45 @@ class DayIndex {
 	 * @return array{files:string[], hidden:string[], dimensions:array<string, array{0:int, 1:int}>, details:array<string, array{size:int, date:string|null, date_source:string}>, refresh_required:bool, stale:bool, reason:string|null}
 	 */
 	public function forDay( array $source, DateTimeInterface $date, bool $force = false, bool $includeHidden = false ): array {
+		return $this->read( $source, [ $date ], $force, fn ( array $ids ): array => $this->store->filesForDay( $ids, $date->format( 'Y-m-d' ), $includeHidden ) );
+	}
+
+	/**
+	 * The files whose date is within a window (dates and times), oldest first: a few days, a part of a day, a night across two days.
+	 *
+	 * @param array<string, mixed> $source
+	 * @return array{files:string[], hidden:string[], dimensions:array<string, array{0:int, 1:int}>, details:array<string, array{size:int, date:string|null, date_source:string}>, refresh_required:bool, stale:bool, reason:string|null}
+	 */
+	public function forRange( array $source, DateTimeInterface $start, DateTimeInterface $end, bool $force = false, bool $includeHidden = false ): array {
+		// The directories of the days of the window are looked at first (the first days only: a long window is left to the pass over the source).
+		$days = [];
+		$day  = new DateTimeImmutable( $start->format( 'Y-m-d' ), new DateTimeZone( 'UTC' ) );
+		$last = $end->format( 'Y-m-d' );
+		while ( count( $days ) < self::HINT_DAYS && $day->format( 'Y-m-d' ) <= $last ) {
+			$days[] = $day;
+			$day    = $day->modify( '+1 day' );
+		}
+
+		return $this->read( $source, $days, $force, fn ( array $ids ): array => $this->store->filesForRange( $ids, $start->format( 'Y-m-d H:i:s' ), $end->format( 'Y-m-d H:i:s' ), $includeHidden ) );
+	}
+
+	/**
+	 * @param array<string, mixed>     $source
+	 * @param DateTimeInterface[]      $days   The days whose directories are looked at first.
+	 * @param callable(string[]): array<int, array<string, mixed>> $rows
+	 * @return array{files:string[], hidden:string[], dimensions:array<string, array{0:int, 1:int}>, details:array<string, array{size:int, date:string|null, date_source:string}>, refresh_required:bool, stale:bool, reason:string|null}
+	 */
+	private function read( array $source, array $days, bool $force, callable $rows ): array {
 		$id = (string) ( $source['id'] ?? '' );
 		$this->manager->prepare( $source );
 		$indexed = $this->manager->isIndexed( $source );
 		$paused  = $this->manager->isPaused();
 
-		$directories = $this->hintDirectories( $source, $date, $indexed );
+		$directories = [];
+		foreach ( $days as $day ) {
+			$directories = array_merge( $directories, $this->hintDirectories( $source, $day, $indexed ) );
+		}
+		$directories = array_values( array_unique( $directories ) );
 		if ( [] !== $directories ) {
 			$this->manager->scanHints( $source, $directories, new ScanBudget( self::HINT_SECONDS ), $force );
 		}
@@ -124,7 +158,7 @@ class DayIndex {
 		$hidden     = [];
 		$dimensions = [];
 		$details    = [];
-		foreach ( $this->store->filesForDay( [ $id ], $date->format( 'Y-m-d' ), $includeHidden ) as $row ) {
+		foreach ( $rows( [ $id ] ) as $row ) {
 			$path    = $this->keys->absolute( (string) $row['path'] );
 			$files[] = $path;
 			if ( ! empty( $row['hidden'] ) ) {
