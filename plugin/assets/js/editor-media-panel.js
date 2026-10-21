@@ -348,9 +348,10 @@
 	};
 
 	// Can this item be inserted now? Photos, videos and subtitles (the server says so too).
-	const INSERTABLE_TYPES = Array.isArray( wpMediaHelperEditorPanel.insertTypes ) ? wpMediaHelperEditorPanel.insertTypes : [ 'image', 'video', 'subtitles' ];
+	const INSERTABLE_TYPES = [ 'image', 'video', 'subtitles' ];
+	const INSERTABLE_EXTENSIONS = Array.isArray( wpMediaHelperEditorPanel.insertExtensions ) ? wpMediaHelperEditorPanel.insertExtensions : [];
 	const canInsert = function ( item ) {
-		return !! wpMediaHelperEditorPanel.canUpload && INSERTABLE_TYPES.includes( item.media_type ) && ! item.is_trashed && ( item.can_import || item.is_imported );
+		return !! wpMediaHelperEditorPanel.canUpload && ( INSERTABLE_TYPES.includes( item.media_type ) || INSERTABLE_EXTENSIONS.includes( String( item.type || '' ).toLowerCase() ) ) && ! item.is_trashed && ( item.can_import || item.is_imported );
 	};
 
 	// The block under a point of the content, and where a drop there would insert, as `{ root, index, box, vertical, after }`.

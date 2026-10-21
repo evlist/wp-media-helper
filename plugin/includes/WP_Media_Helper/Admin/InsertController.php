@@ -8,6 +8,7 @@ use WP_Media_Helper\MediaSource\AttachmentRegistrar;
 use WP_Media_Helper\MediaSource\AttachmentRegistry;
 use WP_Media_Helper\MediaSource\PathConfinement;
 use WP_Media_Helper\Settings\ActiveSources;
+use WP_Media_Helper\Settings\InsertHandlers;
 
 /**
  * The answer to "what do I insert for these files?" (slice 051). The browser sends paths and sources only: the server confines them to
@@ -98,7 +99,7 @@ final class InsertController {
 		$images    = [];
 		$videos    = [];
 		$subtitles = [];
-		$gpx       = [];
+		$custom    = [];
 		// The blocks in the order of the first file of each kind: the photos are one gallery, each video is a block.
 		$order     = [];
 
@@ -149,9 +150,10 @@ final class InsertController {
 					$order[] = [ 'gallery' ];
 				}
 				$images[] = $data;
-			} elseif ( 'gps' === $mediaType ) {
-				$order[] = [ 'gpx', $data['key'] ];
-				$gpx[ $data['key'] ] = $data;
+			} elseif ( ! in_array( $mediaType, [ 'video', 'subtitles' ], true ) ) {
+				// A type with a template of the settings: the block of the template.
+				$order[] = [ 'custom', $data['key'] ];
+				$custom[ $data['key'] ] = $data;
 			} elseif ( 'video' === $mediaType ) {
 				$order[]  = [ 'video', $data['key'] ];
 				$videos[ $data['key'] ] = $data;
@@ -219,10 +221,11 @@ final class InsertController {
 				 * @param int                               $postId  The post being edited.
 				 */
 				$blocks[] = apply_filters( 'wp_media_helper_insert_block', InsertBlocks::gallery( $images ), $images, $postId );
-			} elseif ( 'gpx' === $entry[0] ) {
-				$block = InsertBlocks::gpx( $gpx[ $entry[1] ], $postId );
-				if ( null !== $block ) {
-					$blocks[] = $block;
+			} elseif ( 'custom' === $entry[0] ) {
+				$file     = $custom[ $entry[1] ];
+				$template = InsertHandlers::forExtension( strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) ) );
+				if ( null !== $template ) {
+					$blocks[] = InsertHandlers::block( $template, $file );
 				}
 			} else {
 				$blocks[] = InsertBlocks::video( $videos[ $entry[1] ], $tracks[ $entry[1] ] ?? [] );
@@ -240,7 +243,7 @@ final class InsertController {
 	private function fileData( int $attachmentId ): ?array {
 		$url = wp_get_attachment_url( $attachmentId );
 
-		return is_string( $url ) && '' !== $url ? [ 'id' => $attachmentId, 'url' => $url ] : null;
+		return is_string( $url ) && '' !== $url ? [ 'id' => $attachmentId, 'url' => $url, 'title' => get_the_title( $attachmentId ), 'mime' => (string) get_post_mime_type( $attachmentId ) ] : null;
 	}
 
 	/**

@@ -77,6 +77,16 @@ class GeneralSettings {
 	}
 
 	/**
+	 * The templates of the blocks inserted for some file types, as they were written (one line per extension), for the settings form.
+	 */
+	public function insertHandlersText(): string {
+		$stored = ( $this->loader )();
+		$value  = is_array( $stored ) ? ( $stored['insert_handlers'] ?? '' ) : '';
+
+		return is_string( $value ) ? $value : '';
+	}
+
+	/**
 	 * Extensions that are not listed, or the default list when nothing was saved.
 	 *
 	 * @return string[]
@@ -131,12 +141,18 @@ class GeneralSettings {
 		if ( [] !== $parsed['errors'] ) {
 			throw new \InvalidArgumentException( implode( ' ', $parsed['errors'] ) );
 		}
+		$handlersText = array_key_exists( 'insert_handlers', $values ) ? (string) $values['insert_handlers'] : $this->insertHandlersText();
+		$handlers     = InsertHandlers::parse( $handlersText );
+		if ( [] !== $handlers['errors'] ) {
+			throw new \InvalidArgumentException( implode( ' ', $handlers['errors'] ) );
+		}
 		$ignored = array_key_exists( 'ignored_extensions', $values ) ? (string) $values['ignored_extensions'] : $this->ignoredExtensionsText();
 
 		( $this->saver )(
 			[
 				'max_entries'        => (int) ( $values['max_entries'] ?? self::DEFAULT_MAX_ENTRIES ),
 				'additional_types'   => $additional,
+				'insert_handlers'    => $handlersText,
 				'ignored_extensions' => implode( ' ', FileTypes::parseExtensions( $ignored ) ),
 			]
 		);

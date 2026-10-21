@@ -6,6 +6,7 @@ namespace WP_Media_Helper\Admin;
 
 use WP_Media_Helper\Attachment\Methods;
 use WP_Media_Helper\MediaSource\FileTypes;
+use WP_Media_Helper\Settings\InsertHandlers;
 
 class EditorPanel {
 
@@ -29,8 +30,8 @@ class EditorPanel {
 			'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 			'sourceId' => '',
 			'canUpload' => current_user_can( 'upload_files' ),
-			// The types that can be inserted in the content: a GPX track only when a site gives a block for it.
-			'insertTypes' => has_filter( 'wp_media_helper_insert_gpx_block' ) ? [ 'image', 'video', 'subtitles', 'gps' ] : [ 'image', 'video', 'subtitles' ],
+			// The extensions that have a template of their own in the settings: they can be inserted in the content too.
+			'insertExtensions' => array_keys( InsertHandlers::all() ),
 			'canTrash' => TrashedFiles::canTrash(),
 			'canSeeTrash' => TrashedFiles::canSeeTrash(),
 			'fileTypes' => self::fileTypes(),

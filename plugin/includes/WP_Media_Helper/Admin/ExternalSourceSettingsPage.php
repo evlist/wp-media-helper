@@ -101,6 +101,7 @@ class ExternalSourceSettingsPage {
 		$generalSettings   = $this->loadGeneralSettings();
 		$ignoredExtensions = $generalSettings->ignoredExtensionsText();
 		$additionalTypes   = $generalSettings->additionalTypesText();
+		$insertHandlers    = $generalSettings->insertHandlersText();
 		// Stored sources outside the allowed base are reported as a warning instead.
 		$allowedBase = AllowedBase::resolve();
 		$enforceBase = null !== $pending;
@@ -279,6 +280,13 @@ class ExternalSourceSettingsPage {
 								<p class="description"><?php esc_html_e( 'File types that WordPress does not accept by default, one per line: an extension and a MIME type. They are accepted for every upload of the site, as well as for the files imported by this plugin. Types that can run code (php, js, html, svg, exe, and so on) are always refused.', 'wp-media-helper' ); ?></p>
 							</td>
 						</tr>
+						<tr>
+							<th scope="row"><label for="wp-media-helper-insert-handlers"><?php esc_html_e( 'Insertion in the content', 'wp-media-helper' ); ?></label></th>
+							<td>
+								<textarea id="wp-media-helper-insert-handlers" name="general[insert_handlers]" rows="4" cols="50" class="large-text code" placeholder="gpx {&quot;block&quot;: &quot;core/shortcode&quot;, &quot;attributes&quot;: {&quot;text&quot;: &quot;[sgpx gpx=\&quot;{url}\&quot;]&quot;}}"><?php echo esc_textarea( $insertHandlers ); ?></textarea>
+								<p class="description"><?php esc_html_e( 'What the action Insert in the content puts for a file type that has no block of its own (photos, videos and WebVTT subtitles have theirs). One line per extension: the extension, a space, and the block as a JSON object (block, attributes, innerBlocks). In the text, {id} is the attachment, {url} the address of the file, {name}, {title} and {mime}. For example a GPX track: a core/shortcode block with the shortcode of the track plugin. The file is registered in the Media Library if needed, never attached.', 'wp-media-helper' ); ?></p>
+							</td>
+						</tr>
 					</tbody>
 				</table>
 
@@ -454,7 +462,7 @@ class ExternalSourceSettingsPage {
 		try {
 			$settings->saveAll( $submitted );
 			$general = [ 'max_entries' => $submittedMaxEntries ];
-			foreach ( [ 'additional_types', 'ignored_extensions' ] as $field ) {
+			foreach ( [ 'additional_types', 'ignored_extensions', 'insert_handlers' ] as $field ) {
 				if ( is_array( $rawGeneral ) && isset( $rawGeneral[ $field ] ) && is_string( $rawGeneral[ $field ] ) ) {
 					$general[ $field ] = $rawGeneral[ $field ];
 				}

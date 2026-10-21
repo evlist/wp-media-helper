@@ -472,8 +472,9 @@ selection mode (a click then selects the tile) nor in the modal of the gallery b
 *Insert in the content* also works on videos (a video block each) and on WebVTT subtitle files (`.vtt`, in the `tracks` of a video block). When videos and subtitles are inserted together, a dialog shows which video each subtitle was paired with (by name: `film.fr.vtt` goes with
 `film.mp4`; with a single video it takes them all) and its language, to be checked or changed before inserting. Subtitles alone go to the video block selected in the editor. Files are registered in the Media Library when needed and never attached to the post.
 
-A **GPX track** is not inserted in the content: the theme shows the GPX files attached to the post (a block without attribute, in the place of the template), so attach it with the action *Attach*. A site that wants a block or a shortcode in the content gives it with the filter
-`wp_media_helper_insert_gpx_block( $block, $file, $postId )` (for example a `core/shortcode` block with `[sgpx gpx="…"]`); GPX tiles can then be inserted like the other types.
+**Other file types** (a GPX track, for example) are inserted with a template of the settings (*Insertion in the content*): one line per extension, the extension and the block as a JSON object, with `{id}`, `{url}`, `{name}`, `{title}` and `{mime}` for the file, for example
+`gpx {"block": "core/shortcode", "attributes": {"text": "[sgpx gpx=\"{url}\"]"}}`. Without a template a file of that type is not insertable: for a GPX track, which the theme shows from the files *attached* to the post, use the action *Attach*. The filter
+`wp_media_helper_insert_handlers` gives the templates from code.
 
 ## Adding photos to a gallery block
 

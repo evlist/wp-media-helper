@@ -194,16 +194,17 @@ a check that the template is valid JSON and the block registered, a **reset to t
 - **Subtitles without a video** in the request go to the video block selected in the editor; without one, the panel says to select the video too. A subtitle the dialog did not mention follows the names.
 - **Not done yet**: GPX, the table of handlers and its settings page, a poster, the other attributes of the video block (autoplay, loop), a subtitle file shared by several videos, `.srt` to `.vtt` conversion, a loading placeholder.
 
-## Third iteration: GPX tracks (implemented)
+## Third iteration: GPX tracks, and templates by extension (implemented)
 
-What the theme of the site does decides it: a GPX track is not a block of the content. The templates carry a block with no attribute (`create-wp-attached-gpx/wp-attached-gpx`) that shows the GPX files **attached** to the post (`get_attached_media( 'application/gpx+xml' )`, or `wp_media_helper_get_attached_media()` with Otherguise), in the
-place of the template (the column of the map, in print as on the web). So:
+What the theme of the site does decides the first half: the templates carry a block with no attribute (`create-wp-attached-gpx/wp-attached-gpx`) that shows the GPX files **attached** to the post (`get_attached_media( 'application/gpx+xml' )`, or `wp_media_helper_get_attached_media()` with Otherguise), in the
+place of the template (the column of the map, in print as on the web). Attaching a GPX file with the action *Attach* is therefore what shows it there. The second half is the same as for photos: *Insert in the content* puts **other** tracks in the text, and never attaches.
 
-- **Nothing is inserted in the content for a GPX file**, and the action *Insert in the content* is not offered on it: the track is shown by **attaching** it, with the action *Attach* of the panel (which registers it in the Media Library if needed and, with a method, takes its link values). Inserting it too would show it twice.
-- Called anyway (a bulk insertion with other files, the filter below), the server answers that message ("... attach it (action Attach) instead of inserting it in the content") and the panel shows it when only GPX files were selected.
-- **A site that wants a block or a shortcode in the content** gives it with the filter `wp_media_helper_insert_gpx_block( $block, $file, $postId )` (`$file`: `id`, `url`, `name`; `$block`: `block`, `attributes`, `innerBlocks`; for example a `core/shortcode` with `[sgpx gpx="…"]`). With that filter, GPX tiles are insertable like the other types.
-- The type must be allowed by WordPress (*Additional file types*: `gpx application/gpx+xml`) for the file to be attached.
-- The table of handlers by type and its settings page (see above) stay to do; this filter is what the settings will fill in.
+- **A template by extension**, written in the settings (*Insertion in the content*, one line per extension: the extension, a space, the block as a JSON object `{ "block", "attributes", "innerBlocks" }`) and changeable with the filter `wp_media_helper_insert_handlers`
+  (`Settings\InsertHandlers`, tested). In the strings: `{id}` (a number when it is the whole string), `{url}`, `{name}`, `{title}`, `{mime}`. For a GPX track the site chooses: a `core/shortcode` block (`[sgpx gpx="{url}"]`), or the block of the track plugin with its attribute. The lines are validated when the settings are saved.
+- Only the extensions that have a template are insertable (besides photos, videos and WebVTT subtitles, which have their own handling): the tile offers *Insert in the content*, the file is registered in the Media Library if needed, never attached, and the block is placed like the others (after the selected block, never inside a gallery).
+- **Without a template**, a GPX file is not insertable, and the server (or the panel, when only such files were selected) says: attach it, or give a template for `gpx` in the settings. Any other extension is refused as before.
+- The type must be allowed by WordPress (*Additional file types*: `gpx application/gpx+xml`) for the file to be registered.
+- Still to do: a friendlier editor for the templates than one line of JSON (a table by type with a choice of block), and dropping a file on a block that already exists.
 
 ## Ideas for later
 
