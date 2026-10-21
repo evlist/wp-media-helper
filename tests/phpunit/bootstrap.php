@@ -20,6 +20,22 @@ if ( ! function_exists( '_n' ) ) {
 	}
 }
 
+if ( ! function_exists( 'apply_filters' ) ) {
+	function apply_filters( string $hook, $value, ...$args ) {
+		foreach ( $GLOBALS['wpmh_test_filters'][ $hook ] ?? [] as $callback ) {
+			$value = $callback( $value, ...$args );
+		}
+
+		return $value;
+	}
+}
+
+if ( ! function_exists( 'has_filter' ) ) {
+	function has_filter( string $hook ) {
+		return ! empty( $GLOBALS['wpmh_test_filters'][ $hook ] );
+	}
+}
+
 spl_autoload_register( function ( string $class ): void {
 	$prefix = 'WP_Media_Helper\\';
 	$base   = __DIR__ . '/../../plugin/includes/WP_Media_Helper/';

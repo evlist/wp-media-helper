@@ -98,6 +98,7 @@ final class InsertController {
 		$images    = [];
 		$videos    = [];
 		$subtitles = [];
+		$gpx       = [];
 		// The blocks in the order of the first file of each kind: the photos are one gallery, each video is a block.
 		$order     = [];
 
@@ -148,6 +149,9 @@ final class InsertController {
 					$order[] = [ 'gallery' ];
 				}
 				$images[] = $data;
+			} elseif ( 'gps' === $mediaType ) {
+				$order[] = [ 'gpx', $data['key'] ];
+				$gpx[ $data['key'] ] = $data;
 			} elseif ( 'video' === $mediaType ) {
 				$order[]  = [ 'video', $data['key'] ];
 				$videos[ $data['key'] ] = $data;
@@ -215,6 +219,11 @@ final class InsertController {
 				 * @param int                               $postId  The post being edited.
 				 */
 				$blocks[] = apply_filters( 'wp_media_helper_insert_block', InsertBlocks::gallery( $images ), $images, $postId );
+			} elseif ( 'gpx' === $entry[0] ) {
+				$block = InsertBlocks::gpx( $gpx[ $entry[1] ], $postId );
+				if ( null !== $block ) {
+					$blocks[] = $block;
+				}
 			} else {
 				$blocks[] = InsertBlocks::video( $videos[ $entry[1] ], $tracks[ $entry[1] ] ?? [] );
 			}

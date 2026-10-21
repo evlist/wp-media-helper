@@ -76,11 +76,33 @@ final class InsertBlocks {
 	}
 
 	/**
+	 * The block for a GPX track, or null: none by default. The theme of the site shows the GPX files that are *attached* to the post
+	 * (a block with no attribute that lists them), so nothing is put in the content; a site that wants a block or a shortcode in the content
+	 * gives it with the filter `wp_media_helper_insert_gpx_block`.
+	 *
+	 * @param array{id:int, url:string, name:string} $file
+	 * @return array{block:string, attributes:array<string, mixed>, innerBlocks:array<int, array<string, mixed>>}|null
+	 */
+	public static function gpx( array $file, int $postId = 0 ): ?array {
+		$block = apply_filters( 'wp_media_helper_insert_gpx_block', null, $file, $postId );
+
+		return is_array( $block ) && isset( $block['block'] ) ? $block + [ 'attributes' => [], 'innerBlocks' => [] ] : null;
+	}
+
+	/**
 	 * Why a file cannot be inserted yet, or null when it can.
 	 */
 	public static function refusal( string $mediaType, string $name ): ?string {
 		if ( in_array( $mediaType, [ 'image', 'video' ], true ) ) {
 			return null;
+		}
+		if ( 'gps' === $mediaType && 'gpx' === strtolower( pathinfo( $name, PATHINFO_EXTENSION ) ) ) {
+			// Null when a site gives a block for it (the controller then asks `gpx()`).
+			return has_filter( 'wp_media_helper_insert_gpx_block' ) ? null : sprintf(
+				/* translators: %s: file name. */
+				__( '%s is a GPX track: the theme shows the tracks attached to the post, so attach it (action Attach) instead of inserting it in the content.', 'wp-media-helper' ),
+				$name
+			);
 		}
 		if ( 'subtitles' === $mediaType ) {
 			// The video element only reads WebVTT.

@@ -348,7 +348,7 @@
 	};
 
 	// Can this item be inserted now? Photos, videos and subtitles (the server says so too).
-	const INSERTABLE_TYPES = [ 'image', 'video', 'subtitles' ];
+	const INSERTABLE_TYPES = Array.isArray( wpMediaHelperEditorPanel.insertTypes ) ? wpMediaHelperEditorPanel.insertTypes : [ 'image', 'video', 'subtitles' ];
 	const canInsert = function ( item ) {
 		return !! wpMediaHelperEditorPanel.canUpload && INSERTABLE_TYPES.includes( item.media_type ) && ! item.is_trashed && ( item.can_import || item.is_imported );
 	};
@@ -1762,8 +1762,11 @@
 		// Subtitles along with videos: the proposal of the names is shown first, to be validated or changed.
 		const runInsert = function ( items, point, done ) {
 			const candidates = items.filter( function ( item ) { return canInsert( item ); } );
+			const tracks = items.filter( function ( item ) { return 'gps' === item.media_type && ! candidates.includes( item ); } );
 			if ( 0 === candidates.length ) {
-				setOperationNotice( __( 'Only photos, videos and subtitles can be inserted in the content for now.', 'wp-media-helper' ) );
+				setOperationNotice( tracks.length > 0
+					? __( 'A GPX track is shown by the theme from the files attached to the post: attach it (action Attach) instead of inserting it.', 'wp-media-helper' )
+					: __( 'Only photos, videos and subtitles can be inserted in the content for now.', 'wp-media-helper' ) );
 				return;
 			}
 

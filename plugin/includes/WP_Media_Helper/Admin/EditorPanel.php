@@ -29,6 +29,8 @@ class EditorPanel {
 			'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 			'sourceId' => '',
 			'canUpload' => current_user_can( 'upload_files' ),
+			// The types that can be inserted in the content: a GPX track only when a site gives a block for it.
+			'insertTypes' => has_filter( 'wp_media_helper_insert_gpx_block' ) ? [ 'image', 'video', 'subtitles', 'gps' ] : [ 'image', 'video', 'subtitles' ],
 			'canTrash' => TrashedFiles::canTrash(),
 			'canSeeTrash' => TrashedFiles::canSeeTrash(),
 			'fileTypes' => self::fileTypes(),

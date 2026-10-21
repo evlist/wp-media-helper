@@ -58,4 +58,27 @@ class InsertBlocksTest extends TestCase {
 		$this->assertSame( [ 'id' => 7, 'src' => 'https://e/clip.mp4', 'controls' => true, 'tracks' => [ [ 'src' => 'https://e/clip.fr.vtt', 'kind' => 'subtitles', 'label' => 'Français', 'srclang' => 'fr' ] ] ], $block['attributes'] );
 		$this->assertArrayNotHasKey( 'tracks', InsertBlocks::video( [ 'id' => 7, 'url' => 'u' ] )['attributes'] );
 	}
+
+	public function test_a_gpx_track_is_not_put_in_the_content_the_theme_shows_the_attached_ones(): void {
+		$message = (string) InsertBlocks::refusal( 'gps', 'trace.gpx' );
+
+		$this->assertTrue( str_contains( $message, 'trace.gpx' ) );
+		$this->assertTrue( str_contains( $message, 'Attach' ) );
+		$this->assertNull( InsertBlocks::gpx( [ 'id' => 5, 'url' => 'https://e/trace.gpx', 'name' => 'trace.gpx' ] ) );
+		// The other files of the family are not inserted either.
+		$this->assertNotNull( InsertBlocks::refusal( 'gps', 'trace.kml' ) );
+	}
+
+	public function test_a_site_can_give_a_block_for_a_gpx_track(): void {
+		$GLOBALS['wpmh_test_filters']['wp_media_helper_insert_gpx_block'][] = static fn ( $block, array $file ) => [ 'block' => 'core/shortcode', 'attributes' => [ 'text' => '[sgpx gpx="' . $file['url'] . '"]' ] ];
+		try {
+			$this->assertNull( InsertBlocks::refusal( 'gps', 'trace.gpx' ) );
+			$block = InsertBlocks::gpx( [ 'id' => 5, 'url' => 'https://e/trace.gpx', 'name' => 'trace.gpx' ] );
+			$this->assertSame( 'core/shortcode', $block['block'] );
+			$this->assertSame( [ 'text' => '[sgpx gpx="https://e/trace.gpx"]' ], $block['attributes'] );
+			$this->assertSame( [], $block['innerBlocks'] );
+		} finally {
+			unset( $GLOBALS['wpmh_test_filters']['wp_media_helper_insert_gpx_block'] );
+		}
+	}
 }
