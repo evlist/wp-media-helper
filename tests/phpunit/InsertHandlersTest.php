@@ -36,4 +36,10 @@ class InsertHandlersTest extends TestCase {
 		$this->assertSame( 'core/paragraph', $block['innerBlocks'][0]['block'] );
 		$this->assertSame( [ 'content' => 't.gpx' ], $block['innerBlocks'][0]['attributes'] );
 	}
+
+	public function test_the_saved_text_wins_and_nothing_is_assumed_without_the_gpx_plugin(): void {
+		$this->assertSame( 'gpx {"block":"a/b"}', InsertHandlers::textOf( [ 'insert_handlers' => 'gpx {"block":"a/b"}' ] ) );
+		$this->assertSame( '', InsertHandlers::textOf( [ 'insert_handlers' => '' ] ), 'Saved empty: no template.' );
+		$this->assertSame( '', InsertHandlers::textOf( [] ), 'Without the plugin of the GPX shortcode, no default.' );
+	}
 }

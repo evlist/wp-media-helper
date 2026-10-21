@@ -49,14 +49,28 @@ final class InsertHandlers {
 	}
 
 	/**
+	 * The text of the settings: what was saved, and, as long as nothing was ever saved, a template for the GPX tracks when the plugin WP GPX
+	 * Maps (shortcode `sgpx`) is active, which is the one that shows them.
+	 *
+	 * @param mixed $stored The general settings, as stored.
+	 */
+	public static function textOf( $stored ): string {
+		if ( is_array( $stored ) && isset( $stored['insert_handlers'] ) && is_string( $stored['insert_handlers'] ) ) {
+			return $stored['insert_handlers'];
+		}
+
+		return function_exists( 'shortcode_exists' ) && shortcode_exists( 'sgpx' )
+			? 'gpx {"block": "core/shortcode", "attributes": {"text": "[sgpx gpx=\\"{url}\\"]"}}'
+			: '';
+	}
+
+	/**
 	 * The handlers in use: those of the settings, then the filter.
 	 *
 	 * @return array<string, array<string, mixed>>
 	 */
 	public static function all(): array {
-		$stored   = get_option( GeneralSettings::optionKey(), [] );
-		$text     = is_array( $stored ) && isset( $stored['insert_handlers'] ) && is_string( $stored['insert_handlers'] ) ? $stored['insert_handlers'] : '';
-		$handlers = self::parse( $text )['handlers'];
+		$handlers = self::parse( self::textOf( get_option( GeneralSettings::optionKey(), [] ) ) )['handlers'];
 
 		/**
 		 * The templates of the blocks inserted for the files of a type, by extension.

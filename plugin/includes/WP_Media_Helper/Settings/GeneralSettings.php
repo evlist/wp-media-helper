@@ -80,10 +80,7 @@ class GeneralSettings {
 	 * The templates of the blocks inserted for some file types, as they were written (one line per extension), for the settings form.
 	 */
 	public function insertHandlersText(): string {
-		$stored = ( $this->loader )();
-		$value  = is_array( $stored ) ? ( $stored['insert_handlers'] ?? '' ) : '';
-
-		return is_string( $value ) ? $value : '';
+		return InsertHandlers::textOf( ( $this->loader )() );
 	}
 
 	/**

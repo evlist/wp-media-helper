@@ -474,7 +474,7 @@ selection mode (a click then selects the tile) nor in the modal of the gallery b
 
 **Other file types** (a GPX track, for example) are inserted with a template of the settings (*Insertion in the content*): one line per extension, the extension and the block as a JSON object, with `{id}`, `{url}`, `{name}`, `{title}` and `{mime}` for the file, for example
 `gpx {"block": "core/shortcode", "attributes": {"text": "[sgpx gpx=\"{url}\"]"}}`. Without a template a file of that type is not insertable: for a GPX track, which the theme shows from the files *attached* to the post, use the action *Attach*. The filter
-`wp_media_helper_insert_handlers` gives the templates from code.
+`wp_media_helper_insert_handlers` gives the templates from code. As long as the setting was never saved, a template for `gpx` is used when the plugin WP GPX Maps (shortcode `sgpx`) is active: a `core/shortcode` block with `[sgpx gpx="{url}"]`, the shortcode that the block `wp-attached-gpx` itself calls; the box of the setting shows it, and saving the setting (even empty) replaces it.
 
 ## Adding photos to a gallery block
 
