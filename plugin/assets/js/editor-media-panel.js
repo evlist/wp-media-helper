@@ -210,6 +210,13 @@
 		return window.from + ( window.fromTime ? 'T' + window.fromTime : '' ) + '/' + ( window.to || window.from ) + ( window.toTime ? 'T' + window.toTime : '' );
 	};
 
+	// The panel can be in several places at once (the sidebar, the floating window, the modal of the gallery block): the day or window of dates
+	// chosen in one is followed by the others, which keep their own list and selection.
+	const dateListeners = [];
+	const announceDate = function ( value, from ) {
+		dateListeners.slice().forEach( function ( listener ) { listener( value, from ); } );
+	};
+
 	const normalizeMediaItem = function ( item ) {
 		if ( 'string' === typeof item ) {
 			return {
@@ -1090,6 +1097,29 @@
 			setDate( composeWindow( Object.assign( {}, dateWindow, { isRange: open, to: dateWindow.to || dateWindow.from } ) ) );
 		};
 
+		// A date chosen in another view of the panel.
+		const instance = useRef( {} );
+		useEffect( function () {
+			const listener = function ( value, from ) {
+				if ( from === instance.current ) {
+					return;
+				}
+				setFiltersState( function ( currentFilters ) {
+					return currentFilters.date === value ? currentFilters : Object.assign( {}, currentFilters, { date: value } );
+				} );
+				setChosenDate( value );
+				setRangeOpen( parseWindow( value ).isRange );
+			};
+			dateListeners.push( listener );
+
+			return function () {
+				const at = dateListeners.indexOf( listener );
+				if ( at >= 0 ) {
+					dateListeners.splice( at, 1 );
+				}
+			};
+		}, [] );
+
 		const setDate = function ( value ) {
 			setFiltersState( function ( currentFilters ) {
 				return Object.assign( {}, currentFilters, { date: value } );
@@ -1099,6 +1129,9 @@
 			}
 
 			setChosenDate( value );
+			// What a view opened later starts from, and what the others show now.
+			wpMediaHelperEditorPanel.postDate = value;
+			announceDate( value, instance.current );
 			window.clearTimeout( dateSave.current );
 			dateSave.current = window.setTimeout( function () {
 				const postId = getCurrentPostId();

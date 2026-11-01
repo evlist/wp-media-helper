@@ -460,7 +460,7 @@ GPL-3.0-or-later — see [LICENSE](LICENSE).
 ## The floating window
 
 *Open in a floating window* (at the top of the sidebar panel, or in the options menu of the editor, ⋮) shows the same panel in a window over the editor: it is moved by its title bar, resized by its corner, closed by its ×, and the browser remembers its place and size. Handy to keep the photos
-at hand next to the content (a second screen, the print version of a post). It is the same code in the same page as the sidebar, so inserting, attaching, the filters and the dialogs work as there; its list and selection are its own. It offers 1, 2, 3, 4 or 6 images per row.
+at hand next to the content (a second screen, the print version of a post). It is the same code in the same page as the sidebar, so inserting, attaching, the filters and the dialogs work as there; its list and selection are its own. The day or window of dates chosen in one view (sidebar, floating window, modal of the gallery block) is followed at once by the others. It offers 1, 2, 3, 4 or 6 images per row.
 
 ## Changing the modes of a link from its badges
 
