@@ -80,4 +80,15 @@ class GeneralSettingsTest extends TestCase {
 			}
 		}
 	}
+
+	public function test_the_ignored_directories_are_names_only(): void {
+		$saved = null;
+		$settings = $this->settings( [], $saved );
+		$this->assertSame( [], $settings->getIgnoredDirectories() );
+
+		$settings->save( [ 'max_entries' => 100, 'ignored_directories' => "thumbs, .thumbs;THUMBS\na/b .. . x\\y" ] );
+
+		$this->assertSame( 'thumbs .thumbs', $saved['ignored_directories'], 'A name once (whatever the case), no path, no dot names.' );
+		$this->assertSame( [ 'thumbs', '.thumbs' ], $this->settings( $saved )->getIgnoredDirectories() );
+	}
 }

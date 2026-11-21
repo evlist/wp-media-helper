@@ -108,6 +108,21 @@ class IndexScannerTest extends TestCase {
 		$this->assertSame( [ '20261002_121549.jpg' ], $this->day( '2026-10-02' ) );
 	}
 
+	public function test_directories_named_in_the_setting_are_not_entered_and_their_files_leave_the_index(): void {
+		mkdir( $this->root . '/2026/10/02/thumbs', 0755, true );
+		mkdir( $this->root . '/2026/10/03/Thumbs/deeper', 0755, true );
+		touch( $this->root . '/2026/10/02/thumbs/20261002_121549_t.jpg' );
+		touch( $this->root . '/2026/10/03/Thumbs/deeper/20261003_100000_t.jpg' );
+		$this->pass();
+		$this->assertContains( '20261002_121549_t.jpg', $this->day( '2026-10-02' ), 'Listed while the setting is empty.' );
+
+		$this->pass( true, [ 'ignored_directories' => [ 'thumbs' ] ] );
+
+		$this->assertNotContains( '20261002_121549_t.jpg', $this->day( '2026-10-02' ) );
+		$this->assertNotContains( '20261003_100000_t.jpg', $this->day( '2026-10-03' ), 'Whatever the case of the name, and below it.' );
+		$this->assertSame( [ '20261002_121549.jpg' ], $this->day( '2026-10-02' ), 'The other files stay.' );
+	}
+
 	public function test_a_first_scan_indexes_files_with_their_dates_and_ignores_links_and_dot_files(): void {
 		$result = $this->pass();
 

@@ -100,6 +100,7 @@ class ExternalSourceSettingsPage {
 		$maxEntries = null !== $pending && null !== $pending['max_entries'] ? $pending['max_entries'] : (string) $this->loadGeneralSettings()->getMaxEntries();
 		$generalSettings   = $this->loadGeneralSettings();
 		$ignoredExtensions = $generalSettings->ignoredExtensionsText();
+		$ignoredDirectories = $generalSettings->ignoredDirectoriesText();
 		$additionalTypes   = $generalSettings->additionalTypesText();
 		$insertHandlers    = $generalSettings->insertHandlersText();
 		$placesUrl         = $generalSettings->placesValue( 'places_url' );
@@ -275,6 +276,13 @@ class ExternalSourceSettingsPage {
 							<td>
 								<textarea id="wp-media-helper-ignored-extensions" name="general[ignored_extensions]" rows="2" cols="50" class="large-text code"><?php echo esc_textarea( $ignoredExtensions ); ?></textarea>
 								<p class="description"><?php esc_html_e( 'Extensions, separated by spaces, that the plugin never lists nor counts (temporary files, partial downloads, databases of thumbnails). Changing this list re-reads the sources.', 'wp-media-helper' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row"><label for="wp-media-helper-ignored-directories"><?php esc_html_e( 'Directories that are not listed', 'wp-media-helper' ); ?></label></th>
+							<td>
+								<textarea id="wp-media-helper-ignored-directories" name="general[ignored_directories]" rows="2" cols="50" class="large-text code" placeholder="thumbs"><?php echo esc_textarea( $ignoredDirectories ); ?></textarea>
+								<p class="description"><?php esc_html_e( 'Names of directories, separated by spaces, that the plugin never enters, wherever they are below a source: for example thumbs for the thumbnails that a gallery plugin keeps in a sub-directory of each gallery. A name only (no slash, no wildcard), whatever the case. Their files disappear from the index at the next pass. Changing this list re-reads the sources.', 'wp-media-helper' ); ?></p>
 							</td>
 						</tr>
 						<tr>
@@ -495,7 +503,7 @@ class ExternalSourceSettingsPage {
 		try {
 			$settings->saveAll( $submitted );
 			$general = [ 'max_entries' => $submittedMaxEntries ];
-			foreach ( [ 'additional_types', 'ignored_extensions', 'insert_handlers', 'places_url', 'places_contact', 'places_language', 'places_rate' ] as $field ) {
+			foreach ( [ 'additional_types', 'ignored_extensions', 'ignored_directories', 'insert_handlers', 'places_url', 'places_contact', 'places_language', 'places_rate' ] as $field ) {
 				if ( is_array( $rawGeneral ) && isset( $rawGeneral[ $field ] ) && is_string( $rawGeneral[ $field ] ) ) {
 					$general[ $field ] = $rawGeneral[ $field ];
 				}

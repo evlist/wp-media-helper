@@ -103,6 +103,22 @@ class GeneralSettings {
 		return FileTypes::parseExtensions( $this->ignoredExtensionsText() );
 	}
 
+	/**
+	 * Names of directories that are not listed, wherever they are below a source (a thumbnails folder of a gallery plugin, for example).
+	 *
+	 * @return string[]
+	 */
+	public function getIgnoredDirectories(): array {
+		return FileTypes::parseDirectoryNames( $this->ignoredDirectoriesText() );
+	}
+
+	public function ignoredDirectoriesText(): string {
+		$stored = ( $this->loader )();
+		$value  = is_array( $stored ) ? ( $stored['ignored_directories'] ?? '' ) : '';
+
+		return is_string( $value ) ? $value : '';
+	}
+
 	public function ignoredExtensionsText(): string {
 		$stored = ( $this->loader )();
 		$value  = is_array( $stored ) ? ( $stored['ignored_extensions'] ?? null ) : null;
@@ -167,6 +183,7 @@ class GeneralSettings {
 		if ( '' !== $places['places_language'] && PlacesSettings::cleanLanguage( $places['places_language'] ) !== str_replace( '_', '-', $places['places_language'] ) ) {
 			throw new \InvalidArgumentException( __( 'The language of the places must be a language tag such as fr, en or pt-BR.', 'wp-media-helper' ) );
 		}
+		$directories = array_key_exists( 'ignored_directories', $values ) ? (string) $values['ignored_directories'] : $this->ignoredDirectoriesText();
 		$ignored = array_key_exists( 'ignored_extensions', $values ) ? (string) $values['ignored_extensions'] : $this->ignoredExtensionsText();
 
 		( $this->saver )(
@@ -176,6 +193,7 @@ class GeneralSettings {
 				'insert_handlers'    => $handlersText,
 			] + $places + [
 				'ignored_extensions' => implode( ' ', FileTypes::parseExtensions( $ignored ) ),
+				'ignored_directories' => implode( ' ', FileTypes::parseDirectoryNames( $directories ) ),
 			]
 		);
 	}

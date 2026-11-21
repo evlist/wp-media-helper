@@ -112,6 +112,7 @@ class IndexScanner {
 			'full'      => $full,
 			'exclusions' => $exclusions,
 			'ignored'    => array_values( array_filter( array_map( 'strval', (array) ( $source['ignored_extensions'] ?? [] ) ) ) ),
+			'ignored_dirs' => array_values( array_map( 'strtolower', array_filter( array_map( 'strval', (array) ( $source['ignored_directories'] ?? [] ) ) ) ) ),
 			'patterns'  => FileDates::patterns( $source ),
 			'fallback'  => FileDates::usesMtimeFallback( $source ),
 			'stats'     => [ 'read' => 0, 'unchanged' => 0, 'added' => 0, 'updated' => 0, 'missing' => 0 ],
@@ -220,7 +221,8 @@ class IndexScanner {
 			}
 			if ( is_dir( $path ) ) {
 				// Trees owned by another source, and the thumbnail caches, are not entered.
-				if ( ! SourceOwnership::isExcluded( $path, $context['exclusions'] ) ) {
+				// ... nor the directories whose name is in the setting (a thumbnails folder of a gallery plugin).
+				if ( ! SourceOwnership::isExcluded( $path, $context['exclusions'] ) && ! in_array( strtolower( (string) $name ), $context['ignored_dirs'], true ) ) {
 					$subdirectories[ $name ] = $path;
 				}
 			} elseif ( is_file( $path ) ) {

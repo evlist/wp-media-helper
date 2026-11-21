@@ -481,6 +481,11 @@ selection mode (a click then selects the tile) nor in the modal of the gallery b
 With a gallery block selected, *Insert in the content* adds the photos at the end of that gallery. The toolbar of the gallery block also has a button, *Add from the Media Helper panel*, that opens the panel (same filters and thumbnails) in a modal:
 choose photos and *Add to the gallery*. The number of images per row follows the width of the screen and there is always a choice: 1 or 2 on a narrow screen (a phone held upright), 1 to 3 up to 1000 px (a phone on its side), 3, 4, 6 or 8 above. The last choice is remembered, and the value shown is the closest one the screen offers (an 8 chosen on a computer shows 2 on a phone and is back at 8 on the computer).
 
+## Directories that are not listed
+
+Next to *Files that are not listed* (extensions), the setting *Directories that are not listed* takes **names of directories** (`thumbs`): any directory of that name, at any depth below a source, is never entered (whatever the case of the name), and what was indexed in it disappears at the next pass. It is meant for the thumbnails that
+a gallery plugin keeps in a sub-directory of each gallery (NextGEN: `wp-content/gallery/<gallery>/thumbs`). A name only: no slash, no wildcard. Empty by default.
+
 ## Where the files were taken (GPS)
 
 A background pass of its own (`wp_media_helper_geo_run`, started after the pass over the sources, own lock, 15 s) reads, once, the GPS of the photographs (`jpg`, `jpeg`, `tif`, `tiff`: EXIF `exif_read_data`) and, for a GPX track, its **start and end points chosen by the time of the points** (not the order of the file, not the

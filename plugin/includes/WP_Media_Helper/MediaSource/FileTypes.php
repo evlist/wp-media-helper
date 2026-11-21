@@ -165,6 +165,24 @@ final class FileTypes {
 	}
 
 	/**
+	 * The names of directories written in a setting, separated by spaces, commas, semicolons or line breaks: a name only (no `/`, no `.` or `..`, no
+	 * wildcard), kept as it was written, without duplicates (a name is matched whatever the case).
+	 *
+	 * @return string[]
+	 */
+	public static function parseDirectoryNames( string $text ): array {
+		$list = [];
+		foreach ( preg_split( '/[\s,;]+/', $text, -1, PREG_SPLIT_NO_EMPTY ) ?: [] as $item ) {
+			if ( '.' === $item || '..' === $item || str_contains( $item, '/' ) || str_contains( $item, '\\' ) || str_contains( $item, "\0" ) || strlen( $item ) > 100 ) {
+				continue;
+			}
+			$list[ strtolower( $item ) ] ??= $item;
+		}
+
+		return array_values( $list );
+	}
+
+	/**
 	 * Takes the dangerous types out of a `upload_mimes` list (the keys are `jpg|jpeg` style patterns).
 	 *
 	 * @param array<string, string> $mimes
