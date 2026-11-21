@@ -5,6 +5,7 @@
 namespace WP_Media_Helper\Admin;
 
 use WP_Media_Helper\Cli\AttachmentsCommand;
+use WP_Media_Helper\Cli\GeoCommand;
 use WP_Media_Helper\Cli\IndexCommand;
 use WP_Media_Helper\Cli\MediaHelperCommand;
 use WP_Media_Helper\Cli\PathsCommand;
@@ -21,11 +22,14 @@ class Bootstrap {
 	public static function init(): void {
 		Schema::maybeUpgrade();
 		Cron::register();
+		\WP_Media_Helper\Geo\GeoCron::register();
+		\WP_Media_Helper\Geo\GeoFilter::register();
 		MediaHelperCommand::register();
 		PathsCommand::register();
 		SourceCommand::register();
 		IndexCommand::register();
 		AttachmentsCommand::register();
+		GeoCommand::register();
 		ThumbnailsCommand::register();
 		AdditionalTypes::register();
 		OrphanCheck::register();

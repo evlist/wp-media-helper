@@ -108,6 +108,41 @@ interface IndexStore {
 	public function setHidden( array $keys, bool $hidden, int $userId, int $now ): int;
 
 	/**
+	 * The files with this key (the path relative to the uploads directory, or absolute outside it), with their date and position, from any source.
+	 *
+	 * @param string[] $keys
+	 * @return array<int, array<string, mixed>> Rows with `path`, `kind`, `effective_date`, `name_date_precision`, `date_source`, `geo_state`, `gps_lat`, `gps_lon`, `gps_end_lat`, `gps_end_lon`, `track_start_at`, `track_end_at`.
+	 */
+	public function geoRowsByKeys( array $keys ): array;
+
+	/**
+	 * The files whose position was not read yet (state 0), newest first.
+	 *
+	 * @return array<int, array<string, mixed>> Rows with `id`, `source_id`, `path` (the key), `name`, `ext`, `kind`.
+	 */
+	public function filesNeedingGeo( int $limit ): array;
+
+	/**
+	 * Records what was read for a file: `geo_state` (1 with a position, 2 without) and, for a position, `gps_lat`, `gps_lon` and, for a track,
+	 * `gps_end_lat`, `gps_end_lon`, `track_start_at`, `track_end_at`.
+	 *
+	 * @param array<string, mixed> $geo
+	 */
+	public function saveGeo( int $fileId, array $geo ): void;
+
+	/**
+	 * Forgets what was read (state back to 0, positions cleared), for one source or for all.
+	 */
+	public function resetGeo( ?string $sourceId = null ): int;
+
+	/**
+	 * Number of files by state of the reading of the position (0, 1, 2), not counting the missing ones.
+	 *
+	 * @return array<int, int>
+	 */
+	public function geoCounts(): array;
+
+	/**
 	 * The keys, among those given, of files that are hidden.
 	 *
 	 * @param string[] $keys

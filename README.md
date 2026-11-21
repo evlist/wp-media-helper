@@ -481,6 +481,13 @@ selection mode (a click then selects the tile) nor in the modal of the gallery b
 With a gallery block selected, *Insert in the content* adds the photos at the end of that gallery. The toolbar of the gallery block also has a button, *Add from the Media Helper panel*, that opens the panel (same filters and thumbnails) in a modal:
 choose photos and *Add to the gallery*. The number of images per row follows the width of the screen and there is always a choice: 1 or 2 on a narrow screen (a phone held upright), 1 to 3 up to 1000 px (a phone on its side), 3, 4, 6 or 8 above. The last choice is remembered, and the value shown is the closest one the screen offers (an 8 chosen on a computer shows 2 on a phone and is back at 8 on the computer).
 
+## Where the files were taken (GPS)
+
+A background pass of its own (`wp_media_helper_geo_run`, started after the pass over the sources, own lock, 15 s) reads, once, the GPS of the photographs (`jpg`, `jpeg`, `tif`, `tiff`: EXIF `exif_read_data`) and, for a GPX track, its **start and end points chosen by the time of the points** (not the order of the file, not the
+time of the metadata); a file is read again only when its size or time changed. Nothing is sent anywhere. `wp media-helper geo status` counts the files by state and `wp media-helper geo run [--limit=<n>] [--reset]` reads now. The filter `wp_media_helper_read_gps` (default true) turns the reading off. Coordinates stay in the
+database and are not printed in public pages. The code of the site (the module Index of Otherguise) reads the result with `wp_media_helper_get_file_geo( $address )` (the filter `wp_media_helper_file_geo`): see slice 052. Files outside the uploads directory (for example `wp-content/gallery` of NextGEN) are read when a source covers them, with
+`WP_MEDIA_HELPER_ALLOWED_BASE` set to `WP_CONTENT_DIR` in `wp-config.php`; they cannot be registered in the media library.
+
 ## A range of dates and times
 
 The *Date* filter is a day, as before. Ticking *Range of dates and times* shows the controls of a window: *From* (a date) and *To* (a date), each with an optional time. Without times the ends are whole days: a **range of dates** (8 to 12 October). With times it is

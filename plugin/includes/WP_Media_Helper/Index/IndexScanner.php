@@ -317,6 +317,10 @@ class IndexScanner {
 				'date_source'         => $dates['source'],
 				'missing_since'       => null,
 			];
+			// A file that changed is read again for its position.
+			if ( (int) $row['size'] !== $file['size'] || (int) $row['mtime'] !== $file['mtime'] ) {
+				$fields['geo_state'] = 0;
+			}
 			if ( $this->differs( $row, $fields ) ) {
 				$this->store->updateFile( (int) $row['id'], $fields, $now );
 				++$context['stats']['updated'];

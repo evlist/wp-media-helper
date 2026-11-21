@@ -64,6 +64,8 @@ class Cron {
 		if ( $more ) {
 			self::schedule( 5 );
 		}
+		// New or changed files: their position is read by a pass of its own.
+		\WP_Media_Helper\Geo\GeoCron::schedule( 5 );
 	}
 
 	public static function maintain(): void {
@@ -74,11 +76,13 @@ class Cron {
 		$manager = DayIndex::forWordPress()->manager();
 		$manager->forgetUnknownSources( ActiveSources::configuredIds() );
 		$manager->requestDuePasses( ActiveSources::all() );
+		\WP_Media_Helper\Geo\GeoCron::schedule( 60 );
 	}
 
 	public static function clear(): void {
 		wp_clear_scheduled_hook( self::RUN_HOOK );
 		wp_clear_scheduled_hook( self::MAINTENANCE_HOOK );
+		\WP_Media_Helper\Geo\GeoCron::clear();
 	}
 
 	/**

@@ -53,3 +53,18 @@ if ( ! function_exists( 'wp_media_helper_get_attached_media' ) ) {
 		return array_values( array_unique( array_filter( array_map( 'intval', $ids ), static fn ( int $id ): bool => $id > 0 ) ) );
 	}
 }
+
+if ( ! function_exists( 'wp_media_helper_get_file_geo' ) ) {
+	/**
+	 * Where a file was taken, as far as Media Helper knows (slice 052): the position of a photograph, the start and the end of a GPX track, the date
+	 * to the second and, when the places are on, the place. Null when the plugin does not know the file. For the code of the site only: never print it in a public page.
+	 *
+	 * @param string $address A path, the URL of an original, or the URL of a thumbnail of the cache.
+	 * @return array<string, mixed>|null
+	 */
+	function wp_media_helper_get_file_geo( string $address ): ?array {
+		$geo = apply_filters( 'wp_media_helper_file_geo', null, $address );
+
+		return is_array( $geo ) ? $geo : null;
+	}
+}

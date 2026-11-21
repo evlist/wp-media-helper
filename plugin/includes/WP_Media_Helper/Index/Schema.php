@@ -9,7 +9,7 @@ namespace WP_Media_Helper\Index;
  */
 class Schema {
 
-	public const VERSION        = 2;
+	public const VERSION        = 3;
 	public const VERSION_OPTION = 'wp_media_helper_index_db_version';
 
 	public static function directoriesTable(): string {
@@ -68,6 +68,13 @@ class Schema {
   effective_date datetime DEFAULT NULL,
   effective_day date DEFAULT NULL,
   date_source varchar(10) NOT NULL DEFAULT 'none',
+  gps_lat decimal(9,6) DEFAULT NULL,
+  gps_lon decimal(9,6) DEFAULT NULL,
+  gps_end_lat decimal(9,6) DEFAULT NULL,
+  gps_end_lon decimal(9,6) DEFAULT NULL,
+  track_start_at datetime DEFAULT NULL,
+  track_end_at datetime DEFAULT NULL,
+  geo_state tinyint(3) unsigned NOT NULL DEFAULT 0,
   hidden tinyint(1) unsigned NOT NULL DEFAULT 0,
   hidden_by bigint(20) unsigned DEFAULT NULL,
   hidden_at bigint(20) unsigned DEFAULT NULL,
@@ -78,7 +85,8 @@ class Schema {
   UNIQUE KEY source_path (source_id,path_hash),
   KEY day (effective_day,hidden),
   KEY source_day (source_id,effective_day),
-  KEY dir_id (dir_id)
+  KEY dir_id (dir_id),
+  KEY geo (geo_state,kind)
 ) {$charsetCollate};",
 		];
 	}

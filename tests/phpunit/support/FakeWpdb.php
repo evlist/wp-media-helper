@@ -35,7 +35,8 @@ class FakeWpdb {
 			size INTEGER NOT NULL DEFAULT 0, mtime INTEGER NOT NULL DEFAULT 0, name_date TEXT DEFAULT NULL,
 			name_date_precision TEXT DEFAULT NULL, embedded_date TEXT DEFAULT NULL, embedded_state INTEGER NOT NULL DEFAULT 0,
 			date_override TEXT DEFAULT NULL, effective_date TEXT DEFAULT NULL, effective_day TEXT DEFAULT NULL,
-			date_source TEXT NOT NULL DEFAULT 'none', hidden INTEGER NOT NULL DEFAULT 0, hidden_by INTEGER DEFAULT NULL,
+			date_source TEXT NOT NULL DEFAULT 'none', gps_lat REAL DEFAULT NULL, gps_lon REAL DEFAULT NULL, gps_end_lat REAL DEFAULT NULL, gps_end_lon REAL DEFAULT NULL,
+			track_start_at TEXT DEFAULT NULL, track_end_at TEXT DEFAULT NULL, geo_state INTEGER NOT NULL DEFAULT 0, hidden INTEGER NOT NULL DEFAULT 0, hidden_by INTEGER DEFAULT NULL,
 			hidden_at INTEGER DEFAULT NULL, first_seen INTEGER NOT NULL DEFAULT 0, last_seen INTEGER NOT NULL DEFAULT 0,
 			missing_since INTEGER DEFAULT NULL)" );
 		$this->pdo->exec( 'CREATE UNIQUE INDEX files_source_path ON wp_media_helper_files (source_id, path_hash)' );

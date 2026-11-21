@@ -14,12 +14,12 @@ class WpdbIndexStore implements IndexStore {
 
 	private const INSERT_CHUNK = 100;
 
-	private const INTEGER_COLUMNS = [ 'id', 'parent_id', 'dir_id', 'mtime', 'scanned_run', 'queued_run', 'last_scanned', 'missing_since', 'size', 'first_seen', 'last_seen', 'hidden', 'hidden_by', 'hidden_at', 'embedded_state', 'width', 'height' ];
+	private const INTEGER_COLUMNS = [ 'id', 'parent_id', 'dir_id', 'mtime', 'scanned_run', 'queued_run', 'last_scanned', 'missing_since', 'size', 'first_seen', 'last_seen', 'hidden', 'hidden_by', 'hidden_at', 'embedded_state', 'geo_state', 'width', 'height' ];
 
 	/**
 	 * Columns a scan may update on a file.
 	 */
-	private const UPDATABLE_FILE_COLUMNS = [ 'size', 'mtime', 'name_date', 'name_date_precision', 'embedded_date', 'embedded_state', 'width', 'height', 'effective_date', 'effective_day', 'date_source', 'missing_since' ];
+	private const UPDATABLE_FILE_COLUMNS = [ 'size', 'mtime', 'name_date', 'name_date_precision', 'embedded_date', 'embedded_state', 'width', 'height', 'effective_date', 'effective_day', 'date_source', 'geo_state', 'missing_since' ];
 
 	public function findDirectory( string $sourceId, string $key ): ?array {
 		global $wpdb;
@@ -310,6 +310,79 @@ class WpdbIndexStore implements IndexStore {
 		return array_map( [ self::class, 'typed' ], is_array( $rows ) ? $rows : [] );
 	}
 
+	private const GEO_COLUMNS = [ 'gps_lat', 'gps_lon', 'gps_end_lat', 'gps_end_lon', 'track_start_at', 'track_end_at', 'geo_state' ];
+
+	public function filesNeedingGeo( int $limit ): array {
+		global $wpdb;
+
+		$table = Schema::filesTable();
+		$rows  = $wpdb->get_results( // phpcs:ignore WordPress.DB
+			$wpdb->prepare( "SELECT id, source_id, path, name, ext, kind FROM {$table} WHERE geo_state = 0 AND missing_since IS NULL ORDER BY effective_date DESC, id DESC LIMIT %d", max( 1, $limit ) ),
+			ARRAY_A
+		);
+
+		return array_map( [ self::class, 'typed' ], is_array( $rows ) ? $rows : [] );
+	}
+
+	public function saveGeo( int $fileId, array $geo ): void {
+		global $wpdb;
+
+		$data = array_intersect_key( $geo, array_flip( self::GEO_COLUMNS ) );
+		if ( ! isset( $data['geo_state'] ) ) {
+			return;
+		}
+		// A position that was not read is cleared, so that a file read again without one does not keep an old position.
+		foreach ( self::GEO_COLUMNS as $column ) {
+			$data[ $column ] = $data[ $column ] ?? null;
+		}
+		$data['geo_state'] = (int) $data['geo_state'];
+
+		$wpdb->update( Schema::filesTable(), $data, [ 'id' => $fileId ] ); // phpcs:ignore WordPress.DB
+	}
+
+	public function resetGeo( ?string $sourceId = null ): int {
+		global $wpdb;
+
+		$table = Schema::filesTable();
+		$set   = "geo_state = 0, gps_lat = NULL, gps_lon = NULL, gps_end_lat = NULL, gps_end_lon = NULL, track_start_at = NULL, track_end_at = NULL";
+		$query = null === $sourceId ? "UPDATE {$table} SET {$set} WHERE geo_state <> 0" : $wpdb->prepare( "UPDATE {$table} SET {$set} WHERE geo_state <> 0 AND source_id = %s", $sourceId ); // phpcs:ignore WordPress.DB
+
+		return (int) $wpdb->query( $query ); // phpcs:ignore WordPress.DB
+	}
+
+	public function geoCounts(): array {
+		global $wpdb;
+
+		$table  = Schema::filesTable();
+		$rows   = $wpdb->get_results( "SELECT geo_state, COUNT(*) AS total FROM {$table} WHERE missing_since IS NULL GROUP BY geo_state", ARRAY_A ); // phpcs:ignore WordPress.DB
+		$counts = [ 0 => 0, 1 => 0, 2 => 0 ];
+		foreach ( is_array( $rows ) ? $rows : [] as $row ) {
+			$counts[ (int) $row['geo_state'] ] = (int) $row['total'];
+		}
+
+		return $counts;
+	}
+
+	public function geoRowsByKeys( array $keys ): array {
+		global $wpdb;
+
+		$hashes = array_values( array_unique( array_map( static fn ( $key ): string => sha1( (string) $key ), $keys ) ) );
+		if ( [] === $hashes ) {
+			return [];
+		}
+
+		$table = Schema::filesTable();
+		$rows  = $wpdb->get_results( // phpcs:ignore WordPress.DB
+			$wpdb->prepare(
+				"SELECT path, kind, effective_date, name_date_precision, date_source, geo_state, gps_lat, gps_lon, gps_end_lat, gps_end_lon, track_start_at, track_end_at FROM {$table} WHERE missing_since IS NULL AND path_hash IN (" . implode( ', ', array_fill( 0, count( $hashes ), '%s' ) ) . ') ORDER BY id ASC',
+				$hashes
+			),
+			ARRAY_A
+		);
+
+		return array_map( [ self::class, 'typed' ], is_array( $rows ) ? $rows : [] );
+	}
+
 	public function setHidden( array $keys, bool $hidden, int $userId, int $now ): int {
 		global $wpdb;
 
@@ -438,6 +511,11 @@ class WpdbIndexStore implements IndexStore {
 	 * @return array<string, mixed>
 	 */
 	private static function typed( array $row ): array {
+		foreach ( [ 'gps_lat', 'gps_lon', 'gps_end_lat', 'gps_end_lon' ] as $column ) {
+			if ( array_key_exists( $column, $row ) && null !== $row[ $column ] ) {
+				$row[ $column ] = (float) $row[ $column ];
+			}
+		}
 		foreach ( self::INTEGER_COLUMNS as $column ) {
 			if ( array_key_exists( $column, $row ) && null !== $row[ $column ] ) {
 				$row[ $column ] = (int) $row[ $column ];
