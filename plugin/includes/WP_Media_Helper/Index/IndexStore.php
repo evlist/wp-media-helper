@@ -131,6 +131,30 @@ interface IndexStore {
 	public function saveGeo( int $fileId, array $geo ): void;
 
 	/**
+	 * The files with a position whose place was not looked for (`place_state` 0), newest first; with `$retry`, those that wait for a new try (3) instead.
+	 *
+	 * @return array<int, array<string, mixed>> Rows with `id`, `kind`, `gps_lat`, `gps_lon`, `gps_end_lat`, `gps_end_lon`.
+	 */
+	public function filesNeedingPlace( int $limit, bool $retry = false ): array;
+
+	/**
+	 * `place_state` of a file: 0 to do, 1 done, 2 given up, 3 waiting for a new try.
+	 */
+	public function setPlaceState( int $fileId, int $state ): void;
+
+	/**
+	 * Number of files with a position by `place_state`.
+	 *
+	 * @return array<int, int>
+	 */
+	public function placeCounts(): array;
+
+	/**
+	 * Puts the files with a position back to `place_state` 0 (all, or only those given up or waiting).
+	 */
+	public function resetPlaces( bool $unfinishedOnly = false ): int;
+
+	/**
 	 * Forgets what was read (state back to 0, positions cleared), for one source or for all.
 	 */
 	public function resetGeo( ?string $sourceId = null ): int;

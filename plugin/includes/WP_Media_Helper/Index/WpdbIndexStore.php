@@ -14,7 +14,7 @@ class WpdbIndexStore implements IndexStore {
 
 	private const INSERT_CHUNK = 100;
 
-	private const INTEGER_COLUMNS = [ 'id', 'parent_id', 'dir_id', 'mtime', 'scanned_run', 'queued_run', 'last_scanned', 'missing_since', 'size', 'first_seen', 'last_seen', 'hidden', 'hidden_by', 'hidden_at', 'embedded_state', 'geo_state', 'width', 'height' ];
+	private const INTEGER_COLUMNS = [ 'id', 'parent_id', 'dir_id', 'mtime', 'scanned_run', 'queued_run', 'last_scanned', 'missing_since', 'size', 'first_seen', 'last_seen', 'hidden', 'hidden_by', 'hidden_at', 'embedded_state', 'geo_state', 'place_state', 'width', 'height' ];
 
 	/**
 	 * Columns a scan may update on a file.
@@ -310,7 +310,7 @@ class WpdbIndexStore implements IndexStore {
 		return array_map( [ self::class, 'typed' ], is_array( $rows ) ? $rows : [] );
 	}
 
-	private const GEO_COLUMNS = [ 'gps_lat', 'gps_lon', 'gps_end_lat', 'gps_end_lon', 'track_start_at', 'track_end_at', 'geo_state' ];
+	private const GEO_COLUMNS = [ 'gps_lat', 'gps_lon', 'gps_end_lat', 'gps_end_lon', 'track_start_at', 'track_end_at', 'geo_state', 'place_state' ];
 
 	public function filesNeedingGeo( int $limit ): array {
 		global $wpdb;
@@ -335,16 +335,57 @@ class WpdbIndexStore implements IndexStore {
 		foreach ( self::GEO_COLUMNS as $column ) {
 			$data[ $column ] = $data[ $column ] ?? null;
 		}
-		$data['geo_state'] = (int) $data['geo_state'];
+		$data['geo_state']   = (int) $data['geo_state'];
+		// A position just read has no place yet; the places job takes it from there.
+		$data['place_state'] = 0;
 
 		$wpdb->update( Schema::filesTable(), $data, [ 'id' => $fileId ] ); // phpcs:ignore WordPress.DB
+	}
+
+	public function filesNeedingPlace( int $limit, bool $retry = false ): array {
+		global $wpdb;
+
+		$table = Schema::filesTable();
+		$rows  = $wpdb->get_results( // phpcs:ignore WordPress.DB
+			$wpdb->prepare( "SELECT id, kind, gps_lat, gps_lon, gps_end_lat, gps_end_lon FROM {$table} WHERE geo_state = 1 AND place_state = %d AND missing_since IS NULL ORDER BY effective_date DESC, id DESC LIMIT %d", $retry ? 3 : 0, max( 1, $limit ) ),
+			ARRAY_A
+		);
+
+		return array_map( [ self::class, 'typed' ], is_array( $rows ) ? $rows : [] );
+	}
+
+	public function setPlaceState( int $fileId, int $state ): void {
+		global $wpdb;
+
+		$wpdb->update( Schema::filesTable(), [ 'place_state' => $state ], [ 'id' => $fileId ] ); // phpcs:ignore WordPress.DB
+	}
+
+	public function placeCounts(): array {
+		global $wpdb;
+
+		$table  = Schema::filesTable();
+		$rows   = $wpdb->get_results( "SELECT place_state, COUNT(*) AS total FROM {$table} WHERE geo_state = 1 AND missing_since IS NULL GROUP BY place_state", ARRAY_A ); // phpcs:ignore WordPress.DB
+		$counts = [ 0 => 0, 1 => 0, 2 => 0, 3 => 0 ];
+		foreach ( is_array( $rows ) ? $rows : [] as $row ) {
+			$counts[ (int) $row['place_state'] ] = (int) $row['total'];
+		}
+
+		return $counts;
+	}
+
+	public function resetPlaces( bool $unfinishedOnly = false ): int {
+		global $wpdb;
+
+		$table = Schema::filesTable();
+
+		return (int) $wpdb->query( "UPDATE {$table} SET place_state = 0 WHERE geo_state = 1 AND " . ( $unfinishedOnly ? 'place_state IN (2, 3)' : 'place_state <> 0' ) ); // phpcs:ignore WordPress.DB
 	}
 
 	public function resetGeo( ?string $sourceId = null ): int {
 		global $wpdb;
 
 		$table = Schema::filesTable();
-		$set   = "geo_state = 0, gps_lat = NULL, gps_lon = NULL, gps_end_lat = NULL, gps_end_lon = NULL, track_start_at = NULL, track_end_at = NULL";
+		$set   = "geo_state = 0, place_state = 0, gps_lat = NULL, gps_lon = NULL, gps_end_lat = NULL, gps_end_lon = NULL, track_start_at = NULL, track_end_at = NULL";
 		$query = null === $sourceId ? "UPDATE {$table} SET {$set} WHERE geo_state <> 0" : $wpdb->prepare( "UPDATE {$table} SET {$set} WHERE geo_state <> 0 AND source_id = %s", $sourceId ); // phpcs:ignore WordPress.DB
 
 		return (int) $wpdb->query( $query ); // phpcs:ignore WordPress.DB

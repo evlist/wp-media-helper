@@ -77,6 +77,7 @@ class Cron {
 		$manager->forgetUnknownSources( ActiveSources::configuredIds() );
 		$manager->requestDuePasses( ActiveSources::all() );
 		\WP_Media_Helper\Geo\GeoCron::schedule( 60 );
+		\WP_Media_Helper\Geo\Places\PlacesCron::schedule( 120 );
 	}
 
 	public static function clear(): void {

@@ -19,6 +19,21 @@ final class GeoFilter {
 
 	public static function register(): void {
 		add_filter( 'wp_media_helper_file_geo', [ self::class, 'answer' ], 10, 2 );
+		add_filter( 'wp_media_helper_place_of', [ self::class, 'placeOf' ], 10, 3 );
+	}
+
+	/**
+	 * The place of a position from the cache of the places (the language of the settings), when no earlier filter gave one.
+	 *
+	 * @param mixed $previous
+	 * @return mixed
+	 */
+	public static function placeOf( $previous, $lat = null, $lon = null ) {
+		if ( null !== $previous || ! is_numeric( $lat ) || ! is_numeric( $lon ) ) {
+			return $previous;
+		}
+
+		return Places\PlaceResolver::forPosition( (float) $lat, (float) $lon, Places\PlacesCron::settings()->language );
 	}
 
 	/**

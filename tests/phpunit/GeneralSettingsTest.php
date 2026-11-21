@@ -58,4 +58,26 @@ class GeneralSettingsTest extends TestCase {
 			$this->assertNull( $saved );
 		}
 	}
+
+	public function test_the_places_settings_are_kept_and_off_by_default(): void {
+		$saved = null;
+		$settings = $this->settings( [], $saved );
+
+		$this->assertSame( '', $settings->placesValue( 'places_url' ), 'No service: nothing is asked.' );
+
+		$settings->save( [ 'max_entries' => 100, 'places_url' => ' https://nominatim.lan/reverse ', 'places_contact' => 'me@e.test', 'places_language' => 'pt_BR', 'places_rate' => '120' ] );
+
+		$this->assertSame( [ 'https://nominatim.lan/reverse', 'me@e.test', 'pt_BR', '120' ], [ $saved['places_url'], $saved['places_contact'], $saved['places_language'], $saved['places_rate'] ] );
+	}
+
+	public function test_a_wrong_places_setting_is_refused(): void {
+		foreach ( [ [ 'places_url', 'nominatim.lan' ], [ 'places_url', 'http://nominatim.openstreetmap.org/reverse' ], [ 'places_url', 'ftp://x/y' ], [ 'places_rate', '0' ], [ 'places_rate', 'fast' ], [ 'places_rate', '9999' ], [ 'places_language', 'français' ] ] as [ $key, $value ] ) {
+			try {
+				$this->settings( [] )->save( [ 'max_entries' => 100, $key => $value ] );
+				$this->fail( "$key = $value should be refused." );
+			} catch ( InvalidArgumentException $exception ) {
+				$this->assertNotSame( '', $exception->getMessage() );
+			}
+		}
+	}
 }

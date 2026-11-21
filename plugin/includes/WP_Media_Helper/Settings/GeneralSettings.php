@@ -5,6 +5,7 @@
 namespace WP_Media_Helper\Settings;
 
 use Closure;
+use WP_Media_Helper\Geo\Places\PlacesSettings;
 use WP_Media_Helper\MediaSource\FileTypes;
 
 /**
@@ -84,6 +85,16 @@ class GeneralSettings {
 	}
 
 	/**
+	 * A setting of the reverse geocoding (slice 052), as it was written: `places_url` (empty: off), `places_contact`, `places_language`, `places_rate`.
+	 */
+	public function placesValue( string $key ): string {
+		$stored = ( $this->loader )();
+		$value  = is_array( $stored ) ? ( $stored[ $key ] ?? '' ) : '';
+
+		return is_scalar( $value ) ? (string) $value : '';
+	}
+
+	/**
 	 * Extensions that are not listed, or the default list when nothing was saved.
 	 *
 	 * @return string[]
@@ -143,6 +154,19 @@ class GeneralSettings {
 		if ( [] !== $handlers['errors'] ) {
 			throw new \InvalidArgumentException( implode( ' ', $handlers['errors'] ) );
 		}
+		$places = [];
+		foreach ( [ 'places_url', 'places_contact', 'places_language', 'places_rate' ] as $key ) {
+			$places[ $key ] = trim( array_key_exists( $key, $values ) ? (string) $values[ $key ] : $this->placesValue( $key ) );
+		}
+		if ( '' !== $places['places_url'] && '' === PlacesSettings::cleanUrl( $places['places_url'] ) ) {
+			throw new \InvalidArgumentException( __( 'The address of the geocoding service must be an https address (http for a service on your own network); the public service of OpenStreetMap only over https.', 'wp-media-helper' ) );
+		}
+		if ( '' !== $places['places_rate'] && ( 1 !== preg_match( '/^\d+$/', $places['places_rate'] ) || (int) $places['places_rate'] < 1 || (int) $places['places_rate'] > PlacesSettings::MAX_PER_MINUTE ) ) {
+			throw new \InvalidArgumentException( sprintf( /* translators: %d: maximum. */ __( 'The requests a minute must be a whole number between 1 and %d.', 'wp-media-helper' ), PlacesSettings::MAX_PER_MINUTE ) );
+		}
+		if ( '' !== $places['places_language'] && PlacesSettings::cleanLanguage( $places['places_language'] ) !== str_replace( '_', '-', $places['places_language'] ) ) {
+			throw new \InvalidArgumentException( __( 'The language of the places must be a language tag such as fr, en or pt-BR.', 'wp-media-helper' ) );
+		}
 		$ignored = array_key_exists( 'ignored_extensions', $values ) ? (string) $values['ignored_extensions'] : $this->ignoredExtensionsText();
 
 		( $this->saver )(
@@ -150,6 +174,7 @@ class GeneralSettings {
 				'max_entries'        => (int) ( $values['max_entries'] ?? self::DEFAULT_MAX_ENTRIES ),
 				'additional_types'   => $additional,
 				'insert_handlers'    => $handlersText,
+			] + $places + [
 				'ignored_extensions' => implode( ' ', FileTypes::parseExtensions( $ignored ) ),
 			]
 		);

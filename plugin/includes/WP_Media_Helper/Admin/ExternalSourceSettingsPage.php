@@ -102,6 +102,10 @@ class ExternalSourceSettingsPage {
 		$ignoredExtensions = $generalSettings->ignoredExtensionsText();
 		$additionalTypes   = $generalSettings->additionalTypesText();
 		$insertHandlers    = $generalSettings->insertHandlersText();
+		$placesUrl         = $generalSettings->placesValue( 'places_url' );
+		$placesContact     = $generalSettings->placesValue( 'places_contact' );
+		$placesLanguage    = $generalSettings->placesValue( 'places_language' );
+		$placesRate        = $generalSettings->placesValue( 'places_rate' );
 		// Stored sources outside the allowed base are reported as a warning instead.
 		$allowedBase = AllowedBase::resolve();
 		$enforceBase = null !== $pending;
@@ -287,6 +291,35 @@ class ExternalSourceSettingsPage {
 								<p class="description"><?php esc_html_e( 'What the action Insert in the content puts for a file type that has no block of its own (photos, videos and WebVTT subtitles have theirs). One line per extension: the extension, a space, and the block as a JSON object (block, attributes, innerBlocks). In the text, {id} is the attachment, {url} the address of the file, {name}, {title} and {mime}. For example a GPX track: a core/shortcode block with the shortcode of the track plugin. The file is registered in the Media Library if needed, never attached.', 'wp-media-helper' ); ?></p>
 							</td>
 						</tr>
+						<tr>
+							<th scope="row"><label for="wp-media-helper-places-url"><?php esc_html_e( 'Places of the photos: geocoding service', 'wp-media-helper' ); ?></label></th>
+							<td>
+								<input id="wp-media-helper-places-url" type="url" name="general[places_url]" value="<?php echo esc_attr( $placesUrl ); ?>" class="regular-text code" placeholder="https://nominatim.example.org/reverse" />
+								<p class="description"><?php esc_html_e( 'Empty (the default): the places are not looked for and nothing leaves the site. With an address of a Nominatim-compatible reverse endpoint, the plugin asks it, in the background, for the place of the positions of the photos and of the GPX tracks (hamlet, village, town, county, country), and keeps the answers. What is sent: the coordinates rounded to about 100 m, the language, and an identifying User-Agent; no file name, no date. The answers are cached, a place is asked for once.', 'wp-media-helper' ); ?></p>
+								<p class="description"><?php esc_html_e( 'The public service nominatim.openstreetmap.org is held to its usage policy: at most 4 requests a minute (a first pass over a large library takes days) and a single request at a time, whatever the rate below says. It is meant for small volumes: for a backfill of a whole library use an instance of your own or a provider. The data is OpenStreetMap contributors’, under the ODbL: where the places are shown, show that.', 'wp-media-helper' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row"><label for="wp-media-helper-places-contact"><?php esc_html_e( 'Places: contact', 'wp-media-helper' ); ?></label></th>
+							<td>
+								<input id="wp-media-helper-places-contact" type="text" name="general[places_contact]" value="<?php echo esc_attr( $placesContact ); ?>" class="regular-text" placeholder="admin@example.org" />
+								<p class="description"><?php esc_html_e( 'Added to the User-Agent that names this site to the service, so that its operator can reach you. Optional.', 'wp-media-helper' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row"><label for="wp-media-helper-places-language"><?php esc_html_e( 'Places: language', 'wp-media-helper' ); ?></label></th>
+							<td>
+								<input id="wp-media-helper-places-language" type="text" name="general[places_language]" value="<?php echo esc_attr( $placesLanguage ); ?>" class="small-text" placeholder="fr" />
+								<p class="description"><?php esc_html_e( 'The language of the names of the places (a tag such as fr, en, pt-BR). Empty: the language of the site. A place is kept once for each language.', 'wp-media-helper' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row"><label for="wp-media-helper-places-rate"><?php esc_html_e( 'Places: requests a minute', 'wp-media-helper' ); ?></label></th>
+							<td>
+								<input id="wp-media-helper-places-rate" type="number" min="1" max="600" name="general[places_rate]" value="<?php echo esc_attr( $placesRate ); ?>" class="small-text" placeholder="60" />
+								<p class="description"><?php esc_html_e( 'For a service of your own or a provider: the most requests a minute (default 60, one a second). Not used for the public service of OpenStreetMap, which is kept to 4 a minute.', 'wp-media-helper' ); ?></p>
+							</td>
+						</tr>
 					</tbody>
 				</table>
 
@@ -462,7 +495,7 @@ class ExternalSourceSettingsPage {
 		try {
 			$settings->saveAll( $submitted );
 			$general = [ 'max_entries' => $submittedMaxEntries ];
-			foreach ( [ 'additional_types', 'ignored_extensions', 'insert_handlers' ] as $field ) {
+			foreach ( [ 'additional_types', 'ignored_extensions', 'insert_handlers', 'places_url', 'places_contact', 'places_language', 'places_rate' ] as $field ) {
 				if ( is_array( $rawGeneral ) && isset( $rawGeneral[ $field ] ) && is_string( $rawGeneral[ $field ] ) ) {
 					$general[ $field ] = $rawGeneral[ $field ];
 				}

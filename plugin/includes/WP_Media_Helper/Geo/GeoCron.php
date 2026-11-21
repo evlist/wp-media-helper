@@ -60,10 +60,13 @@ final class GeoCron {
 		if ( $report['left'] ) {
 			self::schedule( 5 );
 		}
+		// Positions just read: their places are looked for (when a service is set).
+		Places\PlacesCron::schedule( 10 );
 	}
 
 	public static function clear(): void {
 		wp_clear_scheduled_hook( self::RUN_HOOK );
+		Places\PlacesCron::clear();
 	}
 
 	private static function lock(): bool {

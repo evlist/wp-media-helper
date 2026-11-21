@@ -3,7 +3,7 @@
 
 # Slice 052: Where the files were taken (GPS) and the places
 
-Status: **phases A (reading) and C (the contract) implemented, not tried on a real site yet; phase B (the places) to do.** Related: [025](025-file-index.md) and [026](026-index-cron.md) (the index and its passes), [036](036-library-reorganisation.md), [023](023-thumbnails-in-cache.md) (thumbnails: the mapping thumbnail to original),
+Status: **phases A (reading), B (the places) and C (the contract) implemented; none tried on a real site yet.** Related: [025](025-file-index.md) and [026](026-index-cron.md) (the index and its passes), [036](036-library-reorganisation.md), [023](023-thumbnails-in-cache.md) (thumbnails: the mapping thumbnail to original),
 [049](049-pause-and-path-remap.md) (pause). Asked for by the module *Index* of Otherguise (`docs/design/index.md` of that repository: *Who geolocates* and *Places from coordinates*), which reads the result through a filter and does no geocoding.
 
 ## Goal
@@ -34,7 +34,7 @@ town, county, state, country), as the files arrive, so that Otherguise can group
   the first and the last point of the file. Read with a stream reader (`XMLReader`): a long track is not loaded in memory; external entities are not loaded.
 - **Command** `wp media-helper geo status` (counts by state) and `wp media-helper geo run [--limit=<n>] [--reset]` (reads now, reports; `--reset` forgets what was read).
 
-## Phase B: the places (to do)
+## Phase B: the places (implemented)
 
 **Usage policy of the public service**, read on `operations.osmfoundation.org/policies/nominatim/` (21 November 2026), which the code must respect and which is the reason for the settings below:
 
@@ -54,7 +54,21 @@ What follows from it:
   A failure is counted and tried again later with a delay; **429 and 5xx**: the delay grows (honouring `Retry-After`), and the job stops for the run. No request in a loop on the same cell.
 - **Identification**: `User-Agent: WP-Media-Helper/<version> (<site URL>)`, with a setting for a contact, and the `Referer` of the site.
 - **Parameters**: `format=jsonv2`, `zoom=18`, `addressdetails=1`, `extratags=1`, `accept-language` from the locale of the site (a setting).
-- **Own table** `media_helper_places`, own cron hook, own lock and time budget; an off switch; `wp media-helper geo places status|run|reset`.
+- **Own table** `media_helper_places` (kept when the index is reset), own cron hook, own lock and time budget; an off switch; `wp media-helper geo places status|run|reset`.
+
+How it is built (`Geo\Places`):
+
+- `PlacesSettings`: `places_url` (empty = off), `places_contact`, `places_language` (default: the locale of the site), `places_rate` (requests a minute, default 60, for a service other than the public one). The public host is detected: 4 requests a minute, one at a time, `https` only, whatever the setting.
+  Validated when the settings are saved (settings page, *Places of the photos*).
+- `PlaceStore` / `PlacesSchema`: one row per **cell** (the coordinates rounded to 3 decimals) and language, with the whole answer (`response`, JSON as it came), `osm_type`, `osm_id`, `place_id`, `display_name`, the service, `fetched_at`, and `state`:
+  1 found, 2 nothing there (the sea: kept, not asked again), 3 failed (tried again after `next_try`: 1 h, 6 h, 1 day, 3 days), 4 given up (after 5 failures).
+- `files.place_state` (index schema 4): 0 to do, 1 done, 2 given up, 3 waiting for a new try; set back to 0 when the position is read again. A GPX track needs the cells of its start and of its end.
+- `PlacesJob`: newest files first; **the cache first** (a cell with an answer, or "nothing", is never asked again; a failed cell waits for its `next_try`); then, one request at a time, only when `RateLimiter` allows it: it **waits** the time the service asks for between two requests when that fits in the budget
+  (50 s per run), else stops and the run is scheduled again at the time the next request is allowed. **A refusal (HTTP 429, 503, any 5xx, a service that does not answer) stops every request** and starts a back-off of the cell-independent kind: 2, 4, 8 minutes... up to 6 hours, never shorter than `Retry-After`, kept between runs and shared with the command.
+- `NominatimClient`: the request `format=jsonv2&lat=&lon=&zoom=18&addressdetails=1&extratags=1&accept-language=`, the User-Agent `WP-Media-Helper/<version> (<site URL>[; <contact>])` and the `Referer` of the site; the transport is the HTTP API of WordPress.
+- `PlacesCron`: hook `wp_media_helper_places_run`, started after the reading of the positions and by the hourly maintenance; it does nothing without a service, while the index is paused, or when the filter `wp_media_helper_geocoding` returns false.
+- `PlaceResolver`: the place of a position **from the cache only** (never a request), for the contract: `{ state: found|nothing, cell, language, osm_type, osm_id, display_name, address, extratags, answer, service, fetched_at, attribution }`.
+- `wp media-helper geo places status` (the service and its pace, the files and the cells by state, the back-off), `run [--limit=<n>] [--seconds=<n>]` (in the foreground, at the pace of the service), `reset [--all]` (forget the cells that failed, or all).
 
 ## Phase C: the contract (implemented)
 
@@ -62,7 +76,7 @@ What follows from it:
 `{ type: 'file', state, lat, lon, taken_at, taken_source, taken_precision, place }` for a photo and `{ type: 'track', state, start: { lat, lon, at, place }, end: { lat, lon, at, place } }` for a GPX track (`state`: `unread` before the pass has read the file, `none` when it has no position,
 `positioned`; no position is given unless the state is `positioned`; `taken_at` is the date the plugin shows, in the time zone of the site, `taken_source` where it comes from: `name`, `embedded` or `mtime`; `at` of a track is UTC). `place` is `null` until phase B has run for the cell; it is asked
 with the filter `wp_media_helper_place_of`. The same answer from code: `wp_media_helper_get_file_geo( $address )`. The code is `Geo\GeoFilter` and `Geo\FileGeo` (the mapping of an address, thumbnail included, to a key of the index). `place` is the cached answer of the service (none until phase B has run for the cell). Files outside the uploads directory (NextGEN, under `wp-content/gallery`)
-are in the index only when a source covers them: with the allowed base moved to `WP_CONTENT_DIR` (`WP_MEDIA_HELPER_ALLOWED_BASE`) a source can be `wp-content/gallery`; their GPS is read like the others, they cannot be registered in the library.
+are in the index only when a source covers them: with the allowed base moved to the content directory (`WP_MEDIA_HELPER_ALLOWED_BASE` set to `__DIR__ . '/wp-content'` in `wp-config.php`, since `WP_CONTENT_DIR` is not defined yet there, or the filter `wp_media_helper_allowed_base` in a must-use plugin) a source can be `wp-content/gallery`; their GPS is read like the others, they cannot be registered in the library.
 
 ## Tests
 

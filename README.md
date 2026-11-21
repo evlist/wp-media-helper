@@ -486,7 +486,14 @@ choose photos and *Add to the gallery*. The number of images per row follows the
 A background pass of its own (`wp_media_helper_geo_run`, started after the pass over the sources, own lock, 15 s) reads, once, the GPS of the photographs (`jpg`, `jpeg`, `tif`, `tiff`: EXIF `exif_read_data`) and, for a GPX track, its **start and end points chosen by the time of the points** (not the order of the file, not the
 time of the metadata); a file is read again only when its size or time changed. Nothing is sent anywhere. `wp media-helper geo status` counts the files by state and `wp media-helper geo run [--limit=<n>] [--reset]` reads now. The filter `wp_media_helper_read_gps` (default true) turns the reading off. Coordinates stay in the
 database and are not printed in public pages. The code of the site (the module Index of Otherguise) reads the result with `wp_media_helper_get_file_geo( $address )` (the filter `wp_media_helper_file_geo`): see slice 052. Files outside the uploads directory (for example `wp-content/gallery` of NextGEN) are read when a source covers them, with
-`WP_MEDIA_HELPER_ALLOWED_BASE` set to `WP_CONTENT_DIR` in `wp-config.php`; they cannot be registered in the media library.
+the allowed base moved to the content directory: in `wp-config.php` `define( 'WP_MEDIA_HELPER_ALLOWED_BASE', __DIR__ . '/wp-content' );` before the line "That's all, stop editing!" (`WP_CONTENT_DIR` is not defined yet at that point: using it is a fatal error, an HTTP 500), or from a must-use plugin `add_filter( 'wp_media_helper_allowed_base', static fn () => WP_CONTENT_DIR );`. They cannot be registered in the media library.
+
+### The places
+
+Off by default. With the address of a Nominatim-compatible reverse endpoint in the settings (*Places of the photos*), a job in the background looks, newest first, for the place of the positions (hamlet, village, town, county, country) and keeps the whole answer, by cell of 3 decimals (about 100 m) and language: a place is asked for once whatever the
+number of photos in it. **Only the rounded coordinates and the language are sent**, with a User-Agent that names the site (and a contact, if given). The public service of OpenStreetMap is held to its usage policy: **at most 4 requests a minute and one at a time**, results cached, a refusal (429, 5xx) stops everything with a back-off that
+honours `Retry-After`; it is meant for the photos that arrive, not for a backfill of a large library (about 18,000 places is a matter of days): use an instance of your own or a provider for that, with the setting *requests a minute*. `wp media-helper geo places status|run|reset`. The data is OpenStreetMap contributors', under the ODbL: show
+the attribution where the places are shown (the answer of the contract carries it).
 
 ## A range of dates and times
 
