@@ -49,6 +49,17 @@ final class PlacesJob {
 	 *         `left`: files remain; `blocked_for`: seconds of a back-off; `next_in`: seconds before the next request may be sent.
 	 */
 	public function run( float $seconds, int $limit = 0 ): array {
+		$report = $this->work( $seconds, $limit );
+		$cells  = $report['found'] + $report['nothing'];
+		if ( $cells > 0 && function_exists( 'do_action' ) ) {
+			// The answers of the places changed: see GeoPass::run().
+			do_action( 'wp_media_helper_places_updated', $cells, 'places' );
+		}
+
+		return $report;
+	}
+
+	private function work( float $seconds, int $limit ): array {
 		$report   = [ 'requests' => 0, 'found' => 0, 'nothing' => 0, 'failed' => 0, 'files_done' => 0, 'left' => false, 'blocked_for' => 0, 'next_in' => 0.0 ];
 		$deadline = ( $this->clock )() + max( 0.0, $seconds );
 

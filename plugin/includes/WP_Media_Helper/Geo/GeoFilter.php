@@ -12,7 +12,7 @@ use WP_Media_Helper\Index\WpdbIndexStore;
  *     $geo = apply_filters( 'wp_media_helper_file_geo', null, $address );
  *     $geo = wp_media_helper_get_file_geo( $address );   // the same
  *
- * `$address` is a path, the URL of an original or the URL of a thumbnail of the cache. The answer is null when the plugin does not know the file,
+ * `wp_media_helper_get_files_geo( $addresses )` answers for a list at once. `$address` is a path, the URL of an original or the URL of a thumbnail of the cache. The answer is null when the plugin does not know the file,
  * else an array: see FileGeo::describe(). Coordinates are for the code of the site only: they must not be printed in a public page.
  */
 final class GeoFilter {
@@ -47,28 +47,62 @@ final class GeoFilter {
 			return $previous;
 		}
 
-		$uploads = wp_upload_dir( null, false );
-		if ( ! is_array( $uploads ) || empty( $uploads['basedir'] ) ) {
+		$roots = self::roots();
+		if ( null === $roots ) {
 			return $previous;
 		}
 
-		return FileGeo::lookup(
-			new WpdbIndexStore(),
-			$address,
-			[
-				'basedir'    => (string) $uploads['basedir'],
-				'baseurl'    => (string) ( $uploads['baseurl'] ?? '' ),
-				'contentdir' => defined( 'WP_CONTENT_DIR' ) ? (string) WP_CONTENT_DIR : '',
-				'contenturl' => function_exists( 'content_url' ) ? (string) content_url() : '',
-			],
+		return FileGeo::lookup( new WpdbIndexStore(), $address, $roots, self::placeOfCallback() );
+	}
+
+	/**
+	 * Several addresses at once: `address => answer or null` (one query for all, not one per file).
+	 *
+	 * @param string[] $addresses
+	 * @return array<string, array<string, mixed>|null>
+	 */
+	public static function answerMany( array $addresses ): array {
+		$roots = self::roots();
+		if ( null === $roots ) {
+			return array_fill_keys( array_filter( $addresses, 'is_string' ), null );
+		}
+
+		return FileGeo::lookupMany( new WpdbIndexStore(), $addresses, $roots, self::placeOfCallback() );
+	}
+
+	/**
+	 * @return array{basedir:string, baseurl:string, contentdir:string, contenturl:string, hosts:string[]}|null
+	 */
+	private static function roots(): ?array {
+		$uploads = wp_upload_dir( null, false );
+		if ( ! is_array( $uploads ) || empty( $uploads['basedir'] ) ) {
+			return null;
+		}
+
+		$hosts = array_filter( [ function_exists( 'home_url' ) ? (string) home_url() : '', function_exists( 'site_url' ) ? (string) site_url() : '' ] );
+
+		return [
+			'basedir'    => (string) $uploads['basedir'],
+			'baseurl'    => (string) ( $uploads['baseurl'] ?? '' ),
+			'contentdir' => defined( 'WP_CONTENT_DIR' ) ? (string) WP_CONTENT_DIR : '',
+			'contenturl' => function_exists( 'content_url' ) ? (string) content_url() : '',
 			/**
-			 * The place of a position, once the places are on (phase B of slice 052). None until then.
+			 * The URLs whose host is a host of this site, besides those of the uploads and the content (a CDN, another name of the site).
 			 *
-			 * @param array<string, mixed>|null $place
-			 * @param float                     $lat
-			 * @param float                     $lon
+			 * @param string[] $urls
 			 */
-			static fn ( float $lat, float $lon ): ?array => apply_filters( 'wp_media_helper_place_of', null, $lat, $lon )
-		);
+			'hosts'      => array_values( (array) apply_filters( 'wp_media_helper_site_hosts', $hosts ) ),
+		];
+	}
+
+	private static function placeOfCallback(): callable {
+		/**
+		 * The place of a position, once the places are on (phase B of slice 052). None until then.
+		 *
+		 * @param array<string, mixed>|null $place
+		 * @param float                     $lat
+		 * @param float                     $lon
+		 */
+		return static fn ( float $lat, float $lon ): ?array => apply_filters( 'wp_media_helper_place_of', null, $lat, $lon );
 	}
 }

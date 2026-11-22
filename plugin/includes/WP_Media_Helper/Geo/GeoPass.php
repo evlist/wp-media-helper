@@ -41,6 +41,21 @@ final class GeoPass {
 	 * @return array{read:int, with_position:int, without:int, left:bool} `left`: files remain to be read.
 	 */
 	public function run( float $seconds, int $limit = 0 ): array {
+		$report = $this->work( $seconds, $limit );
+		if ( $report['with_position'] > 0 && function_exists( 'do_action' ) ) {
+			/**
+			 * Positions were just read: the code that asked for the files of a page may ask again (slice 052).
+			 *
+			 * @param int    $count  How many cells or positions are new.
+			 * @param string $source `positions` here, `places` after a pass of the places.
+			 */
+			do_action( 'wp_media_helper_places_updated', $report['with_position'], 'positions' );
+		}
+
+		return $report;
+	}
+
+	private function work( float $seconds, int $limit ): array {
 		$deadline = microtime( true ) + max( 0.0, $seconds );
 		$report   = [ 'read' => 0, 'with_position' => 0, 'without' => 0, 'left' => false ];
 

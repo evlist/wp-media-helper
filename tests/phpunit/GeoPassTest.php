@@ -78,6 +78,16 @@ class GeoPassTest extends TestCase {
 		$this->assertSame( [ '/up/photos/b.jpg', '/up/photos/a.jpg', '/up/photos/t.gpx' ], array_values( array_diff( $this->asked, [] ) ), 'Newest first, and only what can be read is opened.' );
 	}
 
+	public function test_the_signal_is_sent_only_when_positions_were_read(): void {
+		$GLOBALS['wpmh_test_actions'] = [];
+		$this->pass()->run( 5.0 );
+		$this->assertSame( [ [ 'wp_media_helper_places_updated', [ 2, 'positions' ] ] ], $GLOBALS['wpmh_test_actions'] );
+
+		$GLOBALS['wpmh_test_actions'] = [];
+		$this->pass()->run( 5.0 );
+		$this->assertSame( [], $GLOBALS['wpmh_test_actions'], 'Nothing new: no signal.' );
+	}
+
 	public function test_what_was_read_is_not_read_again_until_it_is_reset(): void {
 		$this->pass()->run( 5.0 );
 		$this->asked = [];

@@ -30,6 +30,12 @@ if ( ! function_exists( 'apply_filters' ) ) {
 	}
 }
 
+if ( ! function_exists( 'do_action' ) ) {
+	function do_action( string $hook, ...$args ): void {
+		$GLOBALS['wpmh_test_actions'][] = [ $hook, $args ];
+	}
+}
+
 if ( ! function_exists( 'has_filter' ) ) {
 	function has_filter( string $hook ) {
 		return ! empty( $GLOBALS['wpmh_test_filters'][ $hook ] );

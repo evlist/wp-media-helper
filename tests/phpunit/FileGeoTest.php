@@ -8,7 +8,7 @@ use WP_Media_Helper\Index\WpdbIndexStore;
 
 class FileGeoTest extends TestCase {
 
-	private array $roots = [ 'basedir' => '/var/www/wp-content/uploads', 'baseurl' => 'https://e.test/wp-content/uploads', 'contentdir' => '/var/www/wp-content', 'contenturl' => 'https://e.test/wp-content' ];
+	private array $roots = [ 'basedir' => '/var/www/wp-content/uploads', 'baseurl' => 'https://e.test/wp-content/uploads', 'contentdir' => '/var/www/wp-content', 'contenturl' => 'https://e.test/wp-content', 'hosts' => [ 'https://www.e.test', 'https://cdn.e.test/x' ] ];
 
 	public function test_an_address_stands_for_a_key_of_the_index_whatever_its_form(): void {
 		$this->assertSame( [ 'cumulus/eric/a.jpg' ], FileGeo::candidateKeys( 'cumulus/eric/a.jpg', $this->roots ) );
@@ -66,6 +66,45 @@ class FileGeoTest extends TestCase {
 		$this->assertSame( [ 'lat' => 43.4, 'lon' => 3.0, 'at' => '2026-10-08 09:00:00', 'place' => [ 'town' => 'T43.4' ] ], $described['start'] );
 		$this->assertSame( [ 'lat' => 43.6, 'lon' => 3.2, 'at' => '2026-10-08 12:30:00', 'place' => [ 'town' => 'T43.6' ] ], $described['end'] );
 		$this->assertSame( [ [ 43.4, 3.0 ], [ 43.6, 3.2 ] ], $asked );
+	}
+
+	public function test_the_scheme_www_and_the_other_hosts_of_the_site_do_not_matter_but_another_site_is_unknown(): void {
+		$key = [ 'cumulus/a.jpg' ];
+		foreach ( [ 'http://e.test/wp-content/uploads/cumulus/a.jpg', 'https://www.e.test/wp-content/uploads/cumulus/a.jpg', '//e.test/wp-content/uploads/cumulus/a.jpg', 'https://cdn.e.test/wp-content/uploads/cumulus/a.jpg', 'HTTPS://E.TEST/wp-content/uploads/cumulus/a.jpg' ] as $address ) {
+			$this->assertSame( $key, FileGeo::candidateKeys( $address, $this->roots ), $address );
+		}
+		foreach ( [ 'https://other.test/wp-content/uploads/cumulus/a.jpg', 'https://e.test.evil.test/wp-content/uploads/cumulus/a.jpg', 'https://e.test/elsewhere/cumulus/a.jpg' ] as $address ) {
+			$this->assertSame( [], FileGeo::candidateKeys( $address, $this->roots ), $address );
+		}
+	}
+
+	public function test_nextgen_addresses_with_a_query_and_names_with_a_percent_are_mapped(): void {
+		$this->assertSame( [ '/var/www/wp-content/gallery/trip/thumbs/thumbs_a.jpg' ], FileGeo::candidateKeys( 'https://e.test/wp-content/gallery/trip/thumbs/thumbs_a.jpg?t=1699999999', $this->roots ) );
+		$this->assertSame( [ 'cumulus/100% fun.jpg' ], FileGeo::candidateKeys( 'https://e.test/wp-content/uploads/cumulus/100%25%20fun.jpg', $this->roots ) );
+	}
+
+	public function test_a_size_made_by_wordpress_stands_for_the_original_after_the_file_itself(): void {
+		$this->assertSame( [ 'cumulus/a-300x200.jpg', 'cumulus/a.jpg' ], FileGeo::candidateKeys( 'https://e.test/wp-content/uploads/cumulus/a-300x200.jpg', $this->roots ) );
+		$this->assertSame( [ 'cumulus/a-scaled.jpg', 'cumulus/a.jpg' ], FileGeo::candidateKeys( 'cumulus/a-scaled.jpg', $this->roots ) );
+	}
+
+	public function test_several_addresses_are_answered_with_one_query_each_keeping_its_own_answer(): void {
+		$GLOBALS['wpdb'] = new FakeWpdb();
+		$store           = new WpdbIndexStore();
+		$dir             = $store->saveDirectory( 's', 'cumulus', 0, 1 );
+		$store->insertFiles( 's', $dir, [ [ 'key' => 'cumulus/a.jpg', 'name' => 'a.jpg', 'ext' => 'jpg', 'kind' => 'image', 'size' => 1, 'mtime' => 1, 'effective_date' => '2026-10-08 10:00:00', 'effective_day' => '2026-10-08', 'date_source' => 'name' ] ], 1 );
+		$store->saveGeo( (int) $store->filesForDay( [ 's' ], '2026-10-08' )[0]['id'], [ 'geo_state' => 1, 'gps_lat' => 43.5, 'gps_lon' => 3.1 ] );
+
+		$a = 'https://e.test/wp-content/uploads/thumbnails/cumulus/a-1024x577.jpg';
+		$b = 'https://e.test/wp-content/uploads/cumulus/a.jpg?ver=1';
+		$c = 'https://other.test/a.jpg';
+		$answers = FileGeo::lookupMany( $store, [ $a, $b, $c ], $this->roots );
+
+		$this->assertSame( [ $a, $b, $c ], array_keys( $answers ) );
+		$this->assertSame( 43.5, $answers[ $a ]['lat'] );
+		$this->assertSame( 43.5, $answers[ $b ]['lat'] );
+		$this->assertNull( $answers[ $c ] );
+		$this->assertSame( [], FileGeo::lookupMany( $store, [], $this->roots ) );
 	}
 
 	public function test_a_lookup_finds_the_original_from_the_address_of_its_thumbnail(): void {

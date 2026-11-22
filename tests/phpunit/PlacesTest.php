@@ -149,6 +149,18 @@ class PlacesTest extends TestCase {
 		$this->assertSame( [], $this->requests );
 	}
 
+	public function test_the_signal_is_sent_after_a_run_that_recorded_answers_and_not_otherwise(): void {
+		$this->addPhotos( [ [ 43.5121, 3.1231 ], [ 43.8, 3.5 ] ] );
+
+		$GLOBALS['wpmh_test_actions'] = [];
+		$this->job( $this->settings() )->run( 60.0 );
+		$this->assertSame( [ [ 'wp_media_helper_places_updated', [ 2, 'places' ] ] ], $GLOBALS['wpmh_test_actions'] );
+
+		$GLOBALS['wpmh_test_actions'] = [];
+		$this->job( $this->settings() )->run( 60.0 );
+		$this->assertSame( [], $GLOBALS['wpmh_test_actions'] );
+	}
+
 	public function test_requests_are_spaced_by_the_pace_of_the_service_and_the_run_stops_when_the_time_is_up(): void {
 		$this->addPhotos( [ [ 43.1, 3.1 ], [ 43.2, 3.2 ], [ 43.3, 3.3 ], [ 43.4, 3.4 ] ] );
 		$start = $this->now;

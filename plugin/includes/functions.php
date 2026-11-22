@@ -68,3 +68,15 @@ if ( ! function_exists( 'wp_media_helper_get_file_geo' ) ) {
 		return is_array( $geo ) ? $geo : null;
 	}
 }
+
+if ( ! function_exists( 'wp_media_helper_get_files_geo' ) ) {
+	/**
+	 * Where several files were taken, with one query: `address => answer or null` (see wp_media_helper_get_file_geo()), in the order given.
+	 *
+	 * @param string[] $addresses Paths or URLs.
+	 * @return array<string, array<string, mixed>|null>
+	 */
+	function wp_media_helper_get_files_geo( array $addresses ): array {
+		return \WP_Media_Helper\Geo\GeoFilter::answerMany( array_values( array_filter( $addresses, 'is_string' ) ) );
+	}
+}

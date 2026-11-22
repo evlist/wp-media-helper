@@ -30,7 +30,7 @@ final class FileGeo {
 		}
 
 		$key = null;
-		if ( 1 === preg_match( '#^https?://#i', $address ) ) {
+		if ( 1 === preg_match( '#^(https?:)?//#i', $address ) ) {
 			$url = (string) preg_replace( '#[?\#].*$#', '', $address );
 			$key = self::fromUrl( rawurldecode( $url ), $roots );
 		} elseif ( str_starts_with( $address, '/' ) ) {
@@ -43,29 +43,51 @@ final class FileGeo {
 		}
 
 		$keys = [ $key ];
-		if ( str_starts_with( $key, 'thumbnails/' ) ) {
-			$original = substr( $key, strlen( 'thumbnails/' ) );
-			$original = (string) preg_replace( '#-\d+x\d+(\.[A-Za-z0-9]+)$#', '$1', $original );
-			if ( $original !== $key && '' !== $original ) {
-				$keys[] = $original;
-			}
+		// A thumbnail of the cache stands for its original; a size made by WordPress (`-300x200`, `-scaled`) too, the file itself first.
+		$original = str_starts_with( $key, 'thumbnails/' ) ? substr( $key, strlen( 'thumbnails/' ) ) : $key;
+		$original = (string) preg_replace( '#-(\d+x\d+|scaled)(\.[A-Za-z0-9]+)$#', '$2', $original );
+		if ( $original !== $key && '' !== $original ) {
+			$keys[] = $original;
 		}
 
 		return $keys;
 	}
 
 	/**
-	 * @param array{basedir:string, baseurl:string, contentdir:string, contenturl:string} $roots
+	 * A host without `www.`, lower case, for the comparison of the hosts of one site.
+	 */
+	private static function host( string $url ): string {
+		$host = parse_url( 'http:' . ( str_starts_with( $url, '//' ) ? $url : '//' . preg_replace( '#^[a-z]+://#i', '', $url ) ), PHP_URL_HOST );
+
+		return is_string( $host ) ? (string) preg_replace( '#^www\.#', '', strtolower( $host ) ) : '';
+	}
+
+	/**
+	 * The key of an address of the site: the scheme (http or https) does not matter, nor `www.`; another host counts only when it is a host
+	 * of the site (the URL of the uploads, of the content, `roots['hosts']`).
+	 *
+	 * @param array{basedir:string, baseurl:string, contentdir:string, contenturl:string, hosts?:string[]} $roots
 	 */
 	private static function fromUrl( string $url, array $roots ): ?string {
-		$uploads = rtrim( $roots['baseurl'], '/' ) . '/';
-		if ( '' !== $roots['baseurl'] && str_starts_with( $url, $uploads ) ) {
-			return substr( $url, strlen( $uploads ) );
+		$known = [];
+		foreach ( array_merge( [ $roots['baseurl'], $roots['contenturl'] ], $roots['hosts'] ?? [] ) as $base ) {
+			if ( '' !== (string) $base && '' !== self::host( (string) $base ) ) {
+				$known[ self::host( (string) $base ) ] = true;
+			}
 		}
-		$content = rtrim( $roots['contenturl'], '/' ) . '/';
-		if ( '' !== $roots['contenturl'] && str_starts_with( $url, $content ) ) {
+		if ( ! isset( $known[ self::host( $url ) ] ) ) {
+			return null;
+		}
+		$path = (string) parse_url( 'http:' . ( str_starts_with( $url, '//' ) ? $url : '//' . preg_replace( '#^[a-z]+://#i', '', $url ) ), PHP_URL_PATH );
+
+		$uploads = rtrim( (string) parse_url( $roots['baseurl'], PHP_URL_PATH ), '/' ) . '/';
+		if ( '' !== $roots['baseurl'] && str_starts_with( $path, $uploads ) ) {
+			return substr( $path, strlen( $uploads ) );
+		}
+		$content = rtrim( (string) parse_url( $roots['contenturl'], PHP_URL_PATH ), '/' ) . '/';
+		if ( '' !== $roots['contenturl'] && str_starts_with( $path, $content ) ) {
 			// A file outside the uploads directory is kept in the index by its absolute path.
-			return UploadsPath::normalize( rtrim( $roots['contentdir'], '/' ) . '/' . substr( $url, strlen( $content ) ) );
+			return UploadsPath::normalize( rtrim( $roots['contentdir'], '/' ) . '/' . substr( $path, strlen( $content ) ) );
 		}
 
 		return null;
@@ -113,20 +135,43 @@ final class FileGeo {
 	 * @return array<string, mixed>|null
 	 */
 	public static function lookup( IndexStore $store, string $address, array $roots, ?callable $placeOf = null ): ?array {
-		$keys = self::candidateKeys( $address, $roots );
-		if ( [] === $keys ) {
-			return null;
+		return self::lookupMany( $store, [ $address ], $roots, $placeOf )[ $address ] ?? null;
+	}
+
+	/**
+	 * The answers for several addresses with one query: `address => answer or null`, in the order given.
+	 *
+	 * @param string[] $addresses
+	 * @param array{basedir:string, baseurl:string, contentdir:string, contenturl:string, hosts?:string[]} $roots
+	 * @return array<string, array<string, mixed>|null>
+	 */
+	public static function lookupMany( IndexStore $store, array $addresses, array $roots, ?callable $placeOf = null ): array {
+		$wanted = [];
+		$all    = [];
+		foreach ( $addresses as $address ) {
+			if ( ! is_string( $address ) ) {
+				continue;
+			}
+			$wanted[ $address ] = self::candidateKeys( $address, $roots );
+			$all                = array_merge( $all, $wanted[ $address ] );
 		}
 
-		$rows = $store->geoRowsByKeys( $keys );
-		foreach ( $keys as $key ) {
-			foreach ( $rows as $row ) {
-				if ( (string) $row['path'] === $key ) {
-					return self::describe( $row, $placeOf );
+		$byPath = [];
+		foreach ( [] === $all ? [] : $store->geoRowsByKeys( array_values( array_unique( $all ) ) ) as $row ) {
+			$byPath[ (string) $row['path'] ] ??= $row;
+		}
+
+		$answers = [];
+		foreach ( $wanted as $address => $keys ) {
+			$answers[ $address ] = null;
+			foreach ( $keys as $key ) {
+				if ( isset( $byPath[ $key ] ) ) {
+					$answers[ $address ] = self::describe( $byPath[ $key ], $placeOf );
+					break;
 				}
 			}
 		}
 
-		return null;
+		return $answers;
 	}
 }
