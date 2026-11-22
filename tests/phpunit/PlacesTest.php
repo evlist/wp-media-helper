@@ -4,6 +4,7 @@
 
 use PHPUnit\Framework\TestCase;
 use WP_Media_Helper\Geo\Places\NominatimClient;
+use WP_Media_Helper\Geo\Places\PlaceQuality;
 use WP_Media_Helper\Geo\Places\PlacesJob;
 use WP_Media_Helper\Geo\Places\PlacesSettings;
 use WP_Media_Helper\Geo\Places\PlaceStore;
@@ -252,5 +253,29 @@ class PlacesTest extends TestCase {
 		$this->assertSame( 60, RateLimiter::retryAfter( gmdate( 'D, d M Y H:i:s', 1000060 ) . ' GMT', 1000000 ) );
 		$this->assertNull( RateLimiter::retryAfter( '', 0 ) );
 		$this->assertNull( RateLimiter::retryAfter( 'soon', 0 ) );
+	}
+
+	public function test_the_quality_counts_the_levels_and_the_places_without_a_name(): void {
+		$tally = PlaceQuality::tally( [
+			[ 'addresstype' => 'building', 'address' => [ 'road' => 'R', 'village' => 'V', 'county' => 'C', 'country' => 'F' ] ],
+			[ 'addresstype' => 'road', 'address' => [ 'road' => 'R', 'town' => 'T', 'county' => 'C', 'country' => 'F' ] ],
+			[ 'type' => 'peak', 'address' => [ 'county' => 'C', 'country' => 'F' ] ],
+			[ 'address' => [ 'hamlet' => 'H', 'village' => 'V', 'country' => 'F' ] ],
+		] );
+
+		$this->assertSame( 4, $tally['total'] );
+		$this->assertSame( [ 1, 3, 1, 3, 4 ], [ $tally['levels']['hamlet'], $tally['levels']['village'] + $tally['levels']['town'], $tally['levels']['town'], $tally['levels']['county'], $tally['levels']['country'] ] );
+		$this->assertSame( 1, $tally['nowhere_named'], 'Only the one in the mountains has no hamlet, village, town or city.' );
+		$this->assertSame( [ 'building' => 1, 'road' => 1, 'peak' => 1, '?' => 1 ], $tally['types'] );
+	}
+
+	public function test_the_cells_found_are_listed_in_chunks(): void {
+		$this->addPhotos( [ [ 43.1, 3.1 ], [ 43.2, 3.2 ], [ 43.3, 3.3 ] ] );
+		$this->answers = [ $this->found( 1 ), $this->found( 2 ), $this->found( 3 ) ];
+		$this->job( $this->settings() )->run( 120.0 );
+
+		$names = array_map( static fn ( array $answer ): string => $answer['display_name'], iterator_to_array( $this->places->foundAnswers( 2 ), false ) );
+
+		$this->assertCount( 3, $names );
 	}
 }

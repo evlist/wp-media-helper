@@ -498,7 +498,7 @@ the allowed base moved to the content directory: in `wp-config.php` `define( 'WP
 Off by default. With the address of a Nominatim-compatible reverse endpoint in the settings (*Places of the photos*), a job in the background looks, newest first, for the place of the positions (hamlet, village, town, county, country) and keeps the whole answer, by cell of 3 decimals (about 100 m) and language: a place is asked for once whatever the
 number of photos in it. **Only the rounded coordinates and the language are sent**, with a User-Agent that names the site (and a contact, if given). The public service of OpenStreetMap is held to its usage policy: **at most 4 requests a minute and one at a time**, results cached, a refusal (429, 5xx) stops everything with a back-off that
 honours `Retry-After`; it is meant for the photos that arrive, not for a backfill of a large library (about 18,000 places is a matter of days): use an instance of your own or a provider for that, with the setting *requests a minute*. `wp media-helper geo places status|run|reset`. The data is OpenStreetMap contributors', under the ODbL: show
-the attribution where the places are shown (the answer of the contract carries it).
+the attribution where the places are shown (the answer of the contract carries it). `wp media-helper geo places quality [--count=<n>] [--coordinates]` checks what the places found hold: how many have each level of the address (hamlet, village, town, city, county, country...), what kind of object was found, and a few places chosen at random with their chain of levels (no coordinates unless asked).
 
 ## A range of dates and times
 

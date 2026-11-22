@@ -82,6 +82,43 @@ final class PlaceStore {
 	}
 
 	/**
+	 * The answers found, decoded, in chunks (a library has tens of thousands of them).
+	 *
+	 * @return \Generator<int, array<string, mixed>>
+	 */
+	public function foundAnswers( int $chunk = 500 ): \Generator {
+		global $wpdb;
+
+		$table = PlacesSchema::table();
+		$after = 0;
+		do {
+			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT id, response FROM {$table} WHERE state = 1 AND id > %d ORDER BY id ASC LIMIT %d", $after, $chunk ), ARRAY_A ); // phpcs:ignore WordPress.DB
+			$rows = is_array( $rows ) ? $rows : [];
+			foreach ( $rows as $row ) {
+				$after   = (int) $row['id'];
+				$decoded = json_decode( (string) $row['response'], true );
+				if ( is_array( $decoded ) ) {
+					yield $after => $decoded;
+				}
+			}
+		} while ( count( $rows ) === $chunk );
+	}
+
+	/**
+	 * A few of the cells found, chosen at random.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function sample( int $count ): array {
+		global $wpdb;
+
+		$table = PlacesSchema::table();
+		$rows  = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table} WHERE state = 1 ORDER BY RAND() LIMIT %d", max( 1, $count ) ), ARRAY_A ); // phpcs:ignore WordPress.DB
+
+		return array_map( [ self::class, 'typed' ], is_array( $rows ) ? $rows : [] );
+	}
+
+	/**
 	 * Forgets the cells that failed or were given up (so that they are asked for again), or all of them.
 	 */
 	public function reset( bool $failedOnly = true ): int {

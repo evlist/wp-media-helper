@@ -4,6 +4,7 @@
 
 namespace WP_Media_Helper\Cli;
 
+use WP_Media_Helper\Geo\Places\PlaceQuality;
 use WP_Media_Helper\Geo\Places\PlacesCron;
 use WP_Media_Helper\Geo\Places\PlaceStore;
 use WP_Media_Helper\Index\WpdbIndexStore;
@@ -96,6 +97,65 @@ class PlacesCommand {
 			\WP_CLI::warning( sprintf( 'The service refused or did not answer: nothing more is asked for %d seconds (the background job waits too).', $blocked ) );
 		}
 		\WP_CLI::success( sprintf( '%d requests: %d places found, %d with nothing there, %d failed; %d files done.', $totals['requests'], $totals['found'], $totals['nothing'], $totals['failed'], $totals['files_done'] ) );
+	}
+
+	/**
+	 * Checks what the places found hold, to see whether the level of detail is the one wanted.
+	 *
+	 * First, for every place in the cache, how many have each level of the address (hamlet, village, town, city, county, state, country...) and what
+	 * kind of object was found; then a few places chosen at random with their chain of levels. Coordinates are not shown unless --coordinates is
+	 * given (they are personal data).
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--count=<n>]
+	 * : How many places to show. Default: 8.
+	 *
+	 * [--coordinates]
+	 * : Show the coordinates of the cell of each place shown.
+	 *
+	 * @when after_wp_load
+	 */
+	public function quality( array $args, array $assoc ): void {
+		$store = new PlaceStore();
+		$tally = PlaceQuality::tally( $store->foundAnswers() );
+		if ( 0 === $tally['total'] ) {
+			\WP_CLI::error( 'No place found yet: run `wp media-helper geo places run --limit=20` first.' );
+		}
+
+		$levels = [];
+		foreach ( $tally['levels'] as $level => $count ) {
+			$levels[] = [ 'level' => $level, 'places' => $count, 'share' => sprintf( '%.1f %%', 100 * $count / $tally['total'] ) ];
+		}
+		\WP_CLI::log( sprintf( '%d places found. Places that have each level of the address:', $tally['total'] ) );
+		\WP_CLI\Utils\format_items( 'table', $levels, [ 'level', 'places', 'share' ] );
+		\WP_CLI::log( sprintf( '%d places (%.1f %%) have none of hamlet, village, town, city, municipality.', $tally['nowhere_named'], 100 * $tally['nowhere_named'] / $tally['total'] ) );
+
+		$types = [];
+		foreach ( array_slice( $tally['types'], 0, 12, true ) as $type => $count ) {
+			$types[] = [ 'object found' => $type, 'places' => $count ];
+		}
+		\WP_CLI::log( 'What the service found at the position (addresstype):' );
+		\WP_CLI\Utils\format_items( 'table', $types, [ 'object found', 'places' ] );
+
+		$rows = [];
+		foreach ( $store->sample( isset( $assoc['count'] ) ? max( 1, (int) $assoc['count'] ) : 8 ) as $cell ) {
+			$answer  = json_decode( (string) $cell['response'], true );
+			$address = is_array( $answer ) && isset( $answer['address'] ) && is_array( $answer['address'] ) ? $answer['address'] : [];
+			$chain   = [];
+			foreach ( PlaceQuality::LEVELS as $level ) {
+				if ( ! empty( $address[ $level ] ) && ! in_array( $level, [ 'house_number', 'road' ], true ) ) {
+					$chain[] = $level . '=' . $address[ $level ];
+				}
+			}
+			$row = [ 'place' => (string) $cell['display_name'], 'levels' => implode( '; ', $chain ) ];
+			if ( isset( $assoc['coordinates'] ) ) {
+				$row = [ 'cell' => sprintf( '%.3f, %.3f', $cell['lat'], $cell['lon'] ) ] + $row;
+			}
+			$rows[] = $row;
+		}
+		\WP_CLI::log( 'A few places chosen at random:' );
+		\WP_CLI\Utils\format_items( 'table', $rows, array_keys( $rows[0] ?? [ 'place' => 1 ] ) );
 	}
 
 	/**
