@@ -301,3 +301,11 @@
 .wp-media-helper-browser-select {
 	flex: 0 0 auto;
 }
+
+/* An example in a field must not look like a value: lighter and in italics (the default of WordPress is almost as dark as a typed text). */
+.wp-media-helper-settings input::placeholder,
+.wp-media-helper-settings textarea::placeholder {
+	color: #a7aaad;
+	font-style: italic;
+	opacity: 1;
+}
