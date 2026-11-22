@@ -136,7 +136,26 @@ final class PlaceAnswer {
 	 * @return array<string, mixed>
 	 */
 	private static function withSite( array $levels ): array {
+		$admin      = (array) $levels['admin'];
+		$name       = (string) $levels['name'];
 		$candidates = [];
+
+		// The object found is an administrative boundary: the service leaves it out of the chain of the address (it is the object), so the flat
+		// `city` is the level above (Montpellier, for the commune of Mauguio). A boundary that is the level 8 is the commune itself; one of a level
+		// below the commune (a quarter) is a place name below it.
+		if ( 'boundary administrative' === $levels['kind'] && '' !== $name ) {
+			if ( isset( $admin['level8'] ) && 0 === strcasecmp( (string) $admin['level8'], $name ) ) {
+				$levels['settlement'] = $name;
+			} else {
+				foreach ( $admin as $level => $adminName ) {
+					if ( 1 === preg_match( '/^level(\d+)$/', (string) $level, $found ) && (int) $found[1] >= 9 && 0 === strcasecmp( (string) $adminName, $name ) ) {
+						$candidates[] = $name;
+
+						break;
+					}
+				}
+			}
+		}
 		if ( str_starts_with( (string) $levels['kind'], 'place ' ) ) {
 			$candidates[] = (string) $levels['name'];
 		}

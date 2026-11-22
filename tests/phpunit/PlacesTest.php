@@ -323,6 +323,22 @@ class PlacesTest extends TestCase {
 		$this->assertSame( 'Le Tronchet', PlaceAnswer::levels( [ 'place_id' => 1, 'name' => 'Col', 'category' => 'natural', 'type' => 'saddle', 'address' => [ 'hamlet' => 'Le Tronchet', 'village' => 'Bourg-Saint-Pierre' ] ] )['site'] );
 	}
 
+	public function test_an_administrative_boundary_that_is_the_object_found_is_the_commune_or_a_place_below_it(): void {
+		$levels = static fn ( array $geocoding ): array => PlaceAnswer::levels( [ 'features' => [ [ 'properties' => [ 'geocoding' => $geocoding ] ] ] ] );
+
+		// The commune of Mauguio is the object: the flat `city` is the level above (Montpellier), the level 8 is the commune.
+		$commune = $levels( [ 'osm_key' => 'boundary', 'osm_value' => 'administrative', 'name' => 'Mauguio', 'city' => 'Montpellier', 'county' => 'Hérault', 'admin' => [ 'level8' => 'Mauguio', 'level7' => 'Montpellier', 'level6' => 'Hérault' ] ] );
+		$this->assertSame( [ 'Mauguio', '' ], [ $commune['settlement'], $commune['site'] ] );
+
+		// A quarter is the object: the commune is the `city`, the quarter a place name below it.
+		$quarter = $levels( [ 'osm_key' => 'boundary', 'osm_value' => 'administrative', 'name' => 'Quartier du Port', 'city' => 'Châtelaillon-Plage', 'admin' => [ 'level10' => 'Quartier du Port', 'level8' => 'Châtelaillon-Plage', 'level7' => 'La Rochelle' ] ] );
+		$this->assertSame( [ 'Châtelaillon-Plage', 'Quartier du Port' ], [ $quarter['settlement'], $quarter['site'] ] );
+
+		// A boundary of a level above the commune is neither.
+		$county = $levels( [ 'osm_key' => 'boundary', 'osm_value' => 'administrative', 'name' => 'Hérault', 'admin' => [ 'level6' => 'Hérault', 'level4' => 'Occitanie' ] ] );
+		$this->assertSame( [ '', '' ], [ $county['settlement'], $county['site'] ] );
+	}
+
 	public function test_a_state_that_is_only_the_level_3_group_is_not_a_state_and_a_place_outside_any_commune_keeps_its_site(): void {
 		$answer = [ 'features' => [ [ 'properties' => [ 'geocoding' => [
 			'osm_key' => 'place', 'osm_value' => 'locality', 'name' => 'La Jamble', 'locality' => 'Les Boucholeurs', 'state' => 'France métropolitaine', 'country' => 'France',

@@ -90,3 +90,5 @@ Observed on the library of the blog (285 then 49 places, France, Italy and Polan
 **Precision of the cells** (setting `places_precision`, 3 by default): the cell is the position rounded to 3, 4 or 5 decimals (about 100 m, 10 m, 1 m) and the point asked for is the centre of the cell, up to some 60 m from the photo at 3 decimals, which on a beach or at the edge of a marsh can put it in the sea or outside the boundaries of the commune (about 10 % of the first places had no commune). The public service only gets 3 decimals
 (privacy, and the cache its policy asks for); an instance of one's own can be given 4 or 5. The key of the cache holds the precision (at 3 it is the key of the first version), the columns `lat` and `lon` hold up to 6 decimals (places schema 2).
 
+**Administrative boundary as the object found** (seen with 4 decimals: `Mauguio`, `Quartier du Port`): the service leaves the object out of the chain of its address, so the flat `city` is the level above (Montpellier for the commune of Mauguio). `PlaceAnswer` then takes the name of the object as `settlement` when it is the level 8, and as `site` when it is a level 9 or below (a quarter).
+
