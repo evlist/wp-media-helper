@@ -4,6 +4,7 @@
 
 use PHPUnit\Framework\TestCase;
 use WP_Media_Helper\Geo\Places\NominatimClient;
+use WP_Media_Helper\Geo\Places\PlaceAnswer;
 use WP_Media_Helper\Geo\Places\PlaceQuality;
 use WP_Media_Helper\Geo\Places\PlacesJob;
 use WP_Media_Helper\Geo\Places\PlacesSettings;
@@ -33,8 +34,24 @@ class PlacesTest extends TestCase {
 		$this->answers   = [ $this->found( 1 ) ];
 	}
 
+	/** An answer in the `geocodejson` format, as the service gives it. */
 	private function found( int $id ): array {
-		return [ 'status' => 200, 'body' => json_encode( [ 'place_id' => $id, 'osm_type' => 'node', 'osm_id' => 900 + $id, 'display_name' => "Place $id", 'address' => [ 'village' => "V$id", 'country' => 'France' ], 'extratags' => [ 'wikidata' => "Q$id" ] ] ), 'headers' => [], 'error' => null ];
+		$body = [
+			'type'      => 'FeatureCollection',
+			'geocoding' => [ 'version' => '0.1.0', 'licence' => 'ODbL' ],
+			'features'  => [ [
+				'type'       => 'Feature',
+				'properties' => [ 'geocoding' => [
+					'place_id' => $id, 'osm_type' => 'node', 'osm_id' => 900 + $id, 'osm_key' => 'place', 'osm_value' => 'hamlet', 'label' => "Place $id",
+					'name' => "H$id", 'locality' => "H$id", 'city' => "V$id", 'county' => "C$id", 'state' => 'S', 'country' => 'France',
+					'admin' => [ 'level2' => 'France', 'level4' => 'S', 'level6' => "C$id", 'level7' => "A$id", 'level8' => "V$id" ],
+					'extra' => [ 'wikidata' => "Q$id" ],
+				] ],
+				'geometry'   => [ 'type' => 'Point', 'coordinates' => [ 3.1, 43.5 ] ],
+			] ],
+		];
+
+		return [ 'status' => 200, 'body' => json_encode( $body ), 'headers' => [], 'error' => null ];
 	}
 
 	private function settings( string $url = 'https://nominatim.openstreetmap.org/reverse', array $more = [] ): PlacesSettings {
@@ -105,7 +122,7 @@ class PlacesTest extends TestCase {
 		$this->assertCount( 1, $this->requests );
 		$this->assertStringContainsString( 'lat=43.512&lon=3.123', $this->requests[0]['url'] );
 		$this->assertStringNotContainsString( '43.5123', $this->requests[0]['url'] );
-		foreach ( [ 'format=jsonv2', 'zoom=18', 'addressdetails=1', 'extratags=1', 'accept-language=fr-FR' ] as $part ) {
+		foreach ( [ 'format=geocodejson', 'zoom=18', 'addressdetails=1', 'extratags=1', 'accept-language=fr-FR' ] as $part ) {
 			$this->assertStringContainsString( $part, $this->requests[0]['url'] );
 		}
 		$this->assertSame( 'WP-Media-Helper/test (https://e.test)', $this->requests[0]['headers']['User-Agent'] );
@@ -123,8 +140,8 @@ class PlacesTest extends TestCase {
 		$cell = $this->places->find( PlaceStore::key( 43.512, 3.123, 'fr-FR' ) );
 		$this->assertSame( [ 1, 'node', 901, 'Place 1', 'nominatim.openstreetmap.org' ], [ $cell['state'], $cell['osm_type'], $cell['osm_id'], $cell['display_name'], $cell['service'] ] );
 		$whole = json_decode( $cell['response'], true );
-		$this->assertSame( 'Q1', $whole['extratags']['wikidata'] );
-		$this->assertSame( 'V1', $whole['address']['village'] );
+		$this->assertSame( 'Q1', $whole['features'][0]['properties']['geocoding']['extra']['wikidata'] );
+		$this->assertSame( 'V1', $whole['features'][0]['properties']['geocoding']['admin']['level8'] );
 
 		// Run again: nothing to do, nothing asked.
 		$this->requests = [];
@@ -226,8 +243,8 @@ class PlacesTest extends TestCase {
 		$report = $this->job( $this->settings() )->run( 60.0 );
 
 		$this->assertSame( [ 2, 1 ], [ $report['requests'], $report['files_done'] ] );
-		$this->assertSame( 'V1', json_decode( $this->places->find( PlaceStore::key( 43.4, 3.0, 'fr-FR' ) )['response'], true )['address']['village'] );
-		$this->assertSame( 'V2', json_decode( $this->places->find( PlaceStore::key( 43.6, 3.2, 'fr-FR' ) )['response'], true )['address']['village'] );
+		$this->assertSame( 'V1', PlaceAnswer::levels( json_decode( $this->places->find( PlaceStore::key( 43.4, 3.0, 'fr-FR' ) )['response'], true ) )['settlement'] );
+		$this->assertSame( 'V2', PlaceAnswer::levels( json_decode( $this->places->find( PlaceStore::key( 43.6, 3.2, 'fr-FR' ) )['response'], true ) )['settlement'] );
 	}
 
 	public function test_a_position_read_again_gets_its_place_looked_for_again(): void {
@@ -255,18 +272,47 @@ class PlacesTest extends TestCase {
 		$this->assertNull( RateLimiter::retryAfter( 'soon', 0 ) );
 	}
 
-	public function test_the_quality_counts_the_levels_and_the_places_without_a_name(): void {
+	public function test_the_levels_have_the_same_names_whatever_the_format_and_the_country(): void {
+		$france = json_decode( $this->found( 5 )['body'], true );
+		$levels = PlaceAnswer::levels( $france );
+
+		$this->assertSame( [ 'H5', 'V5', 'C5', 'S', 'France', 'place hamlet' ], [ $levels['name'], $levels['settlement'], $levels['county'], $levels['state'], $levels['country'], $levels['kind'] ] );
+		$this->assertSame( [ 'level2' => 'France', 'level4' => 'S', 'level6' => 'C5', 'level7' => 'A5', 'level8' => 'V5' ], $levels['admin'] );
+
+		// When the flat fields are missing the numbered levels fill in.
+		unset( $france['features'][0]['properties']['geocoding']['city'], $france['features'][0]['properties']['geocoding']['county'] );
+		$this->assertSame( [ 'V5', 'C5' ], [ PlaceAnswer::levels( $france )['settlement'], PlaceAnswer::levels( $france )['county'] ] );
+
+		// An answer of the older format kept in a cache: the keys of the address, with the village before the town before the city.
+		$legacy = PlaceAnswer::levels( [ 'place_id' => 1, 'name' => 'Col', 'category' => 'natural', 'type' => 'saddle', 'address' => [ 'hamlet' => 'Le Tronchet', 'village' => 'Bourg-Saint-Pierre', 'municipality' => 'Arrondissement', 'county' => 'Entremont', 'state' => 'Valais', 'country' => 'Suisse' ] ] );
+		$this->assertSame( [ 'Le Tronchet', 'Bourg-Saint-Pierre', 'Entremont', 'Valais', 'Suisse', 'natural saddle' ], [ $legacy['locality'], $legacy['settlement'], $legacy['county'], $legacy['state'], $legacy['country'], $legacy['kind'] ] );
+	}
+
+	public function test_a_geocodejson_answer_without_feature_is_nothing_there_and_anything_else_is_not_a_place(): void {
+		$this->assertTrue( PlaceAnswer::hasPlace( json_decode( $this->found( 1 )['body'], true ) ) );
+		$this->assertFalse( PlaceAnswer::hasPlace( [ 'error' => 'Unable to geocode' ] ) );
+		$this->assertFalse( PlaceAnswer::hasPlace( [ 'type' => 'FeatureCollection', 'features' => [] ] ) );
+		$this->addPhotos( [ [ 40.0, -30.0 ] ] );
+		$this->answers = [ [ 'status' => 200, 'body' => '{"type":"FeatureCollection","features":[]}', 'headers' => [], 'error' => null ] ];
+
+		$report = $this->job( $this->settings() )->run( 60.0 );
+
+		$this->assertSame( 1, $report['nothing'] );
+	}
+
+	public function test_the_quality_counts_the_levels_the_numbered_levels_and_the_places_without_a_name(): void {
+		$one = static fn ( array $geocoding ): array => [ 'features' => [ [ 'properties' => [ 'geocoding' => $geocoding ] ] ] ];
 		$tally = PlaceQuality::tally( [
-			[ 'addresstype' => 'building', 'address' => [ 'road' => 'R', 'village' => 'V', 'county' => 'C', 'country' => 'F' ] ],
-			[ 'addresstype' => 'road', 'address' => [ 'road' => 'R', 'town' => 'T', 'county' => 'C', 'country' => 'F' ] ],
-			[ 'type' => 'peak', 'address' => [ 'county' => 'C', 'country' => 'F' ] ],
-			[ 'address' => [ 'hamlet' => 'H', 'village' => 'V', 'country' => 'F' ] ],
+			$one( [ 'osm_key' => 'place', 'osm_value' => 'village', 'name' => 'V', 'city' => 'V', 'county' => 'C', 'country' => 'F', 'admin' => [ 'level2' => 'F', 'level6' => 'C', 'level8' => 'V' ] ] ),
+			$one( [ 'osm_key' => 'place', 'osm_value' => 'hamlet', 'name' => 'H', 'locality' => 'H', 'city' => 'T', 'county' => 'C', 'country' => 'F', 'admin' => [ 'level2' => 'F', 'level8' => 'T' ] ] ),
+			$one( [ 'osm_key' => 'natural', 'osm_value' => 'peak', 'name' => 'P', 'county' => 'C', 'country' => 'F', 'admin' => [ 'level2' => 'F' ] ] ),
 		] );
 
-		$this->assertSame( 4, $tally['total'] );
-		$this->assertSame( [ 1, 3, 1, 3, 4 ], [ $tally['levels']['hamlet'], $tally['levels']['village'] + $tally['levels']['town'], $tally['levels']['town'], $tally['levels']['county'], $tally['levels']['country'] ] );
-		$this->assertSame( 1, $tally['nowhere_named'], 'Only the one in the mountains has no hamlet, village, town or city.' );
-		$this->assertSame( [ 'building' => 1, 'road' => 1, 'peak' => 1, '?' => 1 ], $tally['types'] );
+		$this->assertSame( 3, $tally['total'] );
+		$this->assertSame( [ 3, 1, 2, 3, 3 ], [ $tally['levels']['name'], $tally['levels']['locality'], $tally['levels']['settlement'], $tally['levels']['county'], $tally['levels']['country'] ] );
+		$this->assertSame( [ 'level2' => 3, 'level6' => 1, 'level8' => 2 ], $tally['admin'] );
+		$this->assertSame( 1, $tally['nowhere_named'], 'Only the peak has neither a settlement nor a locality.' );
+		$this->assertSame( [ 'place village' => 1, 'place hamlet' => 1, 'natural peak' => 1 ], $tally['kinds'] );
 	}
 
 	public function test_the_cells_found_are_listed_in_chunks(): void {
@@ -274,7 +320,7 @@ class PlacesTest extends TestCase {
 		$this->answers = [ $this->found( 1 ), $this->found( 2 ), $this->found( 3 ) ];
 		$this->job( $this->settings() )->run( 120.0 );
 
-		$names = array_map( static fn ( array $answer ): string => $answer['display_name'], iterator_to_array( $this->places->foundAnswers( 2 ), false ) );
+		$names = array_map( static fn ( array $answer ): string => PlaceAnswer::summary( $answer )['display_name'], iterator_to_array( $this->places->foundAnswers( 2 ), false ) );
 
 		$this->assertCount( 3, $names );
 	}

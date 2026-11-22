@@ -33,7 +33,7 @@ final class NominatimClient {
 	 */
 	public function requestUrl( float $lat, float $lon ): string {
 		$query = http_build_query( [
-			'format'          => 'jsonv2',
+			'format'          => 'geocodejson',
 			'lat'             => sprintf( '%.3f', $lat ),
 			'lon'             => sprintf( '%.3f', $lon ),
 			'zoom'            => 18,
@@ -86,7 +86,10 @@ final class NominatimClient {
 			// "Unable to geocode": nothing there (the sea, a desert).
 			return [ 'result' => 'nothing', 'http' => $status, 'body' => $body, 'retry_after' => null, 'message' => (string) ( is_string( $body['error'] ) ? $body['error'] : 'nothing' ) ];
 		}
-		if ( ! isset( $body['place_id'] ) && ! isset( $body['osm_id'] ) && ! isset( $body['address'] ) ) {
+		if ( isset( $body['features'] ) && is_array( $body['features'] ) && [] === $body['features'] ) {
+			return [ 'result' => 'nothing', 'http' => $status, 'body' => $body, 'retry_after' => null, 'message' => 'no feature' ];
+		}
+		if ( ! PlaceAnswer::hasPlace( $body ) ) {
 			return [ 'result' => 'error', 'http' => $status, 'body' => $body, 'retry_after' => null, 'message' => 'unexpected answer' ];
 		}
 

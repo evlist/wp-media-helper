@@ -26,9 +26,9 @@ final class PlaceResolver {
 			'osm_type'     => $row['osm_type'] ?? null,
 			'osm_id'       => $row['osm_id'] ?? null,
 			'display_name' => $row['display_name'] ?? null,
-			// The chain of the address as the service gave it (hamlet, village, town, city, county, state, country...), and its tags (wikidata...).
-			'address'      => isset( $answer['address'] ) && is_array( $answer['address'] ) ? $answer['address'] : [],
-			'extratags'    => isset( $answer['extratags'] ) && is_array( $answer['extratags'] ) ? $answer['extratags'] : [],
+			// The levels under names that mean the same in every country (see PlaceAnswer::levels()): name, locality, district, settlement, county,
+			// state, country, and admin (the numbered administrative levels).
+			'levels'       => PlaceAnswer::levels( $answer ),
 			'answer'       => $answer,
 			'service'      => (string) ( $row['service'] ?? '' ),
 			'fetched_at'   => (int) ( $row['fetched_at'] ?? 0 ),

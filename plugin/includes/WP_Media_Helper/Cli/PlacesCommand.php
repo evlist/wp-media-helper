@@ -4,6 +4,7 @@
 
 namespace WP_Media_Helper\Cli;
 
+use WP_Media_Helper\Geo\Places\PlaceAnswer;
 use WP_Media_Helper\Geo\Places\PlaceQuality;
 use WP_Media_Helper\Geo\Places\PlacesCron;
 use WP_Media_Helper\Geo\Places\PlaceStore;
@@ -127,28 +128,41 @@ class PlacesCommand {
 		foreach ( $tally['levels'] as $level => $count ) {
 			$levels[] = [ 'level' => $level, 'places' => $count, 'share' => sprintf( '%.1f %%', 100 * $count / $tally['total'] ) ];
 		}
-		\WP_CLI::log( sprintf( '%d places found. Places that have each level of the address:', $tally['total'] ) );
+		\WP_CLI::log( sprintf( '%d places found. Places that have each level (stable names: name = what was found, locality = hamlet, district = quarter, settlement = village, town or city, county, state, country):', $tally['total'] ) );
 		\WP_CLI\Utils\format_items( 'table', $levels, [ 'level', 'places', 'share' ] );
-		\WP_CLI::log( sprintf( '%d places (%.1f %%) have none of hamlet, village, town, city, municipality.', $tally['nowhere_named'], 100 * $tally['nowhere_named'] / $tally['total'] ) );
+		\WP_CLI::log( sprintf( '%d places (%.1f %%) have neither a settlement nor a locality.', $tally['nowhere_named'], 100 * $tally['nowhere_named'] / $tally['total'] ) );
 
-		$types = [];
-		foreach ( array_slice( $tally['types'], 0, 12, true ) as $type => $count ) {
-			$types[] = [ 'object found' => $type, 'places' => $count ];
+		$admin = [];
+		foreach ( $tally['admin'] as $level => $count ) {
+			$admin[] = [ 'admin level' => $level, 'places' => $count, 'share' => sprintf( '%.1f %%', 100 * $count / $tally['total'] ) ];
 		}
-		\WP_CLI::log( 'What the service found at the position (addresstype):' );
-		\WP_CLI\Utils\format_items( 'table', $types, [ 'object found', 'places' ] );
+		if ( [] !== $admin ) {
+			\WP_CLI::log( 'The numbered administrative levels of OpenStreetMap that the answers give (level2 country, level4 region, level6 county, level8 commune in most countries):' );
+			\WP_CLI\Utils\format_items( 'table', $admin, [ 'admin level', 'places', 'share' ] );
+		}
+
+		$kinds = [];
+		foreach ( array_slice( $tally['kinds'], 0, 12, true ) as $kind => $count ) {
+			$kinds[] = [ 'object found' => $kind, 'places' => $count ];
+		}
+		\WP_CLI::log( 'What the service found at the position:' );
+		\WP_CLI\Utils\format_items( 'table', $kinds, [ 'object found', 'places' ] );
 
 		$rows = [];
 		foreach ( $store->sample( isset( $assoc['count'] ) ? max( 1, (int) $assoc['count'] ) : 8 ) as $cell ) {
-			$answer  = json_decode( (string) $cell['response'], true );
-			$address = is_array( $answer ) && isset( $answer['address'] ) && is_array( $answer['address'] ) ? $answer['address'] : [];
-			$chain   = [];
-			foreach ( PlaceQuality::LEVELS as $level ) {
-				if ( ! empty( $address[ $level ] ) && ! in_array( $level, [ 'house_number', 'road' ], true ) ) {
-					$chain[] = $level . '=' . $address[ $level ];
+			$answer = json_decode( (string) $cell['response'], true );
+			$levels = PlaceAnswer::levels( is_array( $answer ) ? $answer : [] );
+			$chain  = [];
+			foreach ( [ 'name', 'locality', 'district', 'settlement', 'county', 'state', 'country' ] as $level ) {
+				if ( '' !== $levels[ $level ] ) {
+					$chain[] = $level . '=' . $levels[ $level ];
 				}
 			}
-			$row = [ 'place' => (string) $cell['display_name'], 'levels' => implode( '; ', $chain ) ];
+			$adminChain = [];
+			foreach ( (array) $levels['admin'] as $level => $name ) {
+				$adminChain[] = str_replace( 'level', '', (string) $level ) . '=' . $name;
+			}
+			$row = [ 'place' => (string) $cell['display_name'], 'levels' => implode( '; ', $chain ), 'admin' => implode( '; ', $adminChain ) ];
 			if ( isset( $assoc['coordinates'] ) ) {
 				$row = [ 'cell' => sprintf( '%.3f, %.3f', $cell['lat'], $cell['lon'] ) ] + $row;
 			}

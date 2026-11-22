@@ -150,17 +150,13 @@ final class PlacesJob {
 			case 'ok':
 				$body = (array) $answer['body'];
 				$this->places->save( $lat, $lon, $language, [
-					'state'        => PlaceStore::STATE_FOUND,
-					'attempts'     => 0,
-					'next_try'     => 0,
-					'osm_type'     => isset( $body['osm_type'] ) ? substr( (string) $body['osm_type'], 0, 10 ) : null,
-					'osm_id'       => isset( $body['osm_id'] ) ? (int) $body['osm_id'] : null,
-					'place_id'     => isset( $body['place_id'] ) ? (int) $body['place_id'] : null,
-					'display_name' => isset( $body['display_name'] ) ? (string) $body['display_name'] : null,
-					'response'     => (string) wp_json_encode_compat( $body ),
-					'service'      => $this->settings->host(),
-					'fetched_at'   => $fetchedAt,
-				] );
+					'state'      => PlaceStore::STATE_FOUND,
+					'attempts'   => 0,
+					'next_try'   => 0,
+					'response'   => (string) wp_json_encode_compat( $body ),
+					'service'    => $this->settings->host(),
+					'fetched_at' => $fetchedAt,
+				] + PlaceAnswer::summary( $body ) );
 				$this->limiter->success();
 				++$report['found'];
 
