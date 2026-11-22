@@ -11,7 +11,7 @@ namespace WP_Media_Helper\Geo\Places;
 final class PlaceQuality {
 
 	/** The levels under the names of PlaceAnswer::levels(), from the smallest to the largest. */
-	public const LEVELS = [ 'name', 'locality', 'district', 'settlement', 'county', 'state', 'country' ];
+	public const LEVELS = [ 'name', 'site', 'locality', 'district', 'settlement', 'county', 'state', 'country' ];
 
 	/**
 	 * @param iterable<array<string, mixed>> $answers The whole answers of the service (decoded).

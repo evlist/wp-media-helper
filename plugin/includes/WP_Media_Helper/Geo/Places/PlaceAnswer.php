@@ -56,7 +56,7 @@ final class PlaceAnswer {
 
 	/**
 	 * The levels of a place under stable names, whatever the country:
-	 * `name` (what was found: a pass, a hamlet, a farm), `locality` (the hamlet or the place of a village), `district` (a quarter of a town),
+	 * `name` (what was found: a pass, a hamlet, a farm), `site` (the place name below the commune: see site()), `locality` (the hamlet or the place of a village), `district` (a quarter of a town),
 	 * `settlement` (the village, town or city: the commune in most countries), `county` (département, province, powiat), `state` (région, land),
 	 * `country`, and `admin` (the numbered administrative levels, `level2` the country, `level4`, `level6`, `level8`... as OpenStreetMap numbers them).
 	 *
@@ -68,7 +68,7 @@ final class PlaceAnswer {
 		if ( null !== $geocoding ) {
 			$admin = isset( $geocoding['admin'] ) && is_array( $geocoding['admin'] ) ? $geocoding['admin'] : [];
 
-			return [
+			return self::withSite( [
 				'name'       => self::text( $geocoding['name'] ?? null ),
 				'kind'       => trim( self::text( $geocoding['osm_key'] ?? null ) . ' ' . self::text( $geocoding['osm_value'] ?? null ) ),
 				'locality'   => self::text( $geocoding['locality'] ?? null ),
@@ -78,7 +78,7 @@ final class PlaceAnswer {
 				'state'      => self::text( $geocoding['state'] ?? null ) ?: self::text( $admin['level4'] ?? null ),
 				'country'    => self::text( $geocoding['country'] ?? null ) ?: self::text( $admin['level2'] ?? null ),
 				'admin'      => array_filter( array_map( [ self::class, 'text' ], $admin ), static fn ( string $name ): bool => '' !== $name ),
-			];
+			] );
 		}
 
 		// The older format: the keys of the address, whose meaning changes with the country.
@@ -93,7 +93,7 @@ final class PlaceAnswer {
 			return '';
 		};
 
-		return [
+		return self::withSite( [
 			'name'       => self::text( $answer['name'] ?? null ),
 			'kind'       => trim( self::text( $answer['category'] ?? null ) . ' ' . self::text( $answer['type'] ?? null ) ),
 			'locality'   => $first( [ 'hamlet', 'isolated_dwelling' ] ),
@@ -103,7 +103,36 @@ final class PlaceAnswer {
 			'state'      => $first( [ 'state' ] ),
 			'country'    => $first( [ 'country' ] ),
 			'admin'      => [],
-		];
+		] );
+	}
+
+	/**
+	 * Adds `site`: the name of the place below the commune, for a grouping finer than the commune (a hamlet, a place-name of the countryside). It is
+	 * the name of what was found when that is a place (`place locality`, `place hamlet`, `place isolated_dwelling`...), not when it is a land use, a
+	 * boundary or a building (a housing estate, a marsh: not a place name); else the locality, else the district. A name that is that of the
+	 * settlement is not a finer level: the next candidate is taken, and `site` is empty when there is none.
+	 *
+	 * @param array<string, mixed> $levels
+	 * @return array<string, mixed>
+	 */
+	private static function withSite( array $levels ): array {
+		$candidates = [];
+		if ( str_starts_with( (string) $levels['kind'], 'place ' ) ) {
+			$candidates[] = (string) $levels['name'];
+		}
+		$candidates[] = (string) $levels['locality'];
+		$candidates[] = (string) $levels['district'];
+
+		$levels['site'] = '';
+		foreach ( $candidates as $candidate ) {
+			if ( '' !== $candidate && 0 !== strcasecmp( $candidate, (string) $levels['settlement'] ) ) {
+				$levels['site'] = $candidate;
+
+				break;
+			}
+		}
+
+		return $levels;
 	}
 
 	/**

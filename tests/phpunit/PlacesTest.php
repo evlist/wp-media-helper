@@ -276,7 +276,7 @@ class PlacesTest extends TestCase {
 		$france = json_decode( $this->found( 5 )['body'], true );
 		$levels = PlaceAnswer::levels( $france );
 
-		$this->assertSame( [ 'H5', 'V5', 'C5', 'S', 'France', 'place hamlet' ], [ $levels['name'], $levels['settlement'], $levels['county'], $levels['state'], $levels['country'], $levels['kind'] ] );
+		$this->assertSame( [ 'H5', 'V5', 'C5', 'S', 'France', 'place hamlet', 'H5' ], [ $levels['name'], $levels['settlement'], $levels['county'], $levels['state'], $levels['country'], $levels['kind'], $levels['site'] ] );
 		$this->assertSame( [ 'level2' => 'France', 'level4' => 'S', 'level6' => 'C5', 'level7' => 'A5', 'level8' => 'V5' ], $levels['admin'] );
 
 		// When the flat fields are missing the numbered levels fill in.
@@ -286,6 +286,22 @@ class PlacesTest extends TestCase {
 		// An answer of the older format kept in a cache: the keys of the address, with the village before the town before the city.
 		$legacy = PlaceAnswer::levels( [ 'place_id' => 1, 'name' => 'Col', 'category' => 'natural', 'type' => 'saddle', 'address' => [ 'hamlet' => 'Le Tronchet', 'village' => 'Bourg-Saint-Pierre', 'municipality' => 'Arrondissement', 'county' => 'Entremont', 'state' => 'Valais', 'country' => 'Suisse' ] ] );
 		$this->assertSame( [ 'Le Tronchet', 'Bourg-Saint-Pierre', 'Entremont', 'Valais', 'Suisse', 'natural saddle' ], [ $legacy['locality'], $legacy['settlement'], $legacy['county'], $legacy['state'], $legacy['country'], $legacy['kind'] ] );
+	}
+
+	public function test_the_site_is_the_place_name_below_the_commune(): void {
+		$site = static fn ( array $geocoding ): string => PlaceAnswer::levels( [ 'features' => [ [ 'properties' => [ 'geocoding' => $geocoding ] ] ] ] )['site'];
+
+		// A place found: its name (a place-name of the countryside).
+		$this->assertSame( 'Jarriges', $site( [ 'osm_key' => 'place', 'osm_value' => 'locality', 'name' => 'Jarriges', 'district' => 'Le Foirail', 'city' => 'Salers' ] ) );
+		// A land use or a building is not a place name: the locality, else the district.
+		$this->assertSame( "L'Abbaye", $site( [ 'osm_key' => 'landuse', 'osm_value' => 'residential', 'name' => 'Résidence ATC', 'locality' => "L'Abbaye", 'district' => "Quartier d'Orbigny", 'city' => 'Châtelaillon-Plage' ] ) );
+		$this->assertSame( 'Les Arberons', $site( [ 'osm_key' => 'landuse', 'osm_value' => 'residential', 'name' => 'Résidence ATC', 'district' => 'Les Arberons', 'city' => 'Chamonix' ] ) );
+		// The name of the commune is not a finer level: the next candidate is taken, or none.
+		$this->assertSame( 'Masdamont', $site( [ 'osm_key' => 'place', 'osm_value' => 'village', 'name' => 'Saint-Bonnet', 'district' => 'Masdamont', 'city' => 'saint-bonnet' ] ) );
+		$this->assertSame( '', $site( [ 'osm_key' => 'boundary', 'osm_value' => 'administrative', 'name' => 'Beaufort', 'district' => 'Beaufort', 'city' => 'Beaufort' ] ) );
+		$this->assertSame( '', $site( [ 'osm_key' => 'landuse', 'osm_value' => 'farmyard', 'name' => 'Ferme', 'city' => 'Lattes' ] ), 'A farm name alone is not a place name.' );
+		// The older format derives the same.
+		$this->assertSame( 'Le Tronchet', PlaceAnswer::levels( [ 'place_id' => 1, 'name' => 'Col', 'category' => 'natural', 'type' => 'saddle', 'address' => [ 'hamlet' => 'Le Tronchet', 'village' => 'Bourg-Saint-Pierre' ] ] )['site'] );
 	}
 
 	public function test_a_geocodejson_answer_without_feature_is_nothing_there_and_anything_else_is_not_a_place(): void {
@@ -309,7 +325,7 @@ class PlacesTest extends TestCase {
 		] );
 
 		$this->assertSame( 3, $tally['total'] );
-		$this->assertSame( [ 3, 1, 2, 3, 3 ], [ $tally['levels']['name'], $tally['levels']['locality'], $tally['levels']['settlement'], $tally['levels']['county'], $tally['levels']['country'] ] );
+		$this->assertSame( [ 3, 1, 1, 2, 3, 3 ], [ $tally['levels']['name'], $tally['levels']['site'], $tally['levels']['locality'], $tally['levels']['settlement'], $tally['levels']['county'], $tally['levels']['country'] ] );
 		$this->assertSame( [ 'level2' => 3, 'level6' => 1, 'level8' => 2 ], $tally['admin'] );
 		$this->assertSame( 1, $tally['nowhere_named'], 'Only the peak has neither a settlement nor a locality.' );
 		$this->assertSame( [ 'place village' => 1, 'place hamlet' => 1, 'natural peak' => 1 ], $tally['kinds'] );

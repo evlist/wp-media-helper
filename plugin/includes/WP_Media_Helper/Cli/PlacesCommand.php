@@ -128,7 +128,7 @@ class PlacesCommand {
 		foreach ( $tally['levels'] as $level => $count ) {
 			$levels[] = [ 'level' => $level, 'places' => $count, 'share' => sprintf( '%.1f %%', 100 * $count / $tally['total'] ) ];
 		}
-		\WP_CLI::log( sprintf( '%d places found. Places that have each level (stable names: name = what was found, locality = hamlet, district = quarter, settlement = village, town or city, county, state, country):', $tally['total'] ) );
+		\WP_CLI::log( sprintf( '%d places found. Places that have each level (stable names: name = what was found, site = the place name below the commune, locality, district, settlement = the commune, county, state, country):', $tally['total'] ) );
 		\WP_CLI\Utils\format_items( 'table', $levels, [ 'level', 'places', 'share' ] );
 		\WP_CLI::log( sprintf( '%d places (%.1f %%) have neither a settlement nor a locality.', $tally['nowhere_named'], 100 * $tally['nowhere_named'] / $tally['total'] ) );
 
@@ -153,7 +153,7 @@ class PlacesCommand {
 			$answer = json_decode( (string) $cell['response'], true );
 			$levels = PlaceAnswer::levels( is_array( $answer ) ? $answer : [] );
 			$chain  = [];
-			foreach ( [ 'name', 'locality', 'district', 'settlement', 'county', 'state', 'country' ] as $level ) {
+			foreach ( [ 'site', 'name', 'locality', 'district', 'settlement', 'county', 'state', 'country' ] as $level ) {
 				if ( '' !== $levels[ $level ] ) {
 					$chain[] = $level . '=' . $levels[ $level ];
 				}
