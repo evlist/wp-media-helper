@@ -304,6 +304,22 @@ class PlacesTest extends TestCase {
 		$this->assertSame( 'Le Tronchet', PlaceAnswer::levels( [ 'place_id' => 1, 'name' => 'Col', 'category' => 'natural', 'type' => 'saddle', 'address' => [ 'hamlet' => 'Le Tronchet', 'village' => 'Bourg-Saint-Pierre' ] ] )['site'] );
 	}
 
+	public function test_a_state_that_is_only_the_level_3_group_is_not_a_state_and_a_place_outside_any_commune_keeps_its_site(): void {
+		$answer = [ 'features' => [ [ 'properties' => [ 'geocoding' => [
+			'osm_key' => 'place', 'osm_value' => 'locality', 'name' => 'La Jamble', 'locality' => 'Les Boucholeurs', 'state' => 'France métropolitaine', 'country' => 'France',
+			'admin' => [ 'level3' => 'France métropolitaine' ],
+		] ] ] ] ];
+
+		$levels = PlaceAnswer::levels( $answer );
+
+		$this->assertSame( [ '', '', 'La Jamble', 'France' ], [ $levels['state'], $levels['settlement'], $levels['site'], $levels['country'] ] );
+
+		// With a level 4 the state is the region, as before.
+		$answer['features'][0]['properties']['geocoding']['state']          = 'Nouvelle-Aquitaine';
+		$answer['features'][0]['properties']['geocoding']['admin']['level4'] = 'Nouvelle-Aquitaine';
+		$this->assertSame( 'Nouvelle-Aquitaine', PlaceAnswer::levels( $answer )['state'] );
+	}
+
 	public function test_a_geocodejson_answer_without_feature_is_nothing_there_and_anything_else_is_not_a_place(): void {
 		$this->assertTrue( PlaceAnswer::hasPlace( json_decode( $this->found( 1 )['body'], true ) ) );
 		$this->assertFalse( PlaceAnswer::hasPlace( [ 'error' => 'Unable to geocode' ] ) );

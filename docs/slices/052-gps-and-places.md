@@ -84,3 +84,6 @@ are in the index only when a source covers them: with the allowed base moved to 
 ## Tests
 
 The EXIF rationals and signs, the refusal of 0, 0 and of out-of-range values; a GPX track in the file order that is not chronological, a track without times, a file with entities; the state machine (read once, again when the file changed); the rate limiter and the retry delays (phase B).
+
+Observed on the library of the blog (285 then 49 places, France, Italy and Poland): `settlement` is the commune everywhere; about 10 % of the places have **no commune** (a point on the coast or in a marsh, outside the boundaries of any commune in the data): `settlement` and `county` are then empty and a consumer falls back to `site`, then `locality`.
+

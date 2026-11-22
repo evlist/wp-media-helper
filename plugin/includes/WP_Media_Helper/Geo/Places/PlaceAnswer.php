@@ -75,7 +75,7 @@ final class PlaceAnswer {
 				'district'   => self::text( $geocoding['district'] ?? null ),
 				'settlement' => self::text( $geocoding['city'] ?? null ) ?: self::text( $admin['level8'] ?? null ),
 				'county'     => self::text( $geocoding['county'] ?? null ) ?: self::text( $admin['level6'] ?? null ),
-				'state'      => self::text( $geocoding['state'] ?? null ) ?: self::text( $admin['level4'] ?? null ),
+				'state'      => self::state( $geocoding, $admin ),
 				'country'    => self::text( $geocoding['country'] ?? null ) ?: self::text( $admin['level2'] ?? null ),
 				'admin'      => array_filter( array_map( [ self::class, 'text' ], $admin ), static fn ( string $name ): bool => '' !== $name ),
 			] );
@@ -104,6 +104,26 @@ final class PlaceAnswer {
 			'country'    => $first( [ 'country' ] ),
 			'admin'      => [],
 		] );
+	}
+
+	/**
+	 * The state (région, land): the flat field, else the numbered level 4. When the answer has no level 4 the flat field can hold the level 3
+	 * ("France métropolitaine"), which is a group of regions and not a region: it is left empty.
+	 *
+	 * @param array<string, mixed> $geocoding
+	 * @param array<string, mixed> $admin
+	 */
+	private static function state( array $geocoding, array $admin ): string {
+		$state = self::text( $geocoding['state'] ?? null );
+		if ( '' === $state ) {
+			return self::text( $admin['level4'] ?? null );
+		}
+		$level3 = self::text( $admin['level3'] ?? null );
+		if ( '' !== $level3 && 0 === strcasecmp( $state, $level3 ) && '' === self::text( $admin['level4'] ?? null ) ) {
+			return '';
+		}
+
+		return $state;
 	}
 
 	/**
