@@ -72,7 +72,7 @@ class PlacesTest extends TestCase {
 		return new PlacesJob(
 			$this->files,
 			$this->places,
-			new NominatimClient( $settings->url, $settings->language, 'WP-Media-Helper/test (https://e.test)', 'https://e.test/', $transport ),
+			new NominatimClient( $settings->url, $settings->language, 'WP-Media-Helper/test (https://e.test)', 'https://e.test/', $transport, $settings->precision ),
 			$limiter,
 			$settings,
 			fn (): float => $this->now,
