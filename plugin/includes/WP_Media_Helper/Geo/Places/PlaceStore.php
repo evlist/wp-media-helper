@@ -15,20 +15,37 @@ final class PlaceStore {
 	public const STATE_FAILED    = 3;
 	public const STATE_GAVE_UP   = 4;
 
+	/** The decimals of the cell: 3 is about 100 m, 4 about 10 m, 5 about 1 m. */
+	private int $precision;
+
+	public function __construct( int $precision = 3 ) {
+		$this->precision = max( 3, min( 5, $precision ) );
+	}
+
 	/**
-	 * The cell of a position: the coordinates rounded to 3 decimals.
+	 * The cell of a position: the coordinates rounded to `$precision` decimals (3 by default: about 100 m).
 	 *
 	 * @return array{lat:float, lon:float}
 	 */
-	public static function cell( float $lat, float $lon ): array {
-		// Rounded as a string first: -0.0004 is the cell 0, not "-0".
-		return [ 'lat' => round( $lat, 3 ) + 0.0, 'lon' => round( $lon, 3 ) + 0.0 ];
+	public static function cell( float $lat, float $lon, int $precision = 3 ): array {
+		$precision = max( 3, min( 5, $precision ) );
+
+		// `+ 0.0` turns a "-0" (-0.0004 rounded) into 0.
+		return [ 'lat' => round( $lat, $precision ) + 0.0, 'lon' => round( $lon, $precision ) + 0.0 ];
 	}
 
-	public static function key( float $lat, float $lon, string $language ): string {
-		$cell = self::cell( $lat, $lon );
+	/**
+	 * The key of a cell in the cache. At 3 decimals it is the key of the first version; another precision has its own keys, so that cells of
+	 * different sizes are never taken for one another.
+	 */
+	public static function key( float $lat, float $lon, string $language, int $precision = 3 ): string {
+		$precision = max( 3, min( 5, $precision ) );
+		$cell      = self::cell( $lat, $lon, $precision );
+		$language  = strtolower( trim( $language ) );
 
-		return sha1( sprintf( '%.3f,%.3f|%s', $cell['lat'], $cell['lon'], strtolower( trim( $language ) ) ) );
+		return 3 === $precision
+			? sha1( sprintf( '%.3f,%.3f|%s', $cell['lat'], $cell['lon'], $language ) )
+			: sha1( sprintf( '%.' . $precision . 'f,%.' . $precision . 'f|%s|p%d', $cell['lat'], $cell['lon'], $language, $precision ) );
 	}
 
 	/**
@@ -51,8 +68,8 @@ final class PlaceStore {
 	public function save( float $lat, float $lon, string $language, array $fields ): void {
 		global $wpdb;
 
-		$key  = self::key( $lat, $lon, $language );
-		$cell = self::cell( $lat, $lon );
+		$key  = self::key( $lat, $lon, $language, $this->precision );
+		$cell = self::cell( $lat, $lon, $this->precision );
 		$data = array_intersect_key( $fields, array_flip( [ 'state', 'attempts', 'next_try', 'osm_type', 'osm_id', 'place_id', 'display_name', 'response', 'service', 'fetched_at' ] ) );
 		if ( null !== $this->find( $key ) ) {
 			$wpdb->update( PlacesSchema::table(), $data, [ 'cell_key' => $key ] ); // phpcs:ignore WordPress.DB

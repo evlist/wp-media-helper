@@ -171,7 +171,7 @@ class GeneralSettings {
 			throw new \InvalidArgumentException( implode( ' ', $handlers['errors'] ) );
 		}
 		$places = [];
-		foreach ( [ 'places_url', 'places_contact', 'places_language', 'places_rate' ] as $key ) {
+		foreach ( [ 'places_url', 'places_contact', 'places_language', 'places_rate', 'places_precision' ] as $key ) {
 			$places[ $key ] = trim( array_key_exists( $key, $values ) ? (string) $values[ $key ] : $this->placesValue( $key ) );
 		}
 		if ( '' !== $places['places_url'] && '' === PlacesSettings::cleanUrl( $places['places_url'] ) ) {
@@ -179,6 +179,9 @@ class GeneralSettings {
 		}
 		if ( '' !== $places['places_rate'] && ( 1 !== preg_match( '/^\d+$/', $places['places_rate'] ) || (int) $places['places_rate'] < 1 || (int) $places['places_rate'] > PlacesSettings::MAX_PER_MINUTE ) ) {
 			throw new \InvalidArgumentException( sprintf( /* translators: %d: maximum. */ __( 'The requests a minute must be a whole number between 1 and %d.', 'wp-media-helper' ), PlacesSettings::MAX_PER_MINUTE ) );
+		}
+		if ( '' !== $places['places_precision'] && ( 1 !== preg_match( '/^[345]$/', $places['places_precision'] ) ) ) {
+			throw new \InvalidArgumentException( __( 'The precision of the places must be 3, 4 or 5 decimals.', 'wp-media-helper' ) );
 		}
 		if ( '' !== $places['places_language'] && PlacesSettings::cleanLanguage( $places['places_language'] ) !== str_replace( '_', '-', $places['places_language'] ) ) {
 			throw new \InvalidArgumentException( __( 'The language of the places must be a language tag such as fr, en or pt-BR.', 'wp-media-helper' ) );

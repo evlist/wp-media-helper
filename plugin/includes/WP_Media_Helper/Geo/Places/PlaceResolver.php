@@ -40,8 +40,8 @@ final class PlaceResolver {
 	/**
 	 * @return array<string, mixed>|null Null when the cell was not looked for, or the attempt failed.
 	 */
-	public static function forPosition( float $lat, float $lon, string $language, ?PlaceStore $store = null ): ?array {
-		$row = ( $store ?? new PlaceStore() )->find( PlaceStore::key( $lat, $lon, $language ) );
+	public static function forPosition( float $lat, float $lon, string $language, ?PlaceStore $store = null, int $precision = 3 ): ?array {
+		$row = ( $store ?? new PlaceStore( $precision ) )->find( PlaceStore::key( $lat, $lon, $language, $precision ) );
 		if ( null === $row || ! in_array( (int) $row['state'], [ PlaceStore::STATE_FOUND, PlaceStore::STATE_NOTHING ], true ) ) {
 			return null;
 		}

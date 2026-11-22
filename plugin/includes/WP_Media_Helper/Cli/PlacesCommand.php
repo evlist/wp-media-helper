@@ -43,6 +43,7 @@ class PlacesCommand {
 		$rows = [
 			[ 'what' => 'service', 'value' => $settings->enabled() ? $settings->host() . ( $settings->isPublicService() ? ' (public: at most ' . $settings->requestsPerMinute() . ' requests a minute, one at a time)' : ' (' . $settings->requestsPerMinute() . ' requests a minute)' ) : 'none (off)' ],
 			[ 'what' => 'language', 'value' => $settings->language ],
+			[ 'what' => 'cells', 'value' => $settings->precision . ' decimals (about ' . [ 3 => '100 m', 4 => '10 m', 5 => '1 m' ][ $settings->precision ] . ')' ],
 			[ 'what' => 'files with a position: place to look for', 'value' => (string) $files[0] ],
 			[ 'what' => 'files with a position: place found', 'value' => (string) $files[1] ],
 			[ 'what' => 'files with a position: given up', 'value' => (string) $files[2] ],
@@ -164,7 +165,7 @@ class PlacesCommand {
 			}
 			$row = [ 'place' => (string) $cell['display_name'], 'levels' => implode( '; ', $chain ), 'admin' => implode( '; ', $adminChain ) ];
 			if ( isset( $assoc['coordinates'] ) ) {
-				$row = [ 'cell' => sprintf( '%.3f, %.3f', $cell['lat'], $cell['lon'] ) ] + $row;
+				$row = [ 'cell' => rtrim( rtrim( sprintf( '%.5f', $cell['lat'] ), '0' ), '.' ) . ', ' . rtrim( rtrim( sprintf( '%.5f', $cell['lon'] ), '0' ), '.' ) ] + $row;
 			}
 			$rows[] = $row;
 		}

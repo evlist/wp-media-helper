@@ -265,6 +265,25 @@ class PlacesTest extends TestCase {
 		$this->assertSame( [ 'lat' => 0.0, 'lon' => 0.0 ], PlaceStore::cell( -0.0004, 0.0003 ) );
 	}
 
+	public function test_a_finer_precision_gives_finer_cells_with_keys_of_their_own_and_the_public_service_stays_at_100_m(): void {
+		$own = $this->settings( 'http://nominatim.lan/reverse', [ 'places_precision' => '4' ] );
+		$this->assertSame( 4, $own->precision );
+		$this->assertSame( 3, $this->settings( 'https://nominatim.openstreetmap.org/reverse', [ 'places_precision' => '5' ] )->precision, 'Never finer than 100 m for the public service.' );
+		$this->assertSame( 5, $this->settings( 'http://nominatim.lan/reverse', [ 'places_precision' => '9' ] )->precision, 'Out of range is brought back.' );
+
+		$this->assertSame( [ 'lat' => 43.5123, 'lon' => 3.1235 ], PlaceStore::cell( 43.51234, 3.12349, 4 ) );
+		$this->assertSame( [ 'lat' => 43.512, 'lon' => 3.123 ], PlaceStore::cell( 43.51234, 3.12349 ) );
+		$this->assertNotSame( PlaceStore::key( 43.5123, 3.1235, 'fr', 3 ), PlaceStore::key( 43.5123, 3.1235, 'fr', 4 ) );
+		$this->assertSame( PlaceStore::key( 43.5123, 3.1235, 'fr', 4 ), PlaceStore::key( 43.51231, 3.12352, 'fr', 4 ) );
+
+		$this->places = new PlaceStore( 4 );
+		$this->addPhotos( [ [ 43.51231, 3.12349 ], [ 43.51233, 3.12351 ], [ 43.51301, 3.12349 ] ] );
+		$report = $this->job( $own )->run( 60.0 );
+
+		$this->assertSame( 2, $report['requests'], 'Two cells of 10 m: the first two photos share one.' );
+		$this->assertStringContainsString( 'lat=43.5130&lon=3.1235', $this->requests[0]['url'], 'The newest photo is asked for first, with its cell of 4 decimals.' );
+	}
+
 	public function test_retry_after_is_read_as_seconds_or_as_a_date(): void {
 		$this->assertSame( 120, RateLimiter::retryAfter( '120', 0 ) );
 		$this->assertSame( 60, RateLimiter::retryAfter( gmdate( 'D, d M Y H:i:s', 1000060 ) . ' GMT', 1000000 ) );

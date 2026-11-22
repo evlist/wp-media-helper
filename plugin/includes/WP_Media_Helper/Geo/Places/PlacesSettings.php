@@ -23,6 +23,8 @@ final class PlacesSettings {
 	public string $contact;
 	public string $language;
 	public int $perMinute;
+	/** The decimals of the cells asked for: 3 (about 100 m), 4 or 5. */
+	public int $precision;
 
 	/**
 	 * @param array<string, mixed> $stored The general settings, as stored.
@@ -34,6 +36,10 @@ final class PlacesSettings {
 		$this->language = self::cleanLanguage( '' !== $language ? $language : $siteLanguage );
 		$perMinute      = isset( $stored['places_rate'] ) && is_numeric( $stored['places_rate'] ) ? (int) $stored['places_rate'] : self::DEFAULT_PER_MINUTE;
 		$this->perMinute = max( 1, min( self::MAX_PER_MINUTE, $perMinute ) );
+		$precision       = isset( $stored['places_precision'] ) && is_numeric( $stored['places_precision'] ) ? (int) $stored['places_precision'] : 3;
+		// The public service only ever gets positions rounded to about 100 m (privacy, and the cache that its policy asks for); an instance of
+		// one's own can be asked for finer cells.
+		$this->precision = $this->isPublicService() ? 3 : max( 3, min( 5, $precision ) );
 	}
 
 	public function enabled(): bool {

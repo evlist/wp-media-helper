@@ -33,7 +33,9 @@ final class GeoFilter {
 			return $previous;
 		}
 
-		return Places\PlaceResolver::forPosition( (float) $lat, (float) $lon, Places\PlacesCron::settings()->language );
+		$settings = Places\PlacesCron::settings();
+
+		return Places\PlaceResolver::forPosition( (float) $lat, (float) $lon, $settings->language, null, $settings->precision );
 	}
 
 	/**

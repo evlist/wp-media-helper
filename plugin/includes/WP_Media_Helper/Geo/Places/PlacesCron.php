@@ -72,8 +72,8 @@ final class PlacesCron {
 	public static function job( PlacesSettings $settings ): PlacesJob {
 		return new PlacesJob(
 			new WpdbIndexStore(),
-			new PlaceStore(),
-			new NominatimClient( $settings->url, $settings->language, self::userAgent( $settings ), function_exists( 'home_url' ) ? (string) home_url( '/' ) : '', NominatimClient::wordpressTransport() ),
+			new PlaceStore( $settings->precision ),
+			new NominatimClient( $settings->url, $settings->language, self::userAgent( $settings ), function_exists( 'home_url' ) ? (string) home_url( '/' ) : '', NominatimClient::wordpressTransport(), $settings->precision ),
 			self::limiter(),
 			$settings
 		);

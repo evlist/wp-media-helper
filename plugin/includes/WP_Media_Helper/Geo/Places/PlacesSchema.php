@@ -9,7 +9,7 @@ namespace WP_Media_Helper\Geo\Places;
  */
 final class PlacesSchema {
 
-	public const VERSION        = 1;
+	public const VERSION        = 2;
 	public const VERSION_OPTION = 'wp_media_helper_places_db_version';
 
 	public static function table(): string {
@@ -26,8 +26,8 @@ final class PlacesSchema {
 		return "CREATE TABLE {$table} (
   id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   cell_key char(40) NOT NULL,
-  lat decimal(8,3) NOT NULL,
-  lon decimal(9,3) NOT NULL,
+  lat decimal(9,6) NOT NULL,
+  lon decimal(10,6) NOT NULL,
   lang varchar(20) NOT NULL DEFAULT '',
   state tinyint(3) unsigned NOT NULL DEFAULT 0,
   attempts smallint(5) unsigned NOT NULL DEFAULT 0,

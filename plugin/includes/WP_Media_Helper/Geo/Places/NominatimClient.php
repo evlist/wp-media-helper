@@ -14,13 +14,15 @@ final class NominatimClient {
 	private string $language;
 	private string $userAgent;
 	private string $referer;
+	private int $precision;
 	/** @var callable(string, array<string, string>): array{status:int, body:string, headers:array<string, string>, error:?string} */
 	private $transport;
 
 	/**
 	 * @param callable(string, array<string, string>): array{status:int, body:string, headers:array<string, string>, error:?string} $transport
 	 */
-	public function __construct( string $url, string $language, string $userAgent, string $referer, callable $transport ) {
+	public function __construct( string $url, string $language, string $userAgent, string $referer, callable $transport, int $precision = 3 ) {
+		$this->precision = max( 3, min( 5, $precision ) );
 		$this->url       = $url;
 		$this->language  = $language;
 		$this->userAgent = $userAgent;
@@ -34,8 +36,8 @@ final class NominatimClient {
 	public function requestUrl( float $lat, float $lon ): string {
 		$query = http_build_query( [
 			'format'          => 'geocodejson',
-			'lat'             => sprintf( '%.3f', $lat ),
-			'lon'             => sprintf( '%.3f', $lon ),
+			'lat'             => sprintf( '%.' . $this->precision . 'f', $lat ),
+			'lon'             => sprintf( '%.' . $this->precision . 'f', $lon ),
 			'zoom'            => 18,
 			'addressdetails'  => 1,
 			'extratags'       => 1,

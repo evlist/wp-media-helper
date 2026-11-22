@@ -112,7 +112,7 @@ final class PlacesJob {
 	 */
 	private function cell( float $lat, float $lon, float $deadline, int $limit, array &$report ): string {
 		$language = $this->settings->language;
-		$known    = $this->places->find( PlaceStore::key( $lat, $lon, $language ) );
+		$known    = $this->places->find( PlaceStore::key( $lat, $lon, $language, $this->settings->precision ) );
 		$now      = (int) floor( ( $this->clock )() );
 
 		if ( null !== $known ) {
@@ -140,7 +140,7 @@ final class PlacesJob {
 			( $this->sleeper )( $wait );
 		}
 
-		$cell   = PlaceStore::cell( $lat, $lon );
+		$cell   = PlaceStore::cell( $lat, $lon, $this->settings->precision );
 		$answer = $this->client->reverse( $cell['lat'], $cell['lon'], (int) floor( ( $this->clock )() ) );
 		$this->limiter->recordRequest( $this->settings->interval() );
 		++$report['requests'];

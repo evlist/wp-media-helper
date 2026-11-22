@@ -107,6 +107,7 @@ class ExternalSourceSettingsPage {
 		$placesContact     = $generalSettings->placesValue( 'places_contact' );
 		$placesLanguage    = $generalSettings->placesValue( 'places_language' );
 		$placesRate        = $generalSettings->placesValue( 'places_rate' );
+		$placesPrecision   = $generalSettings->placesValue( 'places_precision' );
 		// Stored sources outside the allowed base are reported as a warning instead.
 		$allowedBase = AllowedBase::resolve();
 		$enforceBase = null !== $pending;
@@ -322,6 +323,17 @@ class ExternalSourceSettingsPage {
 							</td>
 						</tr>
 						<tr>
+							<th scope="row"><label for="wp-media-helper-places-precision"><?php esc_html_e( 'Places: precision of the cells', 'wp-media-helper' ); ?></label></th>
+							<td>
+								<select id="wp-media-helper-places-precision" name="general[places_precision]">
+									<option value="" <?php selected( $placesPrecision, '' ); ?>><?php esc_html_e( '3 decimals (about 100 m), the default', 'wp-media-helper' ); ?></option>
+									<option value="4" <?php selected( $placesPrecision, '4' ); ?>><?php esc_html_e( '4 decimals (about 10 m)', 'wp-media-helper' ); ?></option>
+									<option value="5" <?php selected( $placesPrecision, '5' ); ?>><?php esc_html_e( '5 decimals (about 1 m)', 'wp-media-helper' ); ?></option>
+								</select>
+								<p class="description"><?php esc_html_e( 'The positions are rounded to a cell before they are sent, and a cell is asked for once. A cell of about 100 m puts a photo taken on a beach or at the edge of a marsh in the sea, outside any commune: a finer cell gives a better place and more cells to ask for. The public service of OpenStreetMap only gets cells of about 100 m, whatever is chosen here. After a change, forget the places already kept: wp media-helper geo places reset --all.', 'wp-media-helper' ); ?></p>
+							</td>
+						</tr>
+						<tr>
 							<th scope="row"><label for="wp-media-helper-places-rate"><?php esc_html_e( 'Places: requests a minute', 'wp-media-helper' ); ?></label></th>
 							<td>
 								<input id="wp-media-helper-places-rate" type="number" min="1" max="600" name="general[places_rate]" value="<?php echo esc_attr( $placesRate ); ?>" class="small-text" placeholder="60" />
@@ -503,7 +515,7 @@ class ExternalSourceSettingsPage {
 		try {
 			$settings->saveAll( $submitted );
 			$general = [ 'max_entries' => $submittedMaxEntries ];
-			foreach ( [ 'additional_types', 'ignored_extensions', 'ignored_directories', 'insert_handlers', 'places_url', 'places_contact', 'places_language', 'places_rate' ] as $field ) {
+			foreach ( [ 'additional_types', 'ignored_extensions', 'ignored_directories', 'insert_handlers', 'places_url', 'places_contact', 'places_language', 'places_rate', 'places_precision' ] as $field ) {
 				if ( is_array( $rawGeneral ) && isset( $rawGeneral[ $field ] ) && is_string( $rawGeneral[ $field ] ) ) {
 					$general[ $field ] = $rawGeneral[ $field ];
 				}
